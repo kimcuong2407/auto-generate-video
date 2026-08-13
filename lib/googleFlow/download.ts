@@ -18,7 +18,9 @@ export async function resolveMediaUrl(cookie: string, mediaId: string): Promise<
   const location = res.headers.get('location');
   if (location) return location;
   // Fallback: đọc body JSON nếu endpoint trả URL trong body thay vì redirect.
-  const data = await readJson<{ url?: string; redirectUrl?: string }>(res).catch(() => ({}));
+  const data = await readJson<{ url?: string; redirectUrl?: string }>(res).catch(
+    () => ({}) as { url?: string; redirectUrl?: string }
+  );
   const url = data.url || data.redirectUrl;
   if (!url) {
     throw new FlowApiError(`Không lấy được URL tải cho media ${mediaId}`);
