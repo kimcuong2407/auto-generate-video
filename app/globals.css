@@ -412,6 +412,60 @@ main {
   width: 100%;
 }
 
+/* Bọc ngoài các trang có TopNav — cần width:100% vì body là flex row, nếu không div bọc
+   sẽ co theo nội dung (shrink-to-fit) và phá margin:auto căn giữa của .list-wrap/.home-wrap bên trong. */
+.page-shell { width: 100%; }
+
+/* Top nav — chuyển tab giữa các khu vực (Video Review / Livestream / Shopee Crawl / Cài đặt AI) */
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.top-nav-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.top-nav-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0;
+  flex-shrink: 0;
+}
+.top-nav-brand span { color: var(--accent-glow); }
+.top-nav-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.top-nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  margin: 6px 0;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.top-nav-tab:hover { background: var(--surface2); color: var(--text); }
+.top-nav-tab.active { background: var(--accent); color: #fff; }
+.top-nav-tab-icon { font-size: 14px; }
+
 /* Pulse */
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 .pulse { animation: pulse 1.5s infinite; }

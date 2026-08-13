@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, readProject } from '@/lib/data/projectStore';
-import { triggerSceneGeneration } from '@/lib/mcp/sceneGenerate';
+import { triggerSceneGeneration } from '@/lib/data/sceneGenerate';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { FLOW_MAX_CONCURRENT_JOBS } from '@/lib/constants';
 

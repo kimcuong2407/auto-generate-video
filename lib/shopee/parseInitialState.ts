@@ -3,7 +3,8 @@ import type { ShopeeProductInfo } from './types';
 // CDN ảnh Shopee (xác nhận từ og:image trên trang thật: down-vn.img.susercontent.com).
 const IMAGE_CDN = 'https://down-vn.img.susercontent.com/file/';
 
-/** Dữ liệu giá/rating/sold scrape từ DOM (do content script gửi kèm). */
+/** Dữ liệu scrape từ DOM (do content script gửi kèm). Nguồn DUY NHẤT cho giá/rating/sold,
+ *  và là nguồn dự phòng cho name/ảnh/mô tả/phân loại khi initialState nhúng là của sản phẩm cũ. */
 export interface ShopeeDomData {
   priceText?: string;
   originalPriceText?: string;
@@ -12,6 +13,11 @@ export interface ShopeeDomData {
   ratingText?: string;
   ratingStar?: number;
   soldText?: string;
+  // Metadata dự phòng (dùng khi initialState không khớp itemId hiện tại):
+  name?: string;
+  images?: string[];
+  description?: string;
+  modelNames?: string[];
 }
 
 /** Giá Shopee lưu dạng số nguyên nhân 100000 (VD 27800000000 = 278.000₫). Trả 0 nếu không hợp lệ. */
@@ -87,12 +93,23 @@ function mapProduct(
     discountPercent = Math.round(((priceBeforeDiscount - price) / priceBeforeDiscount) * 100);
   }
 
+  // Name/ảnh/mô tả/phân loại: ưu tiên initialState (đầy đủ), fallback DOM khi thiếu
+  // (xảy ra khi SPA điều hướng chưa F5 → initialState là của sản phẩm cũ, bị loại → item null).
+  const name = item?.name || dom?.name || '';
+  const isImgArr = extractImages(item);
+  const images = isImgArr.length > 0 ? isImgArr : Array.isArray(dom?.images) ? dom!.images! : [];
+  const description = extractDescription(item) || dom?.description || '';
+  const domModels = Array.isArray(dom?.modelNames)
+    ? dom!.modelNames!.map((n) => ({ modelId: 0, name: n, price: 0, priceBeforeDiscount: 0, stock: 0 }))
+    : [];
+  const finalModels = models.length > 0 ? models : domModels;
+
   return {
     itemId,
     shopId,
-    name: item?.name ?? '',
-    description: extractDescription(item),
-    images: extractImages(item),
+    name,
+    description,
+    images,
     currency: item?.currency ?? 'VND',
     price,
     priceMin: priceToNumber(item?.price_min) || price,
@@ -118,7 +135,7 @@ function mapProduct(
     freeShipping: Boolean(item?.show_free_shipping),
     shopName: item?.shop_name ?? item?.shop_detailed?.name ?? '',
     shopLocation: item?.shop_location ?? '',
-    models,
+    models: finalModels,
     productUrl: `https://shopee.vn/product/${shopId}/${itemId}`,
     priceText: dom?.priceText ?? '',
     originalPriceText: dom?.originalPriceText ?? '',
@@ -143,16 +160,17 @@ export function pickShopeeItem(initialState: any, itemId?: string | number): any
 function pickCachedItem(initialState: any, itemId?: string | number, shopId?: string | number): any | null {
   const cachedMap = initialState?.DOMAIN_PDP?.data?.PDP_BFF_DATA?.cachedMap;
   if (!cachedMap || typeof cachedMap !== 'object') return null;
-  // Key ưu tiên "<shopId>/<itemId>"; nếu không khớp, lấy entry đầu tiên có .item.
-  if (shopId != null && itemId != null) {
-    const exact = cachedMap[`${shopId}/${itemId}`];
-    if (exact?.item) return exact;
-  }
+  // Khi biết itemId, CHỈ chấp nhận entry khớp itemId đó — không fallback "entry đầu tiên",
+  // tránh trả nhầm sản phẩm cũ khi SPA điều hướng chưa F5.
   if (itemId != null) {
+    if (shopId != null) {
+      const exact = cachedMap[`${shopId}/${itemId}`];
+      if (exact?.item) return exact;
+    }
     const hit = Object.values(cachedMap).find(
       (v: any) => String(v?.item?.itemid ?? v?.item?.item_id) === String(itemId)
     );
-    if (hit) return hit as any;
+    return (hit as any) ?? null;
   }
   const first = Object.values(cachedMap).find((v: any) => v?.item);
   return (first as any) ?? null;
@@ -172,22 +190,27 @@ function soldDisplayFrom(cached: any): string {
 export function parseShopeeInitialState(
   initialState: any,
   itemId?: string | number,
-  domData?: ShopeeDomData | null
+  domData?: ShopeeDomData | null,
+  shopIdHint?: string | number
 ): ShopeeProductInfo | null {
   const skeleton = pickShopeeItem(initialState, itemId);
 
   const resolvedShopId0 =
-    skeleton?.shopid ?? skeleton?.shop_id ?? initialState?.DOMAIN_CONTEXT?.data?.shopId;
+    skeleton?.shopid ?? skeleton?.shop_id ?? initialState?.DOMAIN_CONTEXT?.data?.shopId ?? shopIdHint;
 
   const cached = pickCachedItem(initialState, itemId, resolvedShopId0);
   const item = cached?.item ?? skeleton;
-  if (!item) return null;
+
+  // Không có metadata initialState (SPA chưa F5 → initialState cũ bị loại). Vẫn dựng được
+  // product nếu có DOM data + itemId từ URL. Thiếu cả hai → thật sự không có gì để dựng.
+  const hasDom = !!(domData && (domData.name || domData.priceText || (domData.images && domData.images.length)));
+  if (!item && !(hasDom && itemId != null)) return null;
 
   const key =
     itemId != null ? String(itemId) : Object.keys(initialState?.item?.items ?? {})[0];
-  const resolvedItemId = Number(item.itemid ?? item.item_id ?? key);
+  const resolvedItemId = Number(item?.itemid ?? item?.item_id ?? key ?? itemId ?? 0);
   const shopId = Number(
-    item.shopid ?? item.shop_id ?? resolvedShopId0 ?? 0
+    item?.shopid ?? item?.shop_id ?? resolvedShopId0 ?? shopIdHint ?? 0
   );
 
   // Nếu DOM không có sold nhưng cachedMap có display string → dùng nó.
@@ -197,5 +220,5 @@ export function parseShopeeInitialState(
     if (disp) merged.soldText = disp;
   }
 
-  return mapProduct(item, resolvedItemId, shopId, merged);
+  return mapProduct(item ?? {}, resolvedItemId, shopId, merged);
 }

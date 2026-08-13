@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { jobExists, readJob, updateJob } from '@/lib/livestream/jobStore';
-import { getFlowStatus, pollJobStatus } from '@/lib/mcp/flowJobs';
+import { getFlowStatus, pollJobStatus } from '@/lib/googleFlow/flowJobs';
 import { triggerSegmentGeneration, findNextSegment } from '@/lib/livestream/segmentGenerate';
 import { extractLastFrame } from '@/lib/ffmpeg/frame';
 import { jobSegmentsDir, jobFramesDir, resolveWithinJob } from '@/lib/livestream/paths';
@@ -57,7 +57,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         }
 
         try {
-          const jobStatus = await pollJobStatus(segment.jobId as string);
+          if (!job.flowProjectId) return;
+          const jobStatus = await pollJobStatus(segment.jobId as string, job.flowProjectId);
           if (jobStatus.status === 'done') {
             if (jobStatus.video_path) {
               const destFileName = `${segment.order.toString().padStart(3, '0')}_${segment.id}.mp4`;

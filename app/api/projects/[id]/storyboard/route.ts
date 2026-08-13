@@ -38,21 +38,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { project } = await updateProject(params.id, (p) => {
     for (const image of p.storyboard.images) {
       if (!promptById.has(image.sceneId)) continue;
+      const prompt = promptById.get(image.sceneId);
+      if (prompt === undefined || prompt === image.prompt) continue; // không đổi → bỏ qua im lặng
       if (image.status === 'generating') {
-        blocked.push(image.sceneId);
+        blocked.push(image.sceneId); // chỉ chặn khi prompt thực sự thay đổi
         continue;
       }
-      const prompt = promptById.get(image.sceneId);
-      if (prompt !== undefined) image.prompt = prompt;
+      image.prompt = prompt;
     }
     for (const image of p.storyboard.backgrounds) {
       if (!backgroundPromptById.has(image.sceneId)) continue;
+      const prompt = backgroundPromptById.get(image.sceneId);
+      if (prompt === undefined || prompt === image.prompt) continue; // không đổi → bỏ qua im lặng
       if (image.status === 'generating') {
-        blocked.push(image.sceneId);
+        blocked.push(image.sceneId); // chỉ chặn khi prompt thực sự thay đổi
         continue;
       }
-      const prompt = backgroundPromptById.get(image.sceneId);
-      if (prompt !== undefined) image.prompt = prompt;
+      image.prompt = prompt;
     }
   });
 

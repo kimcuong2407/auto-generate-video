@@ -4,8 +4,22 @@ import path from 'node:path';
 import { generateProjectId, projectInputsDir } from '@/lib/paths';
 import { createProjectDirs, listProjects, writeProject } from '@/lib/data/projectStore';
 import { createNewProject } from '@/lib/data/projectFactory';
+import { resolveFlowProjectIdSafe } from '@/lib/googleFlow/flowJobs';
 import { MAX_IMAGE_COUNT, MAX_IMAGE_SIZE_BYTES } from '@/lib/constants';
+import defaultTemplate from '@/public/default-template.json';
 import type { ProductInfo, Template } from '@/lib/types';
+
+/** ext ảnh suy từ content-type khi tải ảnh remote (URL Shopee thường không có đuôi file). */
+function extFromContentType(ct: string): string {
+  const map: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/gif': '.gif',
+  };
+  return map[ct.split(';')[0].trim().toLowerCase()] || '.jpg';
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,7 +46,8 @@ export async function POST(req: NextRequest) {
   try {
     const templateText =
       typeof templateRaw === 'string' ? templateRaw : await (templateRaw as File)?.text();
-    template = JSON.parse(templateText || '{}') as Template;
+    // Template trống (VD khởi tạo từ trang crawl Shopee) → dùng template mặc định.
+    template = (templateText?.trim() ? JSON.parse(templateText) : defaultTemplate) as Template;
     if (!Array.isArray(template.scenes) || template.scenes.length === 0) {
       throw new Error('Template thiếu mảng "scenes"');
     }
@@ -54,16 +69,23 @@ export async function POST(req: NextRequest) {
       colors: Array.isArray(parsed.colors) ? parsed.colors : [],
       material: parsed.material || '',
       keyFeatures: Array.isArray(parsed.keyFeatures) ? parsed.keyFeatures : [],
+      visualDescription: parsed.visualDescription || '',
     };
   } catch {
     return NextResponse.json({ error: 'Thông tin sản phẩm (product) không hợp lệ' }, { status: 400 });
   }
 
   const images = form.getAll('images').filter((f): f is File => f instanceof File && f.size > 0);
-  if (images.length === 0) {
+  // Ảnh remote dạng URL (VD ảnh Shopee khi khởi tạo từ trang crawl) — server tải về ở dưới.
+  const imageUrls = form
+    .getAll('imageUrls')
+    .map((u) => (typeof u === 'string' ? u.trim() : ''))
+    .filter(Boolean);
+
+  if (images.length + imageUrls.length === 0) {
     return NextResponse.json({ error: 'Cần ít nhất 1 ảnh sản phẩm' }, { status: 400 });
   }
-  if (images.length > MAX_IMAGE_COUNT) {
+  if (images.length + imageUrls.length > MAX_IMAGE_COUNT) {
     return NextResponse.json({ error: `Tối đa ${MAX_IMAGE_COUNT} ảnh` }, { status: 400 });
   }
   for (const img of images) {
@@ -101,6 +123,32 @@ export async function POST(req: NextRequest) {
     productImagePaths.push(path.join('inputs', fileName));
   }
 
+  // Tải ảnh remote (imageUrls) về đĩa, đánh số tiếp theo ảnh File đã ghi ở trên.
+  // Lỗi 1 ảnh (URL hỏng/không phải ảnh/quá lớn) chỉ bỏ qua ảnh đó, không làm hỏng cả request.
+  for (let i = 0; i < imageUrls.length; i++) {
+    const url = imageUrls[i];
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const ct = resp.headers.get('content-type') || '';
+      if (!ct.toLowerCase().startsWith('image/')) continue;
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      if (buffer.length === 0 || buffer.length > MAX_IMAGE_SIZE_BYTES) continue;
+      const fileName = `product-${productImagePaths.length + 1}${extFromContentType(ct)}`;
+      await fs.writeFile(path.join(inputsDir, fileName), buffer);
+      productImagePaths.push(path.join('inputs', fileName));
+    } catch {
+      // bỏ qua ảnh tải lỗi
+    }
+  }
+
+  if (productImagePaths.length === 0) {
+    return NextResponse.json(
+      { error: 'Không tải được ảnh nào (URL ảnh có thể bị chặn hoặc không hợp lệ)' },
+      { status: 400 }
+    );
+  }
+
   const templateRelPath = path.join('inputs', 'template.json');
   await fs.writeFile(path.join(inputsDir, 'template.json'), JSON.stringify(template, null, 2), 'utf-8');
 
@@ -133,6 +181,11 @@ export async function POST(req: NextRequest) {
     backgroundPath: backgroundRelPath,
     spokespersonImagePath: spokespersonRelPath,
   });
+
+  // Gán sẵn flowProjectId ngay khi tạo (gom mọi ảnh + video sau này của project vào chung 1
+  // Flow project) — không chặn tạo project nếu Flow chưa kết nối được, lúc đó ensureProjectFlowId
+  // sẽ tự tạo muộn khi bấm generate lần đầu (xem lib/data/projectStore.ts).
+  project.flowProjectId = await resolveFlowProjectIdSafe(name);
 
   await writeProject(project);
 

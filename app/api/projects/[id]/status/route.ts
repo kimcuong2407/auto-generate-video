@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { projectExists, readProject, updateProject } from '@/lib/data/projectStore';
-import { getFlowStatus, pollJobStatus } from '@/lib/mcp/flowJobs';
-import { triggerSceneGeneration } from '@/lib/mcp/sceneGenerate';
+import { getFlowStatus, pollJobStatus } from '@/lib/googleFlow/flowJobs';
+import { triggerSceneGeneration } from '@/lib/data/sceneGenerate';
 import { extractLastFrame } from '@/lib/ffmpeg/frame';
 import { projectScenesDir, projectFramesDir, resolveWithinProject } from '@/lib/paths';
 import { FLOW_JOB_TIMEOUT_MS } from '@/lib/constants';
@@ -58,7 +58,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         }
 
         try {
-          const jobStatus = await pollJobStatus(scene.jobId as string);
+          if (!project.flowProjectId) return;
+          const jobStatus = await pollJobStatus(scene.jobId as string, project.flowProjectId);
           if (jobStatus.status === 'done') {
             if (jobStatus.video_path) {
               // flow_job_status trả về path tuyệt đối do Orino Flow tự lưu (nằm ngoài

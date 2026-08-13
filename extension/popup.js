@@ -52,9 +52,11 @@ sendBtn.addEventListener('click', async () => {
       setStatus('Không nhận được phản hồi từ trang. Thử tải lại trang Shopee rồi bấm lại.', 'err');
       return;
     }
-    if (!data.ok || !data.initialState) {
+    // initialState có thể null nếu SPA điều hướng chưa F5 (thẻ <script> là của sản phẩm cũ nên
+    // bị loại). Vẫn gửi được bằng domData thuần (DOM luôn đúng sản phẩm hiện tại).
+    if (!data.initialState && !data.domData) {
       setStatus(
-        'Không bóc được initialState từ trang (Shopee có thể đã đổi cấu trúc). ' +
+        'Không đọc được data từ trang. Thử tải lại (F5) trang Shopee rồi bấm lại. ' +
           'itemId=' + (data.itemId || '?'),
         'err'
       );
@@ -68,7 +70,7 @@ sendBtn.addEventListener('click', async () => {
       body: JSON.stringify({
         itemId: data.itemId,
         shopId: data.shopId,
-        initialState: data.initialState,
+        initialState: data.initialState || null,
         domData: data.domData || null,
       }),
     });

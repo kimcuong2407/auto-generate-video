@@ -35,7 +35,19 @@ dung có mặt):
     liệu, màu sắc, kích thước);
 (2) Action — hành động/cử chỉ cụ thể đang diễn ra; với đoạn thứ 2 trở đi, câu mô tả hành động mở
     đầu PHẢI tiếp nối trực tiếp từ tư thế/hành động kết thúc của đoạn ngay trước (xem chỉ dẫn
-    image-to-video chaining ở trên);
+    image-to-video chaining ở trên).
+    RÀNG BUỘC TAY/CHÂN (bắt buộc, áp dụng mọi đoạn có người):
+    - Mỗi người CHỈ có đúng 2 tay và 2 chân. TUYỆT ĐỐI KHÔNG mô tả người cầm/giữ/nắm cùng lúc
+      nhiều vật bằng quá 2 tay, KHÔNG để 1 vật được nhiều hơn 2 tay giữ, KHÔNG mô tả thao tác cần
+      quá nhiều tay để thực hiện.
+    - Giữ cử động tay/chân TỐI GIẢN và gần với thân người: ưu tiên tay đặt trên bàn/trên sản phẩm,
+      cầm vật đơn giản bằng 1 tay hoặc 2 tay, hạn chế tối đa tay giơ cao/vung/đan chéo/đưa qua lại
+      khỏi khung hình. KHÔNG mô tả cử chỉ phức tạp nhiều khớp (đếm ngón tay, xoè từng ngón, bắt
+      chéo ngón, động tác múa/ký hiệu tay...).
+    - Với đoạn dùng image-to-video chaining, mô tả rõ ràng TƯ THẾ TAY TĨNH ổn định khi bắt đầu
+      đoạn để Veo không tự "bịa thêm" 1 bàn tay thứ ba trong lúc tiếp nối chuyển động.
+    - Trong phần Technical của veoPrompt, thêm cụm "natural hand anatomy, exactly two hands,
+      exactly two arms, no extra limbs".
 (3) Scene — bối cảnh quay chung đã xác định ở Bước 1, PHẢI nhắc lại nhất quán;
 (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách
     ánh sáng;

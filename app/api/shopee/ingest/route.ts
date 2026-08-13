@@ -31,11 +31,11 @@ export async function POST(req: Request) {
     return json({ ok: false, error: 'Body request không hợp lệ' }, 400);
   }
 
-  if (!body.initialState) {
-    return json({ ok: false, error: 'Thiếu initialState (extension chưa bóc được data từ trang)' }, 400);
+  if (!body.initialState && !body.domData) {
+    return json({ ok: false, error: 'Thiếu cả initialState lẫn domData (extension chưa bóc được data từ trang)' }, 400);
   }
 
-  const product = parseShopeeInitialState(body.initialState, body.itemId, body.domData);
+  const product = parseShopeeInitialState(body.initialState, body.itemId, body.domData, body.shopId);
   if (!product) {
     return json(
       { ok: false, error: 'Không tìm được dữ liệu sản phẩm trong initialState (path item.items[itemId] rỗng)' },
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   return json({ ok: true, product, receivedAt: entry.receivedAt });
 }
 
-/** Màn hình /shopee-test poll để lấy sản phẩm mới nhất extension gửi về. */
+/** Màn hình /shopee-crawl poll để lấy sản phẩm mới nhất extension gửi về. */
 export async function GET(req: Request) {
   const itemId = new URL(req.url).searchParams.get('itemId');
   const entry = getLatest(itemId);

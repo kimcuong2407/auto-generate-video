@@ -40,6 +40,13 @@ export interface ProductInfo {
   colors: string[];
   material: string;
   keyFeatures: string[];
+  /**
+   * Mô tả HÌNH ẢNH thật của sản phẩm do AI vision đọc trực tiếp từ ảnh (màu sắc vật lý,
+   * chất liệu, hình dạng, tỉ lệ, chi tiết nhìn thấy) — tách biệt với material/colors do
+   * người dùng nhập tay. Dùng làm nguồn màu/chất liệu ĐÁNG TIN CẬY khi sinh veoPrompt/
+   * storyboard, thay cho việc để model text tự bịa. Mặc định '' cho project cũ.
+   */
+  visualDescription: string;
 }
 
 export interface Scene {

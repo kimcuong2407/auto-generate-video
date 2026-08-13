@@ -100,8 +100,9 @@ Dữ liệu mỗi project được lưu tại `data/projects/<project-id>/` (ả
 
 ## Crawl sản phẩm Shopee (qua Chrome Extension)
 
-Màn hình `/shopee-test` lấy toàn bộ thông tin 1 sản phẩm Shopee (tên, giá, rating, ảnh, mô tả, phân
-loại...). **Không crawl trực tiếp phía server được** — Shopee chặn mọi request tự động (đã kiểm chứng:
+Màn hình `/shopee-crawl` lấy toàn bộ thông tin 1 sản phẩm Shopee (tên, giá, rating, ảnh, mô tả, phân
+loại...) và cho phép **khởi tạo luôn** job Livestream hoặc project Video Review từ data đó.
+**Không crawl trực tiếp phía server được** — Shopee chặn mọi request tự động (đã kiểm chứng:
 fetch thuần, Playwright headless/headful, plugin stealth, kết nối CDP vào Chrome thật — tất cả trả
 `error 90309999` hoặc redirect trang verify). API Shopee còn yêu cầu header ký runtime do SDK anti-bot
 sinh bằng JS, không giả lập được từ code.
@@ -111,9 +112,10 @@ anti-bot, không dùng CDP nên không bị phát hiện), đọc data rồi POS
 
 1. Cài extension: `chrome://extensions` → bật Developer mode → **Load unpacked** → chọn `extension/`.
    Xem chi tiết trong `extension/README.md`.
-2. Mở `/shopee-test` → bấm **"Bắt đầu lắng nghe data"**.
+2. Mở `/shopee-crawl` → bấm **"Bắt đầu lắng nghe data"**.
 3. Mở 1 trang sản phẩm Shopee trong Chrome → bấm icon extension → **"Gửi data"**.
-4. Info hiện đầy đủ trên `/shopee-test`.
+4. Info hiện đầy đủ trên `/shopee-crawl`. Bấm **"Tạo job Livestream"** hoặc **"Tạo project Video Review"**
+   để khởi tạo project ngay từ sản phẩm vừa crawl.
 
 **Deploy Ubuntu:** đổi *Endpoint URL* trong popup extension thành `https://your-domain.com/api/shopee/ingest`
 (endpoint `POST /api/shopee/ingest` đã bật CORS). Extension vẫn chạy trên máy có Chrome, chỉ nơi nhận
@@ -127,7 +129,7 @@ app/
   projects/[id]/page.tsx   Trang pipeline chính (6 bước)
   api/projects/            API routes (tạo project, storyboard, script, gen video, concat, media, reset...)
   api/shopee/ingest/       Nhận data sản phẩm từ Chrome extension (POST) + poll hiển thị (GET)
-  shopee-test/page.tsx     Màn hình test hiển thị data sản phẩm Shopee nhận từ extension
+  shopee-crawl/page.tsx    Màn hình crawl data sản phẩm Shopee + khởi tạo project từ data
 components/                UI components (Sidebar, Topbar, 6 step components)
 hooks/                     useProjectPolling — poll trạng thái project
 lib/

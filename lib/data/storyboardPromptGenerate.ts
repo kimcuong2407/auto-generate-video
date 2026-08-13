@@ -1,5 +1,5 @@
 import { readProject, updateProject } from './projectStore';
-import { generateScriptText } from '../mcp/flowJobs';
+import { generateScriptText } from '../googleFlow/flowJobs';
 import { ChatApiError } from '../ai/chatClient';
 import type { Project, Scene } from '../types';
 
@@ -20,6 +20,11 @@ Yêu cầu:
   màu, phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, KHÔNG phải minh
   hoạ/illustration/3D render/cartoon. Góc máy/bố cục có thể thay đổi nhẹ giữa các ô để thể hiện diễn biến,
   nhưng không phá vỡ tính nhất quán của chủ thể và bối cảnh.
+- QUAN TRỌNG về màu sắc/chất liệu/hình dạng sản phẩm: nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" được cung
+  cấp bên dưới, BẮT BUỘC dùng ĐÚNG màu sắc/chất liệu/hình dạng nêu trong đó, giữ nhất quán xuyên suốt cả 8 ô.
+  TUYỆT ĐỐI KHÔNG tự bịa/suy diễn/đổi màu, chất liệu, chi tiết không có trong mô tả đó. Nếu KHÔNG có thông tin
+  màu/chất liệu đáng tin cậy, dùng cụm trung tính "the product shown in the reference image" thay vì tự đặt tên
+  một màu cụ thể (đặt sai màu sẽ làm ảnh lệch với sản phẩm thật khi model bám theo ảnh reference).
 - Mô tả rõ trong prompt: đây là ảnh dạng lưới 8 ô (8-panel storyboard grid / contact sheet), và tóm tắt ngắn
   gọn nội dung của từng ô theo đúng thứ tự.
 - Bám sát nội dung cảnh quay đã chốt (mô tả video, góc máy, on-screen text) được cung cấp bên dưới.
@@ -28,7 +33,7 @@ Yêu cầu:
 
 function buildProductDescription(project: Project): string {
   const p = project.product;
-  return [
+  const base = [
     p.name && `Tên sản phẩm: ${p.name}`,
     p.tagline && `Tagline: ${p.tagline}`,
     p.category && `Danh mục: ${p.category}`,
@@ -38,6 +43,14 @@ function buildProductDescription(project: Project): string {
   ]
     .filter(Boolean)
     .join('\n');
+
+  // Mô tả hình ảnh thật do AI vision đọc từ ảnh — nguồn màu/chất liệu đáng tin cậy nhất,
+  // đánh dấu ưu tiên tuyệt đối để system prompt buộc dùng đúng, tránh bịa màu.
+  const visual = project.product.visualDescription?.trim();
+  if (visual) {
+    return `${base}\n\nMô tả hình ảnh thật từ ảnh sản phẩm (ƯU TIÊN TUYỆT ĐỐI — dùng đúng màu/chất liệu/hình dạng này, KHÔNG được bịa khác):\n${visual}`;
+  }
+  return base;
 }
 
 function buildUserPrompt(project: Project, scene: Scene): string {

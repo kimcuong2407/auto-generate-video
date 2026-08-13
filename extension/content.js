@@ -17,19 +17,42 @@ function idsFromUrl() {
   return { shopId: null, itemId: null };
 }
 
-/** Tìm thẻ <script> chứa JSON `{"initialState":...}` rồi parse ra object initialState. */
-function extractInitialState() {
-  const scripts = Array.from(document.querySelectorAll('script'));
-  const s = scripts.find(
+/**
+ * Tìm thẻ <script> chứa JSON `{"initialState":...}` rồi parse ra object initialState.
+ *
+ * QUAN TRỌNG: Shopee là SPA — khi điều hướng sang sản phẩm khác trong cùng tab (không F5),
+ * thẻ <script> initialState CŨ vẫn nằm trong DOM (thuộc sản phẩm mở đầu tiên). Nếu lấy bừa
+ * thẻ đầu tiên sẽ ra data sản phẩm cũ. Vì vậy: chỉ chấp nhận initialState mà itemId của nó
+ * KHỚP itemId trong URL hiện tại; không thẻ nào khớp → trả null (buộc dùng DOM scrape).
+ */
+function extractInitialState(expectedItemId) {
+  const scripts = Array.from(document.querySelectorAll('script')).filter(
     (x) => x.textContent && x.textContent.includes('"initialState"') && x.textContent.includes('shopId')
   );
-  if (!s) return null;
-  try {
-    const parsed = JSON.parse(s.textContent);
-    return parsed.initialState || null;
-  } catch {
-    return null;
+  let firstParsed = null;
+  for (const s of scripts) {
+    let state = null;
+    try {
+      state = JSON.parse(s.textContent).initialState || null;
+    } catch {
+      continue;
+    }
+    if (!state) continue;
+    if (firstParsed === null) firstParsed = state;
+    if (!expectedItemId) return state; // không biết itemId → chấp nhận thẻ đầu
+    // Khớp itemId trong path item.items hoặc DOMAIN_PDP.cachedMap.
+    const items = state?.item?.items;
+    if (items && Object.prototype.hasOwnProperty.call(items, String(expectedItemId))) {
+      return state;
+    }
+    const cachedMap = state?.DOMAIN_PDP?.data?.PDP_BFF_DATA?.cachedMap;
+    if (cachedMap && Object.keys(cachedMap).some((k) => k.endsWith('/' + expectedItemId))) {
+      return state;
+    }
   }
+  // Không thẻ nào khớp itemId hiện tại → initialState nhúng là của sản phẩm cũ (SPA chưa reload).
+  // Trả null để buộc dùng DOM scrape (DOM luôn là sản phẩm hiện tại).
+  return null;
 }
 
 /** Fallback: đọc trực tiếp DOM đã render nếu không bóc được initialState. */
@@ -123,6 +146,59 @@ function scrapeDom() {
   })[0];
   const soldText = soldLeaf ? soldLeaf.textContent.trim() : '';
 
+  // ── Metadata từ DOM (dùng khi initialState nhúng là của sản phẩm cũ — SPA chưa F5) ──
+  const og = (prop) => document.querySelector(`meta[property="${prop}"]`)?.content || '';
+
+  // Tên: <h1> nếu có, else og:title, else document.title (bỏ đuôi "| Shopee").
+  const h1 = document.querySelector('h1');
+  let name = (h1 && h1.textContent.trim()) || og('og:title') || '';
+  if (!name) name = document.title.replace(/\s*\|\s*Shopee.*$/i, '').trim();
+
+  // Ảnh: thu các <img> trong khối gallery (src chứa CDN susercontent). Dedup, bỏ thumbnail nhỏ.
+  const imageSet = new Set();
+  Array.from(document.querySelectorAll('img')).forEach((img) => {
+    const src = img.currentSrc || img.src || '';
+    if (/susercontent\.com\/file\//.test(src)) {
+      // Chuẩn hoá bỏ hậu tố resize (_tn, @resize...) để lấy ảnh gốc.
+      const clean = src.split('@')[0].split('?')[0];
+      imageSet.add(clean);
+    }
+  });
+  const images = Array.from(imageSet).slice(0, 12);
+
+  // Mô tả: khối "Product Description" / "Mô tả sản phẩm". Lấy text container kế tiêu đề.
+  let description = '';
+  const descHeading = leafElementsWith((e) =>
+    /^(mô tả sản phẩm|product description)$/i.test(e.textContent.trim())
+  )[0];
+  if (descHeading) {
+    // Đi lên tổ tiên gần, lấy innerText của block chứa cả tiêu đề + nội dung.
+    let container = descHeading.parentElement;
+    for (let i = 0; i < 4 && container; i++) {
+      if (container.innerText && container.innerText.length > descHeading.textContent.length + 40) break;
+      container = container.parentElement;
+    }
+    if (container) {
+      description = container.innerText
+        .replace(/^(mô tả sản phẩm|product description)\s*/i, '')
+        .trim()
+        .slice(0, 5000);
+    }
+  }
+
+  // Phân loại (models): các nút variant. Shopee render dạng button trong khối "Phân loại".
+  const models = [];
+  const variantHeading = leafElementsWith((e) => /^(phân loại|category|màu sắc|loại)$/i.test(e.textContent.trim()))[0];
+  if (variantHeading) {
+    const row = variantHeading.closest('div')?.parentElement || variantHeading.parentElement;
+    if (row) {
+      Array.from(row.querySelectorAll('button')).forEach((b) => {
+        const t = b.textContent.trim();
+        if (t && t.length < 60 && !models.includes(t)) models.push(t);
+      });
+    }
+  }
+
   return {
     priceText,
     originalPriceText,
@@ -131,13 +207,19 @@ function scrapeDom() {
     ratingText,
     ratingStar: ratingText ? Number(ratingText) : 0,
     soldText,
+    // Metadata DOM (fallback khi initialState không khớp itemId hiện tại):
+    name,
+    images,
+    description,
+    modelNames: models,
   };
 }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type !== 'GET_PRODUCT') return;
     const { itemId, shopId } = idsFromUrl();
-    const initialState = extractInitialState();
+    // Truyền itemId để loại initialState CŨ (SPA điều hướng không F5 vẫn giữ <script> cũ trong DOM).
+    const initialState = extractInitialState(itemId);
     // Luôn scrape DOM — đây là nguồn DUY NHẤT cho giá/rating/sold số (Shopee strip khỏi initialState).
     let domData = null;
     try {

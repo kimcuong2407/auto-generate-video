@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, readProject, updateProject } from '@/lib/data/projectStore';
-import { generateScriptText } from '@/lib/mcp/flowJobs';
+import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { findScriptAngle } from '@/lib/scriptAngles';
@@ -9,8 +9,10 @@ import {
   mergeStoryboardWithScript,
   mergeBackgroundsWithScript,
 } from '@/lib/data/projectFactory';
-import { slugify } from '@/lib/paths';
+import path from 'node:path';
+import { slugify, projectInputsDir } from '@/lib/paths';
 import { extractJson } from '@/lib/ai/jsonExtract';
+import { extractVisualDescription } from '@/lib/data/productVisionExtract';
 import type { Scene } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -57,10 +59,28 @@ Với mỗi cảnh tự thiết kế, xác định:
   1 đoạn văn liền mạch nhưng BẮT BUỘC bao phủ đủ 7 thành phần chuyên nghiệp sau (không cần ghi nhãn từng
   phần ra prompt, chỉ cần nội dung có mặt):
   (1) Subject — mô tả chi tiết người dẫn/nhân vật (ngoại hình, tuổi, trang phục cụ thể) nếu cảnh có người,
-      hoặc mô tả sản phẩm (chất liệu, màu sắc, kích thước) nếu cảnh chỉ có sản phẩm;
+      hoặc mô tả sản phẩm (chất liệu, màu sắc, kích thước) nếu cảnh chỉ có sản phẩm.
+      QUAN TRỌNG về màu sắc/chất liệu/hình dạng sản phẩm: nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm"
+      được cung cấp bên dưới, BẮT BUỘC dùng ĐÚNG màu sắc/chất liệu/hình dạng nêu trong đó, giữ nhất quán
+      xuyên suốt MỌI cảnh. TUYỆT ĐỐI KHÔNG tự bịa/suy diễn/đổi màu, chất liệu, chi tiết không có trong mô tả
+      đó. Nếu KHÔNG có thông tin màu/chất liệu đáng tin cậy, dùng cụm trung tính "the product shown in the
+      reference image" thay vì tự đặt tên một màu cụ thể (đặt sai màu sẽ làm video mất đồng nhất với sản phẩm thật);
   (2) Action — hành động/cử chỉ/micro-expression cụ thể đang diễn ra; với cảnh thứ 2 trở đi,
       câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/vị trí/hành động kết thúc
-      của cảnh ngay trước (xem chỉ dẫn image-to-video chaining ở trên);
+      của cảnh ngay trước (xem chỉ dẫn image-to-video chaining ở trên).
+      RÀNG BUỘC TAY/CHÂN (bắt buộc, áp dụng mọi cảnh có người):
+      - Mỗi người CHỈ có đúng 2 tay và 2 chân. TUYỆT ĐỐI KHÔNG mô tả người cầm/giữ/nắm cùng lúc
+        nhiều vật bằng quá 2 tay, KHÔNG để 1 vật được nhiều hơn 2 tay giữ, KHÔNG mô tả thao tác
+        cần quá nhiều tay để thực hiện.
+      - Giữ cử động tay/chân TỐI GIẢN và gần với thân người: ưu tiên tay đặt trên bàn/trên sản
+        phẩm, cầm vật đơn giản bằng 1 tay hoặc 2 tay, hạn chế tối đa tay giơ cao/vung/đan chéo/
+        đưa qua lại khỏi khung hình. KHÔNG mô tả cử chỉ phức tạp nhiều khớp (đếm ngón tay, xoè
+        từng ngón, bắt chéo ngón, động tác múa/ký hiệu tay...).
+      - Với cảnh dùng image-to-video chaining, mô tả rõ ràng TƯ THẾ TAY TĨNH ổn định khi bắt đầu
+        cảnh (tay đang đặt ở đâu, cầm gì) để Veo không tự "bịa thêm" 1 bàn tay thứ ba trong lúc
+        tiếp nối chuyển động.
+      - Trong phần Technical của veoPrompt, thêm cụm "natural hand anatomy, exactly two hands,
+        exactly two arms, no extra limbs" để nhấn mạnh giải phẫu tay chuẩn, không thừa chi.
   (3) Scene — bối cảnh quay chung đã xác định ở Bước 1 (không gian, ánh sáng, phong cách máy quay), PHẢI
       nhắc lại nhất quán để liền mạch với các scene khác;
   (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách ánh sáng;
@@ -123,6 +143,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
   }
 
+  // AI vision "chốt" đặc điểm thị giác thật của sản phẩm (màu/chất liệu/hình dạng) từ ảnh —
+  // nguồn màu đáng tin cậy nhất, tránh model text tự bịa. Chạy tự động nếu chưa có
+  // visualDescription và project có ảnh; lỗi vision (VD chưa cấu hình model) không chặn luồng
+  // sinh kịch bản — chỉ bỏ qua phần mô tả hình ảnh.
+  let visualDescription = project.product.visualDescription?.trim() || '';
+  if (!visualDescription && project.inputs.productImages.length > 0) {
+    try {
+      const absPaths = project.inputs.productImages.map((rel) =>
+        path.join(projectInputsDir(params.id), path.basename(rel))
+      );
+      visualDescription = await extractVisualDescription(absPaths);
+      if (visualDescription) {
+        await updateProject(params.id, (p) => {
+          p.product.visualDescription = visualDescription;
+        });
+      }
+    } catch (err) {
+      console.warn(`[script/generate] AI vision đọc ảnh thất bại, bỏ qua: ${(err as Error).message}`);
+    }
+  }
+
   const productDesc =
     body.productDescription ||
     [
@@ -136,12 +177,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       .filter(Boolean)
       .join('\n');
 
-  if (!productDesc.trim()) {
+  if (!productDesc.trim() && !visualDescription) {
     return NextResponse.json(
       { error: 'Cần nhập mô tả sản phẩm (Bước 1) trước khi sinh kịch bản bằng AI' },
       { status: 400 }
     );
   }
+
+  // Ghép mô tả hình ảnh thật vào cuối, đánh dấu ưu tiên tuyệt đối — system prompt buộc AI
+  // dùng đúng màu/chất liệu này thay vì tự bịa.
+  const productDescWithVisual = visualDescription
+    ? `${productDesc}\n\nMô tả hình ảnh thật từ ảnh sản phẩm (ƯU TIÊN TUYỆT ĐỐI — dùng đúng màu/chất liệu/hình dạng này, KHÔNG được bịa khác):\n${visualDescription}`
+    : productDesc;
 
   const systemPrompt = `${BASE_SYSTEM_PROMPT}\n\nGóc kịch bản được chọn: "${angle.title}".\n${angle.aiGuidance}`;
 
@@ -150,7 +197,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     project.script.scenes.reduce((sum, s) => sum + s.duration, 0) ||
     60;
 
-  const userPrompt = `Mô tả sản phẩm:\n${productDesc}\n\nTổng thời lượng mục tiêu: ${targetTotalDuration} giây.\n\nDanh sách cảnh MẪU (chỉ tham khảo loại cảnh, KHÔNG bắt buộc theo đúng, có thể bỏ/gộp/thêm/đổi thứ tự):\n${JSON.stringify(
+  const userPrompt = `Mô tả sản phẩm:\n${productDescWithVisual}\n\nTổng thời lượng mục tiêu: ${targetTotalDuration} giây.\n\nDanh sách cảnh MẪU (chỉ tham khảo loại cảnh, KHÔNG bắt buộc theo đúng, có thể bỏ/gộp/thêm/đổi thứ tự):\n${JSON.stringify(
     project.template.scenes.map((s) => ({
       id: s.id,
       label: s.label,

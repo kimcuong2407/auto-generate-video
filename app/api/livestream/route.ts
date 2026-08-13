@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateJobId, jobInputsDir } from '@/lib/livestream/paths';
 import { createJobDirs, listJobs, writeJob } from '@/lib/livestream/jobStore';
 import { createNewJob } from '@/lib/livestream/jobFactory';
+import { resolveFlowProjectIdSafe } from '@/lib/googleFlow/flowJobs';
 import { ingestEntry, type EntryInput } from '@/lib/livestream/ingestEntry';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { INGEST_CONCURRENCY } from '@/lib/livestream/constants';
@@ -67,6 +68,8 @@ export async function POST(req: NextRequest) {
   }
 
   const job = createNewJob({ id, name, aspectRatio, veoModel, chaining, products });
+  // Gán sẵn flowProjectId ngay khi tạo — xem giải thích tương ứng ở app/api/projects/route.ts.
+  job.flowProjectId = await resolveFlowProjectIdSafe(name);
   await writeJob(job);
 
   return NextResponse.json({ id, job, warnings }, { status: 201 });

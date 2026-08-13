@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { TopNav } from '@/components/TopNav';
 import { STEP_LABELS } from '@/components/Sidebar';
 import { SCRIPT_ANGLES } from '@/lib/scriptAngles';
 import { runScriptGenerateSSE } from '@/lib/client/scriptGenerate';
@@ -99,28 +100,17 @@ export default function HomePage() {
       : [];
 
   return (
-    <div className="list-wrap">
-      <div className="page-header">
-        <div>
-          <div className="logo">
-            🎬 <span>Veo</span> Pipeline
+    <div className="page-shell">
+      <TopNav />
+      <div className="list-wrap">
+        <div className="page-header">
+          <div>
+            <div className="card-header" style={{ marginBottom: 0 }}>Danh sách project Video Review</div>
           </div>
-          <div style={{ display: 'flex', gap: 4, flexDirection: 'column', marginTop: 8 }}>
-            <Link href="/settings/ai" className="back-link">
-              ⚙️ Cài đặt AI — chọn model 9router
-            </Link>
-            <Link href="/livestream" className="back-link">
-              📡 Livestream Script — tạo video livestream từ nhiều sản phẩm
-            </Link>
-            <Link href="/shopee-test" className="back-link">
-              🛍️ Shopee Crawler Test — crawl sản phẩm qua Chrome extension
-            </Link>
-          </div>
+          <a href="/projects/new" target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+            + Tạo project mới
+          </a>
         </div>
-        <a href="/projects/new" target="_blank" rel="noopener noreferrer" className="btn btn-primary">
-          + Tạo project mới
-        </a>
-      </div>
 
       {selected.size > 0 && (
         <div className="bulk-toolbar">
@@ -238,6 +228,7 @@ export default function HomePage() {
             </table>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

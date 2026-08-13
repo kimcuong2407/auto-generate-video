@@ -2,7 +2,14 @@
 
 import { useState } from 'react';
 import type { Project } from '@/lib/types';
-import { useAutoPipeline } from '@/hooks/useAutoPipeline';
+import { useAutoPipeline, type PipelineStepKey } from '@/hooks/useAutoPipeline';
+
+const TARGET_OPTIONS: { value: PipelineStepKey; label: string }[] = [
+  { value: 'script', label: 'Bước 2 · Kịch bản' },
+  { value: 'storyboard', label: 'Bước 3 · Storyboard' },
+  { value: 'video', label: 'Bước 4 · Video' },
+  { value: 'concat', label: 'Bước 6 · Ghép video (toàn bộ)' },
+];
 
 const STEP_STATUS_ICON: Record<string, string> = {
   pending: '·',
@@ -20,6 +27,7 @@ export function Topbar({
   onRefresh: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [targetStep, setTargetStep] = useState<PipelineStepKey>('concat');
   const pipeline = useAutoPipeline(project.id, onRefresh);
 
   async function handleReset() {
@@ -38,7 +46,7 @@ export function Topbar({
   }
 
   async function handleRunAll() {
-    await pipeline.run();
+    await pipeline.run(targetStep);
   }
 
   async function handleStopAll() {
@@ -78,13 +86,27 @@ export function Topbar({
           >
             ⏹ Dừng tất cả
           </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Chạy đến:</span>
+            <select
+              value={targetStep}
+              onChange={(e) => setTargetStep(e.target.value as PipelineStepKey)}
+              disabled={busy || pipeline.running}
+            >
+              {TARGET_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             className="btn btn-primary"
             onClick={handleRunAll}
             disabled={busy || pipeline.running}
-            title="Tự động chạy nối tiếp Bước 2 → 6, bỏ qua bước đã xong"
+            title="Tự động chạy nối tiếp từ Bước 2 đến bước đích đã chọn, bỏ qua bước đã xong"
           >
-            {pipeline.running ? '⏳ Đang chạy pipeline...' : '▶ Chạy toàn bộ'}
+            {pipeline.running ? '⏳ Đang chạy pipeline...' : '▶ Chạy tự động'}
           </button>
         </div>
       </div>

@@ -94,16 +94,27 @@ export function StoryboardStep({
   async function saveAllPrompts(): Promise<boolean> {
     setError(null);
     try {
+      // Chỉ gửi những ảnh có prompt thực sự thay đổi và KHÔNG đang generating.
+      // Tránh gửi ảnh đang chạy (server sẽ trả warning "Không thể sửa ảnh đang generating"),
+      // đồng thời tránh gửi thừa các ảnh không đổi.
+      const changedImages = project.storyboard.images
+        .filter((img) => img.status !== 'generating')
+        .filter((img) => (prompts[img.sceneId] ?? img.prompt) !== img.prompt)
+        .map((img) => ({ sceneId: img.sceneId, prompt: prompts[img.sceneId] ?? img.prompt }));
+      const changedBackgrounds = project.storyboard.backgrounds
+        .filter((img) => img.status !== 'generating')
+        .filter((img) => (backgroundPrompts[img.sceneId] ?? img.prompt) !== img.prompt)
+        .map((img) => ({ sceneId: img.sceneId, prompt: backgroundPrompts[img.sceneId] ?? img.prompt }));
+
+      // Không có gì để lưu → coi như thành công, không cần gọi API.
+      if (changedImages.length === 0 && changedBackgrounds.length === 0) {
+        return true;
+      }
+
       const res = await fetch(`/api/projects/${project.id}/storyboard`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          images: project.storyboard.images.map((img) => ({ sceneId: img.sceneId, prompt: prompts[img.sceneId] ?? img.prompt })),
-          backgrounds: project.storyboard.backgrounds.map((img) => ({
-            sceneId: img.sceneId,
-            prompt: backgroundPrompts[img.sceneId] ?? img.prompt,
-          })),
-        }),
+        body: JSON.stringify({ images: changedImages, backgrounds: changedBackgrounds }),
       });
       const data = await res.json();
       if (!res.ok) {

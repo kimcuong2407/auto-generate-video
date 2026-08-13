@@ -1,7 +1,7 @@
-import { readJob, updateJob } from './jobStore';
+import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { resolveWithinJob } from './paths';
-import { generateSceneVideo } from '../mcp/flowJobs';
-import { McpToolError } from '../mcp/orinoFlowClient';
+import { generateSceneVideo } from '../googleFlow/flowJobs';
+import { FlowApiError } from '../googleFlow/errors';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
 
 export interface TriggerResult {
@@ -93,6 +93,8 @@ export async function triggerSegmentGeneration(
       startPath = resolveWithinJob(jobId, prevSegment.lastFramePath);
     }
 
+    const flowProjectId = await ensureJobFlowId(jobId);
+
     const { job_id } = await generateSceneVideo(
       {
         veoPrompt: segment.veoPrompt,
@@ -102,7 +104,7 @@ export async function triggerSegmentGeneration(
       {
         aspect: job.aspectRatio,
         model: job.veoModel,
-        flowProjectId: job.flowProjectId,
+        flowProjectId,
         startPath,
       }
     );
@@ -119,7 +121,7 @@ export async function triggerSegmentGeneration(
 
     return { segmentId, ok: true, jobId: job_id };
   } catch (err) {
-    const message = err instanceof McpToolError ? err.message : (err as Error).message;
+    const message = err instanceof FlowApiError ? err.message : (err as Error).message;
     await updateJob(jobId, (j) => {
       const f = findSegment(j, segmentId);
       if (!f) return;

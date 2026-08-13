@@ -75,6 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         colors: Array.isArray(parsed.colors) ? parsed.colors : [],
         material: parsed.material || '',
         keyFeatures: Array.isArray(parsed.keyFeatures) ? parsed.keyFeatures : [],
+        visualDescription: parsed.visualDescription || '',
       };
     } catch {
       return NextResponse.json({ error: 'Thông tin sản phẩm (product) không hợp lệ' }, { status: 400 });

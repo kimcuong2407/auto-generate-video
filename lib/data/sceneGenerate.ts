@@ -1,7 +1,7 @@
-import { readProject, updateProject } from '../data/projectStore';
+import { readProject, updateProject, ensureProjectFlowId } from './projectStore';
 import { resolveWithinProject } from '../paths';
-import { generateSceneVideo } from './flowJobs';
-import { McpToolError } from './orinoFlowClient';
+import { generateSceneVideo } from '../googleFlow/flowJobs';
+import { FlowApiError } from '../googleFlow/errors';
 import type { Scene } from '../types';
 
 export interface TriggerResult {
@@ -12,7 +12,7 @@ export interface TriggerResult {
 }
 
 /**
- * Trigger gen video cho 1 scene: validate trạng thái, gọi flow_generate_video,
+ * Trigger gen video cho 1 scene: validate trạng thái, gọi generateSceneVideo,
  * cập nhật project.json. Dùng chung cho route generate/retry/generate-all.
  */
 export async function triggerSceneGeneration(
@@ -38,16 +38,14 @@ export async function triggerSceneGeneration(
   try {
     // Ảnh storyboard của chính scene này (Bước 3, nếu đã gen xong) làm tham chiếu duy
     // nhất khi gen video — ảnh này đã kết tinh sẵn sản phẩm + nhân vật + bối cảnh nên
-    // không cần gửi thêm ảnh sản phẩm/nhân vật gốc từ Bước 1 nữa. Giúp Veo bám sát đúng
-    // bố cục/phong cách đã duyệt ở Bước 3 thay vì chỉ dựa vào mô tả text.
+    // không cần gửi thêm ảnh sản phẩm/nhân vật gốc từ Bước 1 nữa.
     const refPaths: string[] = [];
     const storyboardImage = project.storyboard.images.find((img) => img.sceneId === sceneId);
     if (storyboardImage?.status === 'done' && storyboardImage.imagePath) {
       refPaths.push(resolveWithinProject(projectId, storyboardImage.imagePath));
     }
 
-    // Chain khung hình cuối cảnh trước → khung hình đầu cảnh này, tạo continuity thị giác
-    // thật giữa các cảnh (opportunistic — chỉ dùng nếu cảnh trước đã done và có sẵn frame).
+    // Chain khung hình cuối cảnh trước → khung hình đầu cảnh này, tạo continuity thị giác.
     let startPath: string | undefined;
     if (project.sceneChaining && scene.order > 1) {
       const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
@@ -55,6 +53,8 @@ export async function triggerSceneGeneration(
         startPath = resolveWithinProject(projectId, prevScene.lastFramePath);
       }
     }
+
+    const flowProjectId = await ensureProjectFlowId(projectId);
 
     const { job_id } = await generateSceneVideo(
       {
@@ -66,7 +66,7 @@ export async function triggerSceneGeneration(
       {
         aspect: project.aspectRatio,
         model: project.veoModel,
-        flowProjectId: project.flowProjectId,
+        flowProjectId,
         refPaths,
         startPath,
       }
@@ -80,7 +80,7 @@ export async function triggerSceneGeneration(
 
     return { sceneId, ok: true, jobId: job_id };
   } catch (err) {
-    const message = err instanceof McpToolError ? err.message : (err as Error).message;
+    const message = err instanceof FlowApiError ? err.message : (err as Error).message;
     await updateProject(projectId, (p) => {
       const s = p.script.scenes.find((x) => x.id === sceneId);
       if (!s) return;
@@ -105,8 +105,7 @@ const STOP_ERROR_MESSAGE = 'Đã dừng theo yêu cầu người dùng';
 
 /**
  * Dừng theo dõi 1 scene đang generating: KHÔNG hủy được job thật bên Google Flow
- * (bộ MCP tool Orino Flow không có tool hủy job) — chỉ đánh dấu scene về "failed"
- * để người dùng có thể Retry ngay, thay vì phải chờ hết FLOW_JOB_TIMEOUT_MS.
+ * (không có endpoint hủy trong bộ API này) — chỉ đánh dấu scene về "failed" để retry.
  */
 export async function stopSceneGeneration(projectId: string, sceneId: string): Promise<TriggerResult> {
   const project = await readProject(projectId);

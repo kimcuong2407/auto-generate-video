@@ -1,9 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { readProject, updateProject } from './projectStore';
+import { readProject, updateProject, ensureProjectFlowId } from './projectStore';
 import { projectInputsDir, projectStoryboardDir } from '../paths';
-import { generateStoryboardImage } from '../mcp/flowJobs';
-import { McpToolError } from '../mcp/orinoFlowClient';
+import { generateStoryboardImage } from '../googleFlow/flowJobs';
+import { FlowApiError } from '../googleFlow/errors';
 import type { StoryboardImage } from '../types';
 
 export interface TriggerStoryboardResult {
@@ -60,6 +60,7 @@ export async function triggerStoryboardGeneration(
       prompt: image.prompt,
       model: project.storyboard.model,
       refPaths: referenceImagePaths,
+      projectId: await ensureProjectFlowId(projectId),
       // Storyboard luôn là ảnh lưới 4x2 (xem SYSTEM_PROMPT trong storyboardPromptGenerate.ts)
       // — cần khung ngang để bố cục lưới hợp lý, không phụ thuộc aspectRatio video của project
       // (thường là 9:16 dọc, ép lưới ngang vào đó khiến model bỏ qua chỉ dẫn grid).
@@ -67,7 +68,7 @@ export async function triggerStoryboardGeneration(
     });
     const generatedPath = result.paths[0];
     if (!generatedPath) {
-      throw new McpToolError('flow_generate_image không trả về ảnh nào');
+      throw new FlowApiError('flow_generate_image không trả về ảnh nào');
     }
 
     const storyboardDir = projectStoryboardDir(projectId);
@@ -86,7 +87,7 @@ export async function triggerStoryboardGeneration(
 
     return { sceneId, ok: true, imagePath: relativeImagePath };
   } catch (err) {
-    const message = err instanceof McpToolError ? err.message : (err as Error).message;
+    const message = err instanceof FlowApiError ? err.message : (err as Error).message;
     await updateProject(projectId, (p) => {
       const img = p.storyboard.images.find((x) => x.sceneId === sceneId);
       if (!img || img.status !== 'generating') return;

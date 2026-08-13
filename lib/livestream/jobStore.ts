@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIVESTREAM_DATA_ROOT } from './constants';
 import { jobDir, jobJsonPath, assertValidJobId } from './paths';
+import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
 import type { LivestreamJob, LivestreamJobSummary } from './types';
 
 // Chain các thao tác đọc-sửa-ghi trên cùng 1 job-id để tránh lost-update
@@ -66,6 +67,20 @@ export async function updateJob<T = void>(
     await writeJobRaw(job);
     return { job, result };
   });
+}
+
+/** Fallback tạo/lưu flowProjectId muộn cho job — xem ensureProjectFlowId ở lib/data/projectStore.ts. */
+export async function ensureJobFlowId(jobId: string): Promise<string | null> {
+  const job = await readJob(jobId);
+  if (job.flowProjectId) return job.flowProjectId;
+
+  const flowProjectId = await resolveFlowProjectIdSafe(job.name);
+  if (!flowProjectId) return null;
+
+  const { job: updated } = await updateJob(jobId, (j) => {
+    if (!j.flowProjectId) j.flowProjectId = flowProjectId;
+  });
+  return updated.flowProjectId;
 }
 
 export async function ensureLivestreamDataRoot(): Promise<void> {

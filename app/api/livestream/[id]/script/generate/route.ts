@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob, updateJob } from '@/lib/livestream/jobStore';
-import { generateScriptText } from '@/lib/mcp/flowJobs';
+import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';

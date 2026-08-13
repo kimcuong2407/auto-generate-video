@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { DATA_ROOT, DEFAULT_STORYBOARD_MODEL } from '../constants';
 import { projectDir, projectJsonPath, assertValidProjectId } from '../paths';
+import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
 import type { Project, ProjectSummary } from '../types';
 
 // Chain các thao tác đọc-sửa-ghi trên cùng 1 project-id để tránh lost-update
@@ -109,6 +110,31 @@ export async function updateProject<T = void>(
     await writeProjectRaw(project);
     return { project, result };
   });
+}
+
+/**
+ * Trả về flowProjectId hiện có của project, hoặc tạo mới (qua flow_create_project) và
+ * lưu lại nếu chưa có — dùng làm fallback khi bước gán sớm lúc tạo project (route POST
+ * /api/projects) đã thất bại (VD app Orino Flow chưa mở lúc đó). Không throw khi Flow
+ * không kết nối được — trả về null, các nơi gọi generate sẽ tự để Orino Flow tạo project
+ * rời rạc như hành vi cũ.
+ *
+ * Race hiếm gặp: 2 lệnh generate đầu tiên chạy đồng thời khi flowProjectId còn trống có
+ * thể mỗi lệnh tạo 1 Flow project riêng ở xa; chỉ project được ghi trước vào project.json
+ * (theo writeQueues) được dùng tiếp, project còn lại chỉ là rác không dùng tới — chấp
+ * nhận được vì đây là trường hợp hiếm (chỉ xảy ra khi bước gán sớm thất bại).
+ */
+export async function ensureProjectFlowId(projectId: string): Promise<string | null> {
+  const project = await readProject(projectId);
+  if (project.flowProjectId) return project.flowProjectId;
+
+  const flowProjectId = await resolveFlowProjectIdSafe(project.name);
+  if (!flowProjectId) return null;
+
+  const { project: updated } = await updateProject(projectId, (p) => {
+    if (!p.flowProjectId) p.flowProjectId = flowProjectId;
+  });
+  return updated.flowProjectId;
 }
 
 export async function ensureDataRoot(): Promise<void> {

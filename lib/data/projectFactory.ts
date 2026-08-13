@@ -5,9 +5,12 @@ const DEFAULT_VEO_MODEL: Project['veoModel'] = 'veo_3_1_lite';
 
 export const DEFAULT_NEGATIVE_PROMPT =
   'text overlay, watermarks, logo, blurry, low quality, distorted faces, messy background, ' +
-  'artificial looking, plastic skin, overly smooth, glossy AI-rendered look, uncanny valley, ' +
-  'perfect symmetry, flawless surfaces, CGI look, video game render, waxy skin texture, ' +
-  'over-sharpened, oversaturated colors, unnatural lighting, jump cuts, inconsistent lighting between shots';
+  'extra limbs, extra arms, extra hands, extra fingers, three hands, three arms, four arms, ' +
+  'deformed hands, deformed fingers, fused fingers, disfigured hands, missing fingers, ' +
+  'multiple limbs, merged limbs, duplicated body parts, artificial looking, plastic skin, ' +
+  'overly smooth, glossy AI-rendered look, uncanny valley, perfect symmetry, flawless surfaces, ' +
+  'CGI look, video game render, waxy skin texture, over-sharpened, oversaturated colors, ' +
+  'unnatural lighting, jump cuts, inconsistent lighting between shots';
 
 export interface SceneFields {
   id: string;

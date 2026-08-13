@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { TopNav } from '@/components/TopNav';
 
 interface RouterModelOption {
   id: string;
@@ -110,11 +110,9 @@ export default function AiSettingsPage() {
   const effectiveModel = chatModel || defaultModel;
 
   return (
-    <div className="home-wrap">
-      <div className="logo" style={{ marginBottom: 24 }}>
-        🎬 <span>Veo</span> Pipeline
-      </div>
-
+    <div className="page-shell">
+      <TopNav />
+      <div className="home-wrap">
       <div className="card">
         <div className="card-header">
           ⚙️ <span>Cài đặt AI — Model sinh kịch bản (9router)</span>
@@ -188,9 +186,6 @@ export default function AiSettingsPage() {
         {saveOk && !saveError && <div className="banner banner-info">✅ Đã lưu cấu hình model.</div>}
 
         <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Link href="/" className="btn">
-            ← Quay lại
-          </Link>
           <button type="button" className="btn" onClick={handleReset} disabled={saving || loadingSettings}>
             Về mặc định
           </button>
@@ -198,6 +193,7 @@ export default function AiSettingsPage() {
             {saving ? 'Đang lưu...' : '💾 Lưu cấu hình'}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

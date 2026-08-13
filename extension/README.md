@@ -15,11 +15,11 @@ server (đã kiểm chứng: fetch thuần, Playwright headless/headful, stealth
 ## Sử dụng
 
 1. Chạy app: `npm run dev` (mặc định `http://localhost:3000`).
-2. Mở màn hình test: `http://localhost:3000/shopee-test` → bấm **"Bắt đầu lắng nghe data"**.
+2. Mở màn hình crawl: `http://localhost:3000/shopee-crawl` → bấm **"Bắt đầu lắng nghe data"**.
 3. Trong Chrome, mở **1 trang sản phẩm Shopee** bất kỳ (VD `https://shopee.vn/...-i.<shop>.<item>`).
 4. Bấm icon extension → kiểm tra **Endpoint URL** (mặc định `http://localhost:3000/api/shopee/ingest`)
    → bấm **"Gửi data"**.
-5. Popup báo `✅ Đã gửi: <tên sản phẩm>`. Màn hình `/shopee-test` tự hiện toàn bộ info.
+5. Popup báo `✅ Đã gửi: <tên sản phẩm>`. Màn hình `/shopee-crawl` tự hiện toàn bộ info.
 
 ## Deploy lên server Ubuntu (qua domain)
 

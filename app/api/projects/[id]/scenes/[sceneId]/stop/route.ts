@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists } from '@/lib/data/projectStore';
-import { stopSceneGeneration } from '@/lib/mcp/sceneGenerate';
+import { stopSceneGeneration } from '@/lib/data/sceneGenerate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

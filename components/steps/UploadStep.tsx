@@ -37,6 +37,7 @@ function productToFormState(product?: Project['product']) {
     material: product?.material || '',
     colors: product?.colors?.join(', ') || '',
     keyFeatures: product?.keyFeatures?.join('\n') || '',
+    visualDescription: product?.visualDescription || '',
   };
 }
 
@@ -64,6 +65,8 @@ export function UploadStep({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemoved, setConfirmRemoved] = useState<string[] | null>(null);
+  const [analyzingImages, setAnalyzingImages] = useState(false);
+  const [visionError, setVisionError] = useState<string | null>(null);
 
   const imagePreviewUrls = useObjectUrls(images);
   const backgroundPreviewUrl = useObjectUrl(background);
@@ -83,6 +86,7 @@ export function UploadStep({
         material: product.material,
         colors: product.colors.split(',').map((s) => s.trim()).filter(Boolean),
         keyFeatures: product.keyFeatures.split('\n').map((s) => s.trim()).filter(Boolean),
+        visualDescription: product.visualDescription,
       })
     );
     for (const img of images) form.append('images', img);
@@ -158,6 +162,31 @@ export function UploadStep({
       await onSaved?.();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /**
+   * Gọi AI vision đọc ảnh sản phẩm của project → điền product.visualDescription (mô tả
+   * màu/chất liệu/hình dạng thật). Chỉ chạy được khi project ĐÃ tồn tại (cần projectId để
+   * server resolve ảnh trong inputs/). Kết quả được đổ vào textarea để người dùng xem/sửa;
+   * cần bấm Lưu để persist qua PATCH.
+   */
+  async function handleAnalyzeImages() {
+    if (!project) return;
+    setVisionError(null);
+    setAnalyzingImages(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/product-vision`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setVisionError(data.error || 'Phân tích ảnh thất bại');
+        return;
+      }
+      setProduct((prev) => ({ ...prev, visualDescription: data.visualDescription || '' }));
+    } catch (err) {
+      setVisionError((err as Error).message);
+    } finally {
+      setAnalyzingImages(false);
     }
   }
 
@@ -384,6 +413,31 @@ export function UploadStep({
       <div className="field-group">
         <label>Tính năng nổi bật (mỗi dòng 1 tính năng)</label>
         <textarea rows={4} value={product.keyFeatures} onChange={(e) => setProduct({ ...product, keyFeatures: e.target.value })} />
+      </div>
+
+      <div className="field-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>Mô tả hình ảnh thật (AI đọc từ ảnh — màu/chất liệu/hình dạng)</span>
+          {isEdit ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={handleAnalyzeImages}
+              disabled={analyzingImages || submitting}
+            >
+              {analyzingImages ? '⏳ Đang phân tích...' : '🔍 AI phân tích ảnh'}
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, opacity: 0.7 }}>(Lưu Bước 1 trước rồi mới phân tích được ảnh)</span>
+          )}
+        </label>
+        <textarea
+          rows={4}
+          value={product.visualDescription}
+          placeholder="Bấm 'AI phân tích ảnh' để tự động điền, hoặc mô tả tay màu/chất liệu/hình dạng thật của sản phẩm. Nội dung này được ưu tiên tuyệt đối khi sinh kịch bản/ảnh để tránh AI bịa sai màu."
+          onChange={(e) => setProduct({ ...product, visualDescription: e.target.value })}
+        />
+        {visionError && <div className="banner">{visionError}</div>}
       </div>
 
       {error && <div className="banner">{error}</div>}

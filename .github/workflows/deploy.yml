@@ -1,0 +1,60 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [master] # push master → CI + deploy
+  pull_request: {} # PR → chỉ CI
+  workflow_dispatch: {} # cho phép bấm tay khi cần
+
+concurrency: # tránh 2 lần chạy chồng nhau trên cùng ref
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # Next 14.2 cần Node >=18.17; dùng 20 LTS
+          cache: npm
+
+      - name: Cài dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+  deploy:
+    needs: ci
+    # chỉ deploy khi push (hoặc bấm tay) trên nhánh master — PR không deploy
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy lên VPS qua SSH + PM2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }} # bỏ trống = 22
+          script: |
+            set -e
+            cd "${{ secrets.VPS_APP_DIR }}"
+            git fetch --all
+            git reset --hard origin/master
+            npm ci
+            npm run build
+            pm2 reload "${{ secrets.PM2_APP_NAME }}" --update-env \
+              || pm2 start npm --name "${{ secrets.PM2_APP_NAME }}" -- start
+            pm2 save

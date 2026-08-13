@@ -1,10 +1,10 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { readProject, updateProject } from './projectStore';
+import { readProject, updateProject, ensureProjectFlowId } from './projectStore';
 import { applyDoneState, STOP_ERROR_MESSAGE } from './storyboardGenerate';
 import { projectBackgroundsDir } from '../paths';
-import { generateStoryboardImage } from '../mcp/flowJobs';
-import { McpToolError } from '../mcp/orinoFlowClient';
+import { generateStoryboardImage } from '../googleFlow/flowJobs';
+import { FlowApiError } from '../googleFlow/errors';
 import type { TriggerStoryboardResult } from './storyboardGenerate';
 
 /**
@@ -41,13 +41,14 @@ export async function triggerBackgroundGeneration(
     const result = await generateStoryboardImage({
       prompt: image.prompt,
       model: project.storyboard.model,
+      projectId: await ensureProjectFlowId(projectId),
       // Cùng lý do với storyboardGenerate.ts: ảnh background luôn khung ngang 16:9,
       // không phụ thuộc aspectRatio video của project.
       aspect: '16:9',
     });
     const generatedPath = result.paths[0];
     if (!generatedPath) {
-      throw new McpToolError('flow_generate_image không trả về ảnh nào');
+      throw new FlowApiError('flow_generate_image không trả về ảnh nào');
     }
 
     const backgroundsDir = projectBackgroundsDir(projectId);
@@ -64,7 +65,7 @@ export async function triggerBackgroundGeneration(
 
     return { sceneId, ok: true, imagePath: relativeImagePath };
   } catch (err) {
-    const message = err instanceof McpToolError ? err.message : (err as Error).message;
+    const message = err instanceof FlowApiError ? err.message : (err as Error).message;
     await updateProject(projectId, (p) => {
       const img = p.storyboard.backgrounds.find((x) => x.sceneId === sceneId);
       if (!img || img.status !== 'generating') return;
