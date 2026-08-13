@@ -1,0 +1,92 @@
+{
+  "product_category": "home_storage",
+  "product_name": "Handobox Waterproof Storage Bag 100L/140L",
+  "video_style": "product_review",
+  "total_duration": 75,
+  "language": "vi",
+  "tone": "practical_friendly",
+  "scenes": [
+    {
+      "id": "intro",
+      "label": "Intro - Vấn đề không gian",
+      "duration": 8,
+      "type": "intro",
+      "camera": "zoom_in",
+      "focus": "cluttered_room",
+      "lighting": "natural_indoor",
+      "color_palette": "warm_home"
+    },
+    {
+      "id": "reveal",
+      "label": "Giới thiệu sản phẩm",
+      "duration": 10,
+      "type": "reveal",
+      "camera": "dolly_in",
+      "focus": "product_front",
+      "lighting": "studio_soft",
+      "color_palette": "brand_colors"
+    },
+    {
+      "id": "material",
+      "label": "Chất liệu chống nước - Close-up",
+      "duration": 12,
+      "type": "closeup",
+      "camera": "macro_pan",
+      "focus": "fabric_texture",
+      "lighting": "rim_light",
+      "color_palette": "neutral_grey"
+    },
+    {
+      "id": "capacity",
+      "label": "Dung tích 100L - Demo nhét đồ",
+      "duration": 15,
+      "type": "demo",
+      "camera": "top_down",
+      "focus": "packing_clothes",
+      "lighting": "bright_diffused",
+      "color_palette": "fresh_clean"
+    },
+    {
+      "id": "foldable",
+      "label": "Gấp gọn tiện lợi",
+      "duration": 10,
+      "type": "feature",
+      "camera": "static_side",
+      "focus": "folding_demo",
+      "lighting": "clean_even",
+      "color_palette": "minimal"
+    },
+    {
+      "id": "comparison",
+      "label": "So sánh trước/sau khi dùng",
+      "duration": 10,
+      "type": "comparison",
+      "camera": "split_screen",
+      "focus": "before_after",
+      "lighting": "clean_even",
+      "color_palette": "contrast"
+    },
+    {
+      "id": "cta",
+      "label": "Call-to-Action + Giá",
+      "duration": 10,
+      "type": "outro",
+      "camera": "zoom_out",
+      "focus": "product_hero",
+      "lighting": "dramatic_spotlight",
+      "color_palette": "brand_colors"
+    }
+  ],
+  "voiceover": {
+    "speaker_gender": "female",
+    "speaker_age": "young_adult",
+    "style": "friendly_practical",
+    "speed": 1.0
+  },
+  "music": {
+    "genre": "lofi_chill",
+    "bpm": 85,
+    "mood": "cozy_home",
+    "fade_out_duration": 5
+  }
+}

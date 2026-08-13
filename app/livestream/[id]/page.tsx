@@ -1,0 +1,185 @@
+'use client';
+
+import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useLivestreamPolling } from '@/hooks/useLivestreamPolling';
+import { ProductPanel } from '@/components/livestream/ProductPanel';
+import { ConcatPanel } from '@/components/livestream/ConcatPanel';
+
+/** Đọc SSE response của route script/generate (fetch thường, không dùng EventSource vì cần POST). */
+async function streamScriptGeneration(
+  jobId: string,
+  productId: string | undefined,
+  onEvent: (event: { type: string; productId?: string; message?: string }) => void
+): Promise<void> {
+  const res = await fetch(`/api/livestream/${jobId}/script/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(productId ? { productId } : {}),
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const line = chunk.split('\n').find((l) => l.startsWith('data:'));
+      if (!line) continue;
+      try {
+        onEvent(JSON.parse(line.slice(5).trim()));
+      } catch {
+        // bỏ qua chunk không parse được
+      }
+    }
+  }
+}
+
+export default function LivestreamDetailPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const jobId = params.id;
+  const { job, loading, error, refresh, busy } = useLivestreamPolling(jobId);
+
+  const [scriptingProductIds, setScriptingProductIds] = useState<Set<string>>(new Set());
+  const [scriptingAll, setScriptingAll] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function handleGenerateScript(productId?: string) {
+    setActionError(null);
+    if (productId) {
+      setScriptingProductIds((prev) => new Set(prev).add(productId));
+    } else {
+      setScriptingAll(true);
+    }
+    try {
+      await streamScriptGeneration(jobId, productId, () => {
+        // Không cần xử lý từng event riêng — refresh() sau khi stream đóng là đủ, vì mọi
+        // thay đổi trạng thái đã được ghi vào job.json phía server theo từng sản phẩm.
+      });
+      await refresh();
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      if (productId) {
+        setScriptingProductIds((prev) => {
+          const next = new Set(prev);
+          next.delete(productId);
+          return next;
+        });
+      } else {
+        setScriptingAll(false);
+      }
+    }
+  }
+
+  async function handleGenerateAllSegments() {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/segments/generate-all`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) setActionError(data.error || 'Chạy toàn bộ thất bại');
+      await refresh();
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleStopAllSegments() {
+    setActionBusy(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/segments/stop-all`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error || 'Dừng tất cả thất bại');
+      }
+      await refresh();
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleDeleteJob() {
+    if (!confirm('Xoá job này? Toàn bộ dữ liệu (script, video đã gen) sẽ bị xoá vĩnh viễn.')) return;
+    const res = await fetch(`/api/livestream/${jobId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'Xoá job thất bại');
+      return;
+    }
+    router.push('/livestream');
+  }
+
+  if (loading) {
+    return <div className="content">Đang tải...</div>;
+  }
+  if (error || !job) {
+    return (
+      <div className="content">
+        <div className="banner">{error || 'Job không tồn tại'}</div>
+        <Link href="/livestream" className="back-link">← Về danh sách job</Link>
+      </div>
+    );
+  }
+
+  const hasGeneratingSegment = job.products.some((p) => p.segments.some((s) => s.status === 'generating'));
+
+  return (
+    <div style={{ display: 'flex', width: '100%' }}>
+      <main>
+        <div className="topbar">
+          <h1>{job.name}</h1>
+          <div className="topbar-actions">
+            <Link href="/livestream" className="btn btn-ghost">← Danh sách</Link>
+            <button className="btn btn-ghost" onClick={handleDeleteJob} disabled={hasGeneratingSegment}>
+              🗑 Xoá job
+            </button>
+            <button className="btn btn-ghost" onClick={handleStopAllSegments} disabled={actionBusy || !hasGeneratingSegment}>
+              ⏹ Dừng tất cả
+            </button>
+            <button className="btn" onClick={() => handleGenerateScript()} disabled={scriptingAll || busy}>
+              {scriptingAll ? 'Đang sinh script...' : '✍️ Sinh script tất cả'}
+            </button>
+            <button className="btn btn-primary" onClick={handleGenerateAllSegments} disabled={actionBusy}>
+              ▶ Gen tất cả đoạn
+            </button>
+          </div>
+        </div>
+
+        <div className="content">
+          {job.flowStatusCache.flowConnected === false && (
+            <div className="banner">
+              ⚠️ Chưa kết nối được Google Flow (Orino Flow) — mở app Orino Flow và đăng nhập trước khi gen video.
+            </div>
+          )}
+          {actionError && <div className="banner">{actionError}</div>}
+
+          {job.products.map((product) => (
+            <ProductPanel
+              key={product.id}
+              jobId={jobId}
+              product={product}
+              onRefresh={refresh}
+              onGenerateScript={(productId) => handleGenerateScript(productId)}
+              scriptBusy={scriptingAll || scriptingProductIds.has(product.id)}
+            />
+          ))}
+
+          <ConcatPanel job={job} onRefresh={refresh} />
+        </div>
+      </main>
+    </div>
+  );
+}

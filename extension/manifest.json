@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Shopee Product Grabber",
+  "version": "1.0.0",
+  "description": "Đọc thông tin sản phẩm từ tab Shopee đang mở và gửi về app review pipeline.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "https://shopee.vn/*",
+    "https://*.shopee.vn/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Shopee Product Grabber"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://shopee.vn/*", "https://*.shopee.vn/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

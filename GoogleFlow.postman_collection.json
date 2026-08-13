@@ -1,0 +1,537 @@
+{
+  "info": {
+    "name": "Google Flow (labs.google) — Reverse-Engineered API",
+    "_postman_id": "9c2b6e6a-2b1a-4f2d-8b3e-orinoflow-googleflow",
+    "description": "Endpoints Google Flow (labs.google/flow, formerly VideoFX/ImageFX) uses internally, reverse-engineered from browser HAR captures for OrinoFlow's automation layer (see src-tauri/src/commands/imagegen.rs).\n\nThis is a **private, undocumented Google API** — not a public product. It requires:\n\n1. A real, logged-in `labs.google` session (cookies: `__Secure-1PSID`/session cookies + the `access_token` returned by `GET /fx/api/auth/session`).\n2. For any *generation* call (`batchGenerateImages`, `upsampleImage`, all `video:batchAsyncGenerate*`, `batchAsyncGenerateVideoUpsampleVideo`), a **reCAPTCHA Enterprise token** minted client-side via `grecaptcha.enterprise.execute(SITEKEY, {action:...})` in an actual browser context with site key `6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV`. Postman cannot generate this token — you must copy one out of DevTools/a HAR capture (it's short-lived, ~2 min) before firing these requests, or these calls will fail even with a valid session.\n\nHost split:\n- `labs.google` — session/auth, tRPC project & entity endpoints, video upload, media URL resolution. Auth = session **cookies**.\n- `aisandbox-pa.googleapis.com` — the actual generation/media-mutation API. Auth = **Bearer {{accessToken}}** (from `/fx/api/auth/session`).\n\nSet `{{cookie}}` to your full `labs.google` cookie string and `{{accessToken}}` to `access_token` from the session call before running anything beyond folder 1.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "labsBase", "value": "https://labs.google", "type": "string" },
+    { "key": "apiBase", "value": "https://aisandbox-pa.googleapis.com", "type": "string" },
+    { "key": "cookie", "value": "", "type": "string", "description": "Full Cookie header value copied from a logged-in labs.google browser session." },
+    { "key": "accessToken", "value": "", "type": "string", "description": "access_token from GET /fx/api/auth/session" },
+    { "key": "recaptchaToken", "value": "", "type": "string", "description": "Fresh grecaptcha.enterprise token, action must match the endpoint (IMAGE_GENERATION or VIDEO_GENERATION). Short-lived." },
+    { "key": "projectId", "value": "", "type": "string" },
+    { "key": "mediaId", "value": "", "type": "string" },
+    { "key": "workflowId", "value": "", "type": "string" },
+    { "key": "entityId", "value": "", "type": "string" },
+    { "key": "batchId", "value": "{{$guid}}", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Get session (access_token)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "{{cookie}}" }
+            ],
+            "url": {
+              "raw": "{{labsBase}}/fx/api/auth/session",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "auth", "session"]
+            },
+            "description": "Returns { access_token, ... } for the logged-in labs.google session. Copy `access_token` into the `accessToken` collection variable — every aisandbox-pa.googleapis.com call needs it as a Bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Projects",
+      "item": [
+        {
+          "name": "Create project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "{{cookie}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"json\": { \"projectTitle\": \"Orino Flow\", \"toolName\": \"PINHOLE\" }\n}"
+            },
+            "url": {
+              "raw": "{{labsBase}}/fx/api/trpc/project.createProject",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "trpc", "project.createProject"]
+            },
+            "description": "tRPC mutation. Response: result.data.json.result.projectId — save into `projectId`."
+          }
+        },
+        {
+          "name": "List projects (searchUserProjects)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Referer", "value": "{{labsBase}}/fx/vi/tools/flow" },
+              { "key": "Cookie", "value": "{{cookie}}" }
+            ],
+            "url": {
+              "raw": "{{labsBase}}/fx/api/trpc/project.searchUserProjects?input={{searchProjectsInput}}",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "trpc", "project.searchUserProjects"],
+              "query": [
+                { "key": "input", "value": "{{searchProjectsInput}}", "description": "URL-encoded JSON: {\"json\":{\"pageSize\":20,\"toolName\":\"PINHOLE\",\"cursor\":null},\"meta\":{\"values\":{\"cursor\":[\"undefined\"]}}}" }
+              ]
+            },
+            "description": "tRPC query (GET, params via `input`). Response shape confirmed via HAR: result.data.json.result.projects[] = { projectId, projectInfo:{ projectTitle, thumbnailMediaKey }, creationTime }.\n\nSet the `searchProjectsInput` variable to the URL-encoded JSON shown above (pageSize max observed = 20)."
+          }
+        },
+        {
+          "name": "Get project data (projectInitialData)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "{{cookie}}" }
+            ],
+            "url": {
+              "raw": "{{labsBase}}/fx/api/trpc/flow.projectInitialData?input={{projectInitialDataInput}}",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "trpc", "flow.projectInitialData"],
+              "query": [
+                { "key": "input", "value": "{{projectInitialDataInput}}", "description": "URL-encoded JSON: {\"json\":{\"projectId\":\"<projectId>\"}}" }
+              ]
+            },
+            "description": "Full project snapshot: result.data.json.projectContents = { workflows[], media[], entities[] }. Used to list characters/images/videos and to recover an in-flight generation after a client crash."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Images",
+      "item": [
+        {
+          "name": "Upload image (reference/base/upload)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientContext\": { \"projectId\": \"{{projectId}}\", \"tool\": \"PINHOLE\" },\n  \"imageBytes\": \"<base64 image bytes, no data: prefix>\",\n  \"isUserUploaded\": true,\n  \"isHidden\": false,\n  \"mimeType\": \"image/png\",\n  \"fileName\": \"ref.png\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/flow/uploadImage",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "flow", "uploadImage"]
+            },
+            "description": "No reCAPTCHA needed. `isHidden:false` makes it show up in the project's media tab (used for plain user uploads); reference/base images used only as generation input are typically also isHidden:false in this app. Response: media.name → mediaId."
+          }
+        },
+        {
+          "name": "Generate images (batchGenerateImages)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientContext\": {\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" },\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"sessionId\": \";{{$timestamp}}\"\n  },\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\" },\n  \"useNewMedia\": true,\n  \"requests\": [\n    {\n      \"clientContext\": {\n        \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" },\n        \"projectId\": \"{{projectId}}\",\n        \"tool\": \"PINHOLE\",\n        \"sessionId\": \";{{$timestamp}}\"\n      },\n      \"imageModelName\": \"NARWHAL\",\n      \"imageAspectRatio\": \"IMAGE_ASPECT_RATIO_LANDSCAPE\",\n      \"structuredPrompt\": { \"parts\": [ { \"text\": \"a cinematic photo of a fox in a forest\" } ] },\n      \"seed\": 123456,\n      \"imageInputs\": []\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/projects/{{projectId}}/flowMedia:batchGenerateImages",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "projects", "{{projectId}}", "flowMedia:batchGenerateImages"]
+            },
+            "description": "reCAPTCHA action must be `IMAGE_GENERATION`. `imageAspectRatio` one of: IMAGE_ASPECT_RATIO_LANDSCAPE | _PORTRAIT | _SQUARE | _LANDSCAPE_FOUR_THREE | _PORTRAIT_THREE_FOUR.\n\n`imageInputs[]` entries: `{ imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE', name: <mediaId> }` for reference/@-mentioned character images, or `{ imageInputType: 'IMAGE_INPUT_TYPE_BASE_IMAGE', name: <mediaId> }` when editing an existing image in place.\n\nThis same endpoint is also used to generate a character's slot image — add `mediaGenerationContext.entityContext = { entityId, characterSlot: { imageReferenceIndex } }` (new slot) or set `clientContext.workflowId` + a BASE_IMAGE input (editing an existing slot) instead of a plain new-media call.\n\nResponse: media[0].image.generatedImage.fifeUrl (signed download URL) + media[0].name (mediaId). When entity/workflow context is used, also read workflows[0].name for the new workflowId."
+          }
+        },
+        {
+          "name": "Upscale image (upsampleImage)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaId\": \"{{mediaId}}\",\n  \"targetResolution\": \"UPSAMPLE_IMAGE_RESOLUTION_2K\",\n  \"clientContext\": {\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" },\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/flow/upsampleImage",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "flow", "upsampleImage"]
+            },
+            "description": "`targetResolution`: UPSAMPLE_IMAGE_RESOLUTION_2K | UPSAMPLE_IMAGE_RESOLUTION_4K. Synchronous — response returns immediately with `media.name` (new mediaId) and `encodedImage` (base64 bytes), no polling needed (unlike video upscale)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Characters (Entities)",
+      "item": [
+        {
+          "name": "Create entity (blank character)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "{{cookie}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"json\": { \"projectId\": \"{{projectId}}\", \"collectionId\": null },\n  \"meta\": { \"values\": { \"collectionId\": [\"undefined\"] } }\n}"
+            },
+            "url": {
+              "raw": "{{labsBase}}/fx/api/trpc/flow.createEntity",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "trpc", "flow.createEntity"]
+            },
+            "description": "Step 1/3 of adding a character: creates an empty 'Untitled Character' entity. Response: result.data.json.entityId. Step 2 is 'Generate images' above with mediaGenerationContext.entityContext. Step 3 is 'Patch entity' below to save displayName + imageReferences."
+          }
+        },
+        {
+          "name": "Patch entity (name + image slots)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"entity\": {\n    \"projectId\": \"{{projectId}}\",\n    \"entityId\": \"{{entityId}}\",\n    \"entityInfo\": {\n      \"displayName\": \"My Character\",\n      \"characterInfo\": { \"imageReferences\": [ { \"workflowId\": \"{{workflowId}}\" } ] }\n    }\n  },\n  \"updateMask\": \"entityInfo.displayName,entityInfo.characterInfo.imageReferences\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/flow/entities",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "flow", "entities"]
+            },
+            "description": "`updateMask` lists only the fields you want Google to apply — send just `entityInfo.displayName` for a pure rename without touching imageReferences."
+          }
+        },
+        {
+          "name": "Patch workflow primaryMediaId",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workflow\": {\n    \"name\": \"{{workflowId}}\",\n    \"projectId\": \"{{projectId}}\",\n    \"metadata\": { \"primaryMediaId\": \"{{mediaId}}\" }\n  },\n  \"updateMask\": \"metadata.primaryMediaId\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/flowWorkflows/{{workflowId}}",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "flowWorkflows", "{{workflowId}}"]
+            },
+            "description": "Run after editing an existing character-slot image in place (workflowId unchanged, only the representative media changes). Also used to attach an uploaded local video's media as the primary media of its workflow."
+          }
+        },
+        {
+          "name": "Delete entity (batchDeleteAssets)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"entityIds\": [ \"{{entityId}}\" ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/flow:batchDeleteAssets",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "flow:batchDeleteAssets"]
+            },
+            "description": "Generic asset-deletion endpoint; this app only feeds it entityIds (character deletion), but presumably also accepts other asset id fields for media/workflow deletion."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Video Generation",
+      "item": [
+        {
+          "name": "Text-to-Video (batchAsyncGenerateVideoText)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\", \"audioFailurePreference\": \"BLOCK_SILENCED_VIDEOS\" },\n  \"clientContext\": {\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\",\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" }\n  },\n  \"requests\": [\n    {\n      \"aspectRatio\": \"VIDEO_ASPECT_RATIO_LANDSCAPE\",\n      \"textInput\": { \"structuredPrompt\": { \"parts\": [ { \"text\": \"a drone shot flying over a canyon at sunset\" } ] } },\n      \"videoModelKey\": \"veo_3_1_t2v_lite_low_priority\",\n      \"seed\": 12345,\n      \"metadata\": {}\n    }\n  ],\n  \"useV2ModelConfig\": true\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchAsyncGenerateVideoText",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchAsyncGenerateVideoText"]
+            },
+            "description": "reCAPTCHA action `VIDEO_GENERATION`. `videoModelKey` encodes core+mode+duration+priority — no separate durationSeconds field. Examples confirmed via HAR:\n- veo_3_1_t2v_lite_low_priority (text, 8s default)\n- veo_3_1_t2v_lite_4s_low_priority (4s)\nSee `resolve_video_model_key` in imagegen.rs for the full core×mode×duration matrix (veo_3_1_quality/fast/lite, abra Omni Flash, i2v/r2v/t2v/edit infixes, `_fl` suffix for first+last-frame).\n\nAsync — response returns workflows[0] with metadata.primaryMediaId (pending mediaId) and name (workflowId); poll status below until it resolves."
+          }
+        },
+        {
+          "name": "Image-to-Video, start frame only (batchAsyncGenerateVideoStartImage)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\", \"audioFailurePreference\": \"BLOCK_SILENCED_VIDEOS\" },\n  \"clientContext\": {\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\",\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" }\n  },\n  \"requests\": [\n    {\n      \"aspectRatio\": \"VIDEO_ASPECT_RATIO_LANDSCAPE\",\n      \"textInput\": { \"structuredPrompt\": { \"parts\": [ { \"text\": \"the character starts walking forward\" } ] } },\n      \"videoModelKey\": \"veo_3_1_i2v_s_fast_6s\",\n      \"seed\": 12345,\n      \"metadata\": {},\n      \"startImage\": { \"mediaId\": \"{{mediaId}}\", \"cropCoordinates\": { \"top\": 0, \"left\": 0, \"bottom\": 1, \"right\": 1 } }\n    }\n  ],\n  \"useV2ModelConfig\": true\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchAsyncGenerateVideoStartImage",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchAsyncGenerateVideoStartImage"]
+            },
+            "description": "`startImage.mediaId` must already exist in the project (upload via 'Upload image' first). `cropCoordinates` full-frame = {top:0,left:0,bottom:1,right:1}."
+          }
+        },
+        {
+          "name": "Image-to-Video, start+end frame (batchAsyncGenerateVideoStartAndEndImage)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\", \"audioFailurePreference\": \"BLOCK_SILENCED_VIDEOS\" },\n  \"clientContext\": {\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\",\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" }\n  },\n  \"requests\": [\n    {\n      \"aspectRatio\": \"VIDEO_ASPECT_RATIO_LANDSCAPE\",\n      \"textInput\": { \"structuredPrompt\": { \"parts\": [ { \"text\": \"smooth interpolation between the two frames\" } ] } },\n      \"videoModelKey\": \"veo_3_1_i2v_s_fast_ultra_fl\",\n      \"seed\": 12345,\n      \"metadata\": {},\n      \"startImage\": { \"mediaId\": \"{{mediaId}}\", \"cropCoordinates\": { \"top\": 0, \"left\": 0, \"bottom\": 1, \"right\": 1 } },\n      \"endImage\": { \"mediaId\": \"<end-frame-mediaId>\", \"cropCoordinates\": { \"top\": 0, \"left\": 0, \"bottom\": 1, \"right\": 1 } }\n    }\n  ],\n  \"useV2ModelConfig\": true\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchAsyncGenerateVideoStartAndEndImage",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchAsyncGenerateVideoStartAndEndImage"]
+            },
+            "description": "`videoModelKey` uses the `_fl` suffix (\"first+last\") — e.g. veo_3_1_i2v_s_lite_6s_fl / _quality_6s_fl. Google has no 'end frame only' endpoint — an end image without a start image is simply dropped by the app."
+          }
+        },
+        {
+          "name": "Reference Images / @Characters (batchAsyncGenerateVideoReferenceImages)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\", \"audioFailurePreference\": \"BLOCK_SILENCED_VIDEOS\" },\n  \"clientContext\": {\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\",\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" }\n  },\n  \"requests\": [\n    {\n      \"aspectRatio\": \"VIDEO_ASPECT_RATIO_LANDSCAPE\",\n      \"textInput\": { \"structuredPrompt\": { \"parts\": [ { \"text\": \"@character walks through the door\" } ] } },\n      \"videoModelKey\": \"veo_3_1_r2v_lite_low_priority\",\n      \"seed\": 12345,\n      \"metadata\": {},\n      \"referenceImages\": [ { \"mediaId\": \"{{mediaId}}\", \"imageUsageType\": \"IMAGE_USAGE_TYPE_ASSET\" } ]\n    }\n  ],\n  \"useV2ModelConfig\": true\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchAsyncGenerateVideoReferenceImages",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchAsyncGenerateVideoReferenceImages"]
+            },
+            "description": "Same endpoint serves two mutually-exclusive input styles — send EITHER `referenceImages[]` (uploaded reference photos) OR `referenceEntities` (array of character entity refs for @-mentions), not both."
+          }
+        },
+        {
+          "name": "Video-to-Video edit (batchAsyncGenerateVideoEditVideo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\", \"audioFailurePreference\": \"BLOCK_SILENCED_VIDEOS\" },\n  \"clientContext\": {\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\",\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" }\n  },\n  \"requests\": [\n    {\n      \"aspectRatio\": \"VIDEO_ASPECT_RATIO_LANDSCAPE\",\n      \"textInput\": { \"structuredPrompt\": { \"parts\": [ { \"text\": \"change the sky to sunset colors\" } ] } },\n      \"videoModelKey\": \"abra_edit\",\n      \"seed\": 12345,\n      \"metadata\": {},\n      \"videoInput\": { \"mediaId\": \"{{mediaId}}\", \"startFrameIndex\": 0, \"endFrameIndex\": 192 }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchAsyncGenerateVideoEditVideo",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchAsyncGenerateVideoEditVideo"]
+            },
+            "description": "`videoModelKey` is forced to `abra_edit`. `endFrameIndex` = duration_in_seconds * 24fps (8s → 192). NOTE (confirmed via HAR): this is the one video-submit body that does NOT include `useV2ModelConfig`. Optional `referenceImages[]` (IMAGE_USAGE_TYPE_ASSET) can be added alongside videoInput."
+          }
+        },
+        {
+          "name": "Upscale video (batchAsyncGenerateVideoUpsampleVideo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaGenerationContext\": { \"batchId\": \"{{batchId}}\", \"audioFailurePreference\": \"BLOCK_SILENCED_VIDEOS\" },\n  \"clientContext\": {\n    \"projectId\": \"{{projectId}}\",\n    \"tool\": \"PINHOLE\",\n    \"userPaygateTier\": \"PAYGATE_TIER_TWO\",\n    \"sessionId\": \";{{$timestamp}}\",\n    \"recaptchaContext\": { \"token\": \"{{recaptchaToken}}\", \"applicationType\": \"RECAPTCHA_APPLICATION_TYPE_WEB\" }\n  },\n  \"requests\": [\n    {\n      \"resolution\": \"VIDEO_RESOLUTION_1080P\",\n      \"aspectRatio\": \"VIDEO_ASPECT_RATIO_LANDSCAPE\",\n      \"videoModelKey\": \"veo_3_1_upsampler_1080p\",\n      \"seed\": 12345,\n      \"metadata\": { \"workflowId\": \"{{workflowId}}\" },\n      \"videoInput\": { \"mediaId\": \"{{mediaId}}\" }\n    }\n  ],\n  \"useV2ModelConfig\": true\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchAsyncGenerateVideoUpsampleVideo",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchAsyncGenerateVideoUpsampleVideo"]
+            },
+            "description": "1080p: resolution VIDEO_RESOLUTION_1080P + videoModelKey veo_3_1_upsampler_1080p → operation name `{mediaId}_upsampled`.\n4K: resolution VIDEO_RESOLUTION_4K + videoModelKey veo_3_1_upsampler_4k → operation name `{mediaId}_4k_upsampled` (different suffix).\n\nResponse: operations[0].operation.name is the new (pending) media id to poll on."
+          }
+        },
+        {
+          "name": "Check async video status (batchCheckAsyncVideoGenerationStatus)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"media\": [ { \"name\": \"{{mediaId}}\", \"projectId\": \"{{projectId}}\" } ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchCheckAsyncVideoGenerationStatus",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchCheckAsyncVideoGenerationStatus"]
+            },
+            "description": "Poll target for every async video/upscale/upload submission — batch multiple `media[]` entries in one call to check several jobs at once. Read `media[].mediaMetadata.mediaStatus.mediaGenerationStatus`: MEDIA_GENERATION_STATUS_PENDING (keep polling) → _ACTIVE → _SUCCESSFUL | _FAILED. Respect a `Retry-After` response header / 429 by backing off (this app polls every ~5-10s, capped backoff up to 5 min)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Video Upload (local file)",
+      "item": [
+        {
+          "name": "1. Start resumable upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "{{cookie}}" },
+              { "key": "Content-Length", "value": "0" },
+              { "key": "x-upload-content-length", "value": "<bytes.length>" },
+              { "key": "x-upload-content-type", "value": "video/mp4" },
+              { "key": "x-upload-file-name", "value": "my-video.mp4" },
+              { "key": "x-upload-project-id", "value": "{{projectId}}" }
+            ],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{labsBase}}/fx/api/upload-video?action=start",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "upload-video"],
+              "query": [ { "key": "action", "value": "start" } ]
+            },
+            "description": "Empty body but Content-Length: 0 must be explicit (server 411s without it on some HTTP clients — not usually an issue from Postman/browsers but was for Rust's reqwest). Response: { sessionUrl }."
+          }
+        },
+        {
+          "name": "2. Upload bytes + finalize",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Cookie", "value": "{{cookie}}" },
+              { "key": "Content-Type", "value": "application/octet-stream" },
+              { "key": "x-upload-command", "value": "upload, finalize" },
+              { "key": "x-upload-file-name", "value": "my-video.mp4" },
+              { "key": "x-upload-offset", "value": "0" },
+              { "key": "x-upload-project-id", "value": "{{projectId}}" },
+              { "key": "x-upload-session-url", "value": "<sessionUrl from step 1>" }
+            ],
+            "body": {
+              "mode": "file",
+              "file": { "src": "" }
+            },
+            "url": {
+              "raw": "{{labsBase}}/fx/api/upload-video?action=upload",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "upload-video"],
+              "query": [ { "key": "action", "value": "upload" } ]
+            },
+            "description": "Body = raw video bytes (attach the file in Postman's Body > binary tab). Response: { status: 'final', mediaServerId, workflowServerId, videoWidth, videoHeight }."
+          }
+        },
+        {
+          "name": "3. Set video offset/duration",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "{{cookie}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"json\": { \"mediaId\": \"{{mediaId}}\", \"startOffset\": \"0s\", \"endOffset\": \"8s\" }\n}"
+            },
+            "url": {
+              "raw": "{{labsBase}}/fx/api/trpc/videoFx.updateVideoOffset",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "trpc", "videoFx.updateVideoOffset"]
+            },
+            "description": "`mediaId` = mediaServerId from step 2. `endOffset` = actual clip duration in seconds, e.g. '8s'."
+          }
+        },
+        {
+          "name": "4. Poll ingestion status",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"media\": [ { \"name\": \"{{mediaId}}\", \"projectId\": \"{{projectId}}\" } ]\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/video:batchCheckAsyncVideoGenerationStatus",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "video:batchCheckAsyncVideoGenerationStatus"]
+            },
+            "description": "Reuses the same status endpoint as generation — poll until mediaGenerationStatus leaves MEDIA_GENERATION_STATUS_PENDING."
+          }
+        },
+        {
+          "name": "5. Attach as workflow's primary media",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "text/plain;charset=UTF-8" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workflow\": {\n    \"name\": \"{{workflowId}}\",\n    \"projectId\": \"{{projectId}}\",\n    \"metadata\": { \"primaryMediaId\": \"{{mediaId}}\" }\n  },\n  \"updateMask\": \"metadata.primaryMediaId\"\n}"
+            },
+            "url": {
+              "raw": "{{apiBase}}/v1/flowWorkflows/{{workflowId}}",
+              "host": ["{{apiBase}}"],
+              "path": ["v1", "flowWorkflows", "{{workflowId}}"]
+            },
+            "description": "Final step — same call as folder 4's 'Patch workflow primaryMediaId'. `workflowId` here = workflowServerId from step 2."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Media Download",
+      "item": [
+        {
+          "name": "Resolve media URL (getMediaUrlRedirect)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "{{cookie}}" }
+            ],
+            "url": {
+              "raw": "{{labsBase}}/fx/api/trpc/media.getMediaUrlRedirect?name={{mediaId}}",
+              "host": ["{{labsBase}}"],
+              "path": ["fx", "api", "trpc", "media.getMediaUrlRedirect"],
+              "query": [
+                { "key": "name", "value": "{{mediaId}}" },
+                { "key": "mediaUrlType", "value": "", "description": "Optional — omit for full/raw media, set to request a thumbnail variant instead.", "disabled": true }
+              ]
+            },
+            "description": "Do NOT let Postman auto-follow the 3xx here if you want to inspect the signed CDN URL — this call requires labs.google session cookies, but the redirect target (flow-content.google, a signed URL) does not and should be fetched separately/without cookies. In Postman: disable 'Automatically follow redirects' in Settings, or just inspect the Location response header, then GET that URL in a fresh request."
+          }
+        }
+      ]
+    }
+  ]
+}
