@@ -40,6 +40,13 @@ export interface LivestreamProduct {
   name: string;
   description: string;
   targetDurationSec: number;
+  /**
+   * Đường dẫn tương đối ảnh người mẫu/người dẫn tham chiếu, null nếu không dùng. Chỉ dùng làm
+   * refPaths (character reference) cho đoạn không có startPath từ frame-chaining (đoạn đầu tiên
+   * của chuỗi chain, hoặc job.chaining='off') — refPaths và startPath loại trừ nhau ở tầng
+   * endpoint Google Flow nên không thể dùng đồng thời, xem lib/livestream/segmentGenerate.ts.
+   */
+  spokespersonImagePath: string | null;
   scriptStatus: ScriptStatus;
   scriptError: string | null;
   segments: LivestreamSegment[];

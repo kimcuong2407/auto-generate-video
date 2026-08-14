@@ -36,6 +36,7 @@ export function buildProduct(fields: {
     name: fields.name || `Sản phẩm ${fields.order}`,
     description: fields.description || '',
     targetDurationSec: fields.targetDurationSec,
+    spokespersonImagePath: null,
     scriptStatus: 'idle',
     scriptError: null,
     segments: [],

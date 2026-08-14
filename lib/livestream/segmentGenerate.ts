@@ -93,6 +93,15 @@ export async function triggerSegmentGeneration(
       startPath = resolveWithinJob(jobId, prevSegment.lastFramePath);
     }
 
+    // refPaths (character reference) và startPath (frame chaining) loại trừ nhau ở tầng endpoint
+    // Google Flow (xem lib/googleFlow/videoGen.ts) — chỉ dùng ảnh người mẫu tham chiếu cho đoạn
+    // KHÔNG có startPath (đoạn đầu chuỗi chain, hoặc chaining='off'), để không phá continuity của
+    // các đoạn sau vốn đang được đảm bảo bằng frame chaining.
+    let refPaths: string[] | undefined;
+    if (!startPath && found.product.spokespersonImagePath) {
+      refPaths = [resolveWithinJob(jobId, found.product.spokespersonImagePath)];
+    }
+
     const flowProjectId = await ensureJobFlowId(jobId);
 
     const { job_id } = await generateSceneVideo(
@@ -106,6 +115,7 @@ export async function triggerSegmentGeneration(
         model: job.veoModel,
         flowProjectId,
         startPath,
+        refPaths,
       }
     );
 

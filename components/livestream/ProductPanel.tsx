@@ -27,6 +27,41 @@ export function ProductPanel({
   const [manualDescription, setManualDescription] = useState(product.description);
   const [savingManual, setSavingManual] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  const [uploadingSpokesperson, setUploadingSpokesperson] = useState(false);
+
+  async function handleSpokespersonUpload(file: File) {
+    setUploadingSpokesperson(true);
+    try {
+      const form = new FormData();
+      form.set('image', file);
+      const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/spokesperson`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Upload ảnh người mẫu thất bại');
+        return;
+      }
+      await onRefresh();
+    } finally {
+      setUploadingSpokesperson(false);
+    }
+  }
+
+  async function handleSpokespersonRemove() {
+    setUploadingSpokesperson(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/spokesperson`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Xoá ảnh thất bại');
+      await onRefresh();
+    } finally {
+      setUploadingSpokesperson(false);
+    }
+  }
 
   async function handleScreenshotUpload(file: File) {
     setUploadingScreenshot(true);
@@ -132,6 +167,34 @@ export function ProductPanel({
           </label>
         </div>
       )}
+
+      <div className="field-group">
+        <label>Ảnh người mẫu (tuỳ chọn) — giữ nhất quán ngoại hình khi gen video</label>
+        {product.spokespersonImagePath && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <img
+              src={`/api/livestream/${jobId}/media/${product.spokespersonImagePath}`}
+              alt="Ảnh người mẫu"
+              style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }}
+            />
+            <button className="btn" onClick={handleSpokespersonRemove} disabled={uploadingSpokesperson}>
+              🗑️ Xoá ảnh người mẫu
+            </button>
+          </div>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          disabled={uploadingSpokesperson}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleSpokespersonUpload(file);
+            e.target.value = '';
+          }}
+          style={{ fontSize: 12 }}
+        />
+        {uploadingSpokesperson && <span style={{ fontSize: 12 }}>⏳ Đang xử lý...</span>}
+      </div>
 
       <div className="field-group">
         <label>Mô tả sản phẩm (dùng làm input viết lời thoại)</label>
