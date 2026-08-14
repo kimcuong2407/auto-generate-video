@@ -46,7 +46,7 @@ npx playwright install --with-deps chromium
 
 # 6) Tạo .env.local trên VPS (KHÔNG commit) — copy từ .env.example rồi điền giá trị thật
 cp .env.example .env.local
-nano .env.local     # điền AI_CHAT_API_*, các timeout, v.v.
+nano .env.local     # điền AI_CHAT_API_*, các timeout, R2_*, v.v.
 
 # 7) Build + chạy lần đầu bằng PM2
 npm ci
@@ -59,6 +59,30 @@ pm2 startup          # chạy dòng lệnh nó in ra để PM2 tự khởi độ
 App chạy ở `http://127.0.0.1:3000`. `PM2_APP_NAME` ở bước trên là `review-app`.
 
 > **`data/` là dữ liệu bền** — nằm trong app-dir, đã `.gitignore` nên `git reset --hard` khi deploy **không xoá** nó. Session/token/project giữ nguyên qua mỗi lần deploy.
+
+---
+
+## 1b. Cloudflare R2 (lưu video online)
+
+Video từng scene + `final.mp4` sau khi ghép được đẩy lên R2 ngay khi tạo ra, để xem/tải qua
+URL public (`R2_PUBLIC_URL`) thay vì phụ thuộc route stream file local — vốn có thể không ổn
+định qua Nginx trên VPS (buffering/timeout với file lớn, permission thư mục `data/`).
+
+Điền vào `.env.local` trên VPS:
+
+```bash
+R2_ACCOUNT_ID=<account id Cloudflare>
+R2_ACCESS_KEY_ID=<tạo ở R2 > Manage API Tokens>
+R2_SECRET_ACCESS_KEY=<...>
+R2_BUCKET=<tên bucket>
+R2_PUBLIC_URL=https://<domain custom đã gắn cho bucket>
+```
+
+Thiếu bất kỳ biến nào → tính năng tự tắt (fallback về route stream local như cũ, không lỗi).
+
+`final.mp4` local sẽ bị **xoá tự động** sau khi upload R2 thành công (không còn ai cần đọc
+lại file này ở local). Video từng scene vẫn giữ nguyên trên đĩa VPS song song với bản R2, vì
+bước Ghép video (Bước 6) cần đọc trực tiếp file scene bằng ffmpeg.
 
 ---
 

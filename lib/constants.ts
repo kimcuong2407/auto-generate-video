@@ -23,3 +23,12 @@ export const STORYBOARD_MAX_CONCURRENT = Number(process.env.STORYBOARD_MAX_CONCU
 
 // Thời gian tối đa (ms) chờ 1 ảnh storyboard sinh xong qua Orino Flow
 export const STORYBOARD_IMAGE_TIMEOUT_MS = Number(process.env.STORYBOARD_IMAGE_TIMEOUT_MS || 120_000);
+
+// Cloudflare R2 — lưu video online. Bật khi đủ 5 biến, thiếu bất kỳ biến nào = tắt (no-op,
+// fallback về route stream file local, xem lib/r2/client.ts).
+export const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || '';
+export const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || '';
+export const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || '';
+export const R2_BUCKET = process.env.R2_BUCKET || '';
+export const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
+export const R2_ENABLED = !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET && R2_PUBLIC_URL);

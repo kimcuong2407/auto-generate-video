@@ -7,6 +7,7 @@ import { triggerSceneGeneration } from '@/lib/data/sceneGenerate';
 import { extractLastFrame } from '@/lib/ffmpeg/frame';
 import { projectScenesDir, projectFramesDir, resolveWithinProject } from '@/lib/paths';
 import { FLOW_JOB_TIMEOUT_MS } from '@/lib/constants';
+import { uploadFileToR2 } from '@/lib/r2/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,6 +69,13 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
               const destPath = path.join(projectScenesDir(id), destFileName);
               await fs.copyFile(jobStatus.video_path, destPath);
               scene.videoPath = path.join('outputs', 'scenes', destFileName);
+              // Upload lên R2 để xem/tải ngay không phụ thuộc route stream local — vẫn giữ
+              // file local vì Bước 6 (ghép video) cần đọc trực tiếp bằng ffmpeg.
+              scene.videoUrl = await uploadFileToR2(
+                destPath,
+                `projects/${id}/scenes/${destFileName}`,
+                'video/mp4'
+              );
             }
             scene.status = 'done';
             scene.error = null;

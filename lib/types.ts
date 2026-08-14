@@ -64,6 +64,8 @@ export interface Scene {
   status: SceneStatus;
   jobId: string | null;
   videoPath: string | null;
+  /** URL public trên Cloudflare R2 sau khi upload thành công. Null nếu chưa upload hoặc R2 chưa cấu hình — khi đó dùng route stream local qua videoPath. */
+  videoUrl: string | null;
   error: string | null;
   attempts: number;
   lastUpdatedAt: string | null;
@@ -145,6 +147,8 @@ export interface ConcatState {
   status: ConcatStatus;
   log: string[];
   outputPath: string | null;
+  /** URL public trên Cloudflare R2 sau khi upload thành công. File local (outputPath) bị xoá sau khi upload xong, nên khi outputUrl có giá trị PHẢI ưu tiên dùng nó thay vì route stream local. */
+  outputUrl: string | null;
   outputMeta: ConcatMeta | null;
   error: string | null;
   startedAt: string | null;

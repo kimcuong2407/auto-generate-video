@@ -26,6 +26,7 @@ function buildEmptyLocalScene(order: number): Scene {
     status: 'idle',
     jobId: null,
     videoPath: null,
+    videoUrl: null,
     error: null,
     attempts: 0,
     lastUpdatedAt: null,

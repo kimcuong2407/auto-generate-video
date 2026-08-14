@@ -55,6 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       status: 'running',
       log: [],
       outputPath: null,
+      outputUrl: null,
       outputMeta: null,
       error: null,
       startedAt: new Date().toISOString(),

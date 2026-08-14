@@ -253,7 +253,12 @@ export function GenerateStep({
                   📋 Prompt
                 </button>
                 {scene.status === 'done' && scene.videoPath && (
-                  <button className="retry-btn" onClick={() => setVideoModalPath(scene.videoPath)}>
+                  <button
+                    className="retry-btn"
+                    onClick={() =>
+                      setVideoModalPath(scene.videoUrl || `/api/projects/${project.id}/media/${scene.videoPath}`)
+                    }
+                  >
                     ▶ Xem video
                   </button>
                 )}
@@ -270,11 +275,7 @@ export function GenerateStep({
       </div>
 
       {videoModalPath && (
-        <MediaModal
-          kind="video"
-          src={`/api/projects/${project.id}/media/${videoModalPath}`}
-          onClose={() => setVideoModalPath(null)}
-        />
+        <MediaModal kind="video" src={videoModalPath} onClose={() => setVideoModalPath(null)} />
       )}
     </div>
   );

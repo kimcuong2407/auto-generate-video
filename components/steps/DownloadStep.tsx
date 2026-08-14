@@ -35,25 +35,28 @@ export function DownloadStep({
       </div>
 
       <div className="video-grid">
-        {project.script.scenes.map((scene, i) => (
-          <div key={scene.id} className="video-card">
-            {scene.videoPath ? (
-              <video controls muted playsInline src={`/api/projects/${project.id}/media/${scene.videoPath}`} />
-            ) : (
-              <div className="vid-empty">Chưa có video</div>
-            )}
-            <div className="vid-label">
-              <span>
-                {String(i + 1).padStart(2, '0')}_{scene.id}.mp4
-              </span>
-              {scene.videoPath && (
-                <a href={`/api/projects/${project.id}/media/${scene.videoPath}`} download>
-                  ⬇
-                </a>
+        {project.script.scenes.map((scene, i) => {
+          const src = scene.videoUrl || (scene.videoPath ? `/api/projects/${project.id}/media/${scene.videoPath}` : null);
+          return (
+            <div key={scene.id} className="video-card">
+              {src ? (
+                <video controls muted playsInline src={src} />
+              ) : (
+                <div className="vid-empty">Chưa có video</div>
               )}
+              <div className="vid-label">
+                <span>
+                  {String(i + 1).padStart(2, '0')}_{scene.id}.mp4
+                </span>
+                {src && (
+                  <a href={src} download>
+                    ⬇
+                  </a>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="output-bar" style={{ marginTop: 14 }}>

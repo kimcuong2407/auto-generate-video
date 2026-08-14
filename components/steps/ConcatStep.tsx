@@ -69,6 +69,7 @@ export function ConcatStep({
   const { concat } = project;
   const notDoneScenes = project.script.scenes.filter((s) => s.status !== 'done' || !s.videoPath);
   const readyScenes = project.script.scenes.filter((s) => s.status === 'done' && s.videoPath);
+  const finalSrc = concat.outputUrl || (concat.outputPath ? `/api/projects/${project.id}/media/${concat.outputPath}` : null);
 
   return (
     <div className="card">
@@ -96,8 +97,8 @@ export function ConcatStep({
         <button className="btn btn-primary" onClick={handleConcat} disabled={starting || concat.status === 'running'}>
           {concat.status === 'running' ? 'Đang ghép...' : '🎬 Ghép video'}
         </button>
-        {concat.status === 'done' && concat.outputPath && (
-          <a className="btn" href={`/api/projects/${project.id}/media/${concat.outputPath}`} download>
+        {concat.status === 'done' && finalSrc && (
+          <a className="btn" href={finalSrc} download>
             ⬇️ Tải final.mp4
           </a>
         )}
@@ -151,9 +152,9 @@ export function ConcatStep({
         </div>
       )}
 
-      {concat.status === 'done' && concat.outputPath && (
+      {concat.status === 'done' && finalSrc && (
         <div style={{ marginTop: 14 }}>
-          <video controls src={`/api/projects/${project.id}/media/${concat.outputPath}`} style={{ maxWidth: '100%', borderRadius: 10 }} />
+          <video controls src={finalSrc} style={{ maxWidth: '100%', borderRadius: 10 }} />
         </div>
       )}
 

@@ -65,6 +65,7 @@ export function createNewJob(input: {
       status: 'idle',
       log: [],
       outputPath: null,
+      outputUrl: null,
       outputMeta: null,
       error: null,
       startedAt: null,

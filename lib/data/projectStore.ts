@@ -36,6 +36,11 @@ export async function readProject(projectId: string): Promise<Project> {
   for (const scene of project.script?.scenes || []) {
     if (scene.lastFramePath === undefined) scene.lastFramePath = null;
     if (scene.chainedFromPrevious === undefined) scene.chainedFromPrevious = false;
+    if (scene.videoUrl === undefined) scene.videoUrl = null;
+  }
+  // Backfill cho project cũ tạo trước khi có tính năng upload video lên Cloudflare R2.
+  if (project.concat && project.concat.outputUrl === undefined) {
+    project.concat.outputUrl = null;
   }
   // Backfill cho project cũ tạo trước khi có tính năng Storyboard ảnh (Bước 2).
   if (!project.storyboard) {

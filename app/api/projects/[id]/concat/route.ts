@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { projectExists, readProject, updateProject } from '@/lib/data/projectStore';
 import { resolveWithinProject } from '@/lib/paths';
 import { runConcatPipeline } from '@/lib/ffmpeg/concat';
+import { uploadFileToR2 } from '@/lib/r2/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       status: 'running',
       log: [],
       outputPath: null,
+      outputUrl: null,
       outputMeta: null,
       error: null,
       startedAt: new Date().toISOString(),
@@ -86,12 +88,23 @@ async function runConcatInBackground(id: string): Promise<void> {
 
   try {
     const { outputMeta } = await runConcatPipeline(project, appendLog);
+    const outputAbsPath = resolveWithinProject(id, 'outputs/final.mp4');
+    const outputUrl = await uploadFileToR2(outputAbsPath, `projects/${id}/final.mp4`, 'video/mp4');
     await updateProject(id, (p) => {
       p.concat.status = 'done';
       p.concat.outputPath = 'outputs/final.mp4';
+      p.concat.outputUrl = outputUrl;
       p.concat.outputMeta = outputMeta;
       p.concat.finishedAt = new Date().toISOString();
     });
+    if (outputUrl) {
+      // File local không còn cần thiết sau khi đã có bản trên R2 (không ai đọc lại
+      // outputs/final.mp4 nữa) — xoá SAU KHI project.json đã ghi xong outputUrl, để không
+      // mất dữ liệu nếu process crash giữa chừng.
+      await fs.unlink(outputAbsPath).catch(() => {});
+    } else {
+      await appendLog('⚠️ Upload R2 thất bại — giữ final.mp4 trên VPS, dùng link tải local.');
+    }
   } catch (err) {
     const message = (err as Error).message;
     await updateProject(id, (p) => {
