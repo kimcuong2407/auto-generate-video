@@ -40,6 +40,18 @@ export function GenerateStep({
   const [busyAll, setBusyAll] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [videoModalPath, setVideoModalPath] = useState<string | null>(null);
+  const [copiedSceneId, setCopiedSceneId] = useState<string | null>(null);
+
+  async function handleCopyLink(sceneId: string, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedSceneId(sceneId);
+      setTimeout(() => setCopiedSceneId((cur) => (cur === sceneId ? null : cur)), 1500);
+    } catch {
+      // Clipboard API có thể bị chặn (không https / quyền) — fallback prompt để copy thủ công.
+      window.prompt('Copy link video:', url);
+    }
+  }
 
   const flowExpired = !!project.flowStatusCache.projectsError || project.flowStatusCache.flowConnected === false;
 
@@ -262,8 +274,33 @@ export function GenerateStep({
                     ▶ Xem video
                   </button>
                 )}
+                {scene.status === 'done' && scene.videoUrl && (
+                  <button
+                    className="retry-btn"
+                    onClick={() => handleCopyLink(scene.id, scene.videoUrl as string)}
+                    title={scene.videoUrl}
+                  >
+                    {copiedSceneId === scene.id ? '✅ Đã copy' : '🔗 Copy link'}
+                  </button>
+                )}
               </div>
             </div>
+            {scene.status === 'done' && scene.videoUrl && (
+              <div
+                className="script-line"
+                style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span style={{ color: 'var(--text-muted)' }}>🌐 R2:</span>
+                <a
+                  href={scene.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--accent, #6ee7b7)', wordBreak: 'break-all' }}
+                >
+                  {scene.videoUrl}
+                </a>
+              </div>
+            )}
             {openPrompt === scene.id && (
               <div className="script-line" style={{ fontSize: 11 }}>
                 {scene.veoPrompt || '(chưa có prompt — quay lại Bước 2 để nhập)'}
