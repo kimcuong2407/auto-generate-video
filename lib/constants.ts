@@ -9,6 +9,10 @@ export const FLOW_MAX_CONCURRENT_JOBS = Number(process.env.FLOW_MAX_CONCURRENT_J
 
 export const FLOW_JOB_TIMEOUT_MS = Number(process.env.FLOW_JOB_TIMEOUT_MS || 15 * 60 * 1000);
 
+// Chu kỳ background poller quét các job có segment 'generating' và đồng bộ với Google Flow —
+// không phụ thuộc tab UI mở. Đủ thưa để không spam Flow, đủ dày để bắt 'done' sớm.
+export const FLOW_POLL_INTERVAL_MS = Number(process.env.FLOW_POLL_INTERVAL_MS || 15_000);
+
 export const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB / ảnh
 export const MAX_IMAGE_COUNT = 10;
 

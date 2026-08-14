@@ -9,7 +9,8 @@
     "https://*.google.com/*",
     "https://*.googleapis.com/*",
     "http://localhost:3000/*",
-    "http://127.0.0.1:3000/*"
+    "http://127.0.0.1:3000/*",
+    "https://video.homebox.vn/*"
   ],
   "background": {
     "service_worker": "background.js"
