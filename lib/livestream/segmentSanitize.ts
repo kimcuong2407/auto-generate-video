@@ -54,6 +54,7 @@ export function sanitizeSegments(
       status: 'idle',
       jobId: null,
       videoPath: null,
+      videoUrl: null,
       lastFramePath: null,
       error: null,
       attempts: 0,

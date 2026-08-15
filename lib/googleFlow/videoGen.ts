@@ -67,6 +67,15 @@ export function resolveVideoModelKey(
     return `abra_${mode}${durationSuffix(duration)}${useFl ? '_fl' : ''}`;
   }
 
+  // Mode reference-to-video (r2v — @Characters/ảnh người mẫu) của Veo 3.1 CHỈ có tier `lite`.
+  // Các tier khác (fast/quality/*_low_priority) không tồn tại → Google trả 404 NOT_FOUND
+  // (fast/quality) hoặc 403 PERMISSION_DENIED (lite_low_priority). Kiểm chứng thực nghiệm:
+  // chỉ `veo_3_1_r2v_lite` được chấp nhận. Ép tier về lite cho r2v bất kể model job chọn,
+  // để dùng ảnh spokesperson làm character reference cho đoạn đầu (không có start frame).
+  if (mode === 'r2v') {
+    return `veo_3_1_r2v_lite${durationSuffix(duration)}`;
+  }
+
   const { base, suffix } = coreParts(model);
   const modeInfix = mode === 'i2v_se' ? 'i2v_s' : mode;
   return `veo_3_1_${modeInfix}_${base}${durationSuffix(duration)}${suffix}${useFl ? '_fl' : ''}`;

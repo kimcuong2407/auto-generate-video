@@ -33,6 +33,7 @@ export async function readJob(jobId: string): Promise<LivestreamJob> {
       if (segment.lastFramePath === undefined) segment.lastFramePath = null;
     }
   }
+  if (job.scriptSystemPromptOverride === undefined) job.scriptSystemPromptOverride = null;
   return job;
 }
 

@@ -17,6 +17,12 @@ export interface LivestreamSegment {
   jobId: string | null;
   /** Đường dẫn tương đối trong job dir, VD "outputs/segments/003_seg-03.mp4". */
   videoPath: string | null;
+  /**
+   * URL public trên Cloudflare R2 sau khi upload — dùng để preview/tải online không phụ thuộc
+   * route stream file local (quan trọng khi deploy Ubuntu: file segment local bị xoá sau concat).
+   * null nếu R2 chưa cấu hình hoặc upload thất bại (fallback về route media local khi còn file).
+   */
+  videoUrl: string | null;
   /** Đường dẫn tương đối khung hình cuối đã extract, dùng làm start_path cho đoạn kế (chaining). */
   lastFramePath: string | null;
   error: string | null;
@@ -73,6 +79,12 @@ export interface LivestreamJob {
   concat: ConcatState;
   flowStatusCache: FlowStatusCache;
   flowProjectId: string | null;
+  /**
+   * System prompt sinh kịch bản do người dùng chỉnh cho job này. null = dùng
+   * LIVESTREAM_SYSTEM_PROMPT mặc định (xem resolveScriptSystemPrompt ở scriptPrompt.ts).
+   * Chỉ override prompt sinh kịch bản; prompt extract/vision không cho override (chỉ read-only ở UI).
+   */
+  scriptSystemPromptOverride: string | null;
 }
 
 export interface LivestreamJobSummary {

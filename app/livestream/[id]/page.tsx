@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useLivestreamPolling } from '@/hooks/useLivestreamPolling';
 import { ProductPanel } from '@/components/livestream/ProductPanel';
 import { ConcatPanel } from '@/components/livestream/ConcatPanel';
+import { FlowGuide } from '@/components/livestream/FlowGuide';
+import { PromptSettingsPanel } from '@/components/livestream/PromptSettingsPanel';
 
 /** Đọc SSE response của route script/generate (fetch thường, không dùng EventSource vì cần POST). */
 async function streamScriptGeneration(
@@ -149,10 +151,20 @@ export default function LivestreamDetailPage() {
             <button className="btn btn-ghost" onClick={handleStopAllSegments} disabled={actionBusy || !hasGeneratingSegment}>
               ⏹ Dừng tất cả
             </button>
-            <button className="btn" onClick={() => handleGenerateScript()} disabled={scriptingAll || busy}>
+            <button
+              className="btn"
+              onClick={() => handleGenerateScript()}
+              disabled={scriptingAll || busy}
+              title="Sinh lời thoại + prompt video cho mọi sản phẩm đã có mô tả"
+            >
               {scriptingAll ? 'Đang sinh script...' : '✍️ Sinh script tất cả'}
             </button>
-            <button className="btn btn-primary" onClick={handleGenerateAllSegments} disabled={actionBusy}>
+            <button
+              className="btn btn-primary"
+              onClick={handleGenerateAllSegments}
+              disabled={actionBusy}
+              title="Tạo video cho tất cả đoạn (cần Orino Flow đã đăng nhập)"
+            >
               ▶ Gen tất cả đoạn
             </button>
           </div>
@@ -165,6 +177,14 @@ export default function LivestreamDetailPage() {
             </div>
           )}
           {actionError && <div className="banner">{actionError}</div>}
+
+          <FlowGuide />
+          <PromptSettingsPanel
+            jobId={jobId}
+            scriptSystemPromptOverride={job.scriptSystemPromptOverride}
+            busy={busy}
+            onRefresh={refresh}
+          />
 
           {job.products.map((product) => (
             <ProductPanel

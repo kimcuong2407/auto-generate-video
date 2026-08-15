@@ -125,6 +125,11 @@ export async function triggerSegmentGeneration(
       f.segment.status = 'generating';
       f.segment.jobId = job_id;
       f.segment.error = null;
+      // Xoá video cũ (nếu gen lại đoạn đã done) để UI không preview video cũ trong lúc đang
+      // gen; sẽ được set lại khi poll xong. videoUrl trên R2 cũ giữ nguyên (best-effort không
+      // xoá object R2 — sẽ bị đè key khi upload lại cùng tên file).
+      f.segment.videoPath = null;
+      f.segment.videoUrl = null;
       f.segment.attempts += 1;
       f.segment.lastUpdatedAt = new Date().toISOString();
     });

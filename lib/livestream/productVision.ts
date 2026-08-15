@@ -3,19 +3,10 @@ import path from 'node:path';
 import { chatCompletion } from '../ai/chatClient';
 import { extractJson } from '../ai/jsonExtract';
 
-const VISION_SYSTEM_PROMPT = `Bạn là trợ lý đọc ảnh chụp màn hình trang sản phẩm (từ sàn TMĐT như
-Shopee/Lazada/TikTok Shop, hoặc ảnh chụp bất kỳ trang bán hàng nào).
-
-Nhiệm vụ: đọc kỹ ảnh được cung cấp, xác định đây là ảnh chụp 1 SẢN PHẨM DUY NHẤT, rồi trả về:
-- name: tên sản phẩm chính xác nhất có thể đọc được từ ảnh
-- description: mô tả tổng hợp súc tích (đặc điểm, chất liệu, màu sắc, tính năng nổi bật, giá/ưu đãi
-  nếu nhìn thấy trong ảnh, đối tượng sử dụng...) — đủ chi tiết để dùng làm input viết lời thoại quảng
-  cáo sau này. CHỈ dùng thông tin thực sự đọc được/nhìn thấy trong ảnh, KHÔNG bịa thêm.
-
-Nếu ảnh không đủ rõ để xác định tên sản phẩm, đặt name là mô tả ngắn chung (VD "Sản phẩm chưa rõ tên").
-
-Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
-{"name":"...","description":"..."}`;
+// Re-export prompt mặc định từ module thuần (promptDefaults) để client import được mà không
+// kéo theo chatClient/node:fs server-only. Đây vẫn là 1 nguồn sự thật duy nhất.
+export { VISION_SYSTEM_PROMPT } from './promptDefaults';
+import { VISION_SYSTEM_PROMPT } from './promptDefaults';
 
 const IMAGE_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',

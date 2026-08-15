@@ -132,9 +132,13 @@ export function ProductPanel({
           className="btn btn-primary"
           onClick={() => onGenerateScript(product.id)}
           disabled={scriptBusy || hasGenerating || !manualDescription.trim()}
+          title="Sinh lời thoại + prompt video cho sản phẩm này. Chỉnh chỉ dẫn AI ở phần ⚙️ trên đầu trang."
         >
           {scriptBusy ? 'Đang sinh script...' : product.segments.length > 0 ? '🔄 Sinh lại script' : '✍️ Sinh script'}
         </button>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', alignSelf: 'center' }}>
+          Muốn đổi giọng/phong cách? Chỉnh system prompt ở phần ⚙️ đầu trang.
+        </span>
       </div>
 
       {product.sourceLink && (
@@ -221,10 +225,13 @@ export function ProductPanel({
                   {segment.duration}s
                   {segment.error ? ` — ${segment.error}` : ''}
                 </div>
-                {segment.status === 'done' && segment.videoPath && (
+                {segment.status === 'done' && (segment.videoUrl || segment.videoPath) && (
                   <video
                     controls
-                    src={`/api/livestream/${jobId}/media/${segment.videoPath}`}
+                    src={
+                      segment.videoUrl ??
+                      `/api/livestream/${jobId}/media/${segment.videoPath}`
+                    }
                     style={{ maxWidth: 220, marginTop: 6, borderRadius: 8, display: 'block' }}
                   />
                 )}

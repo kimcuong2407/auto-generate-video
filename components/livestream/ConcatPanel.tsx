@@ -65,8 +65,12 @@ export function ConcatPanel({ job, onRefresh }: { job: LivestreamJob; onRefresh:
         <button className="btn btn-primary" onClick={handleConcat} disabled={starting || concat.status === 'running'}>
           {concat.status === 'running' ? 'Đang ghép...' : '🎬 Ghép video'}
         </button>
-        {concat.status === 'done' && concat.outputPath && (
-          <a className="btn" href={`/api/livestream/${job.id}/media/${concat.outputPath}`} download>
+        {concat.status === 'done' && (concat.outputUrl || concat.outputPath) && (
+          <a
+            className="btn"
+            href={concat.outputUrl ?? `/api/livestream/${job.id}/media/${concat.outputPath}`}
+            download
+          >
             ⬇️ Tải final.mp4
           </a>
         )}
@@ -92,10 +96,12 @@ export function ConcatPanel({ job, onRefresh }: { job: LivestreamJob; onRefresh:
         </div>
       )}
 
-      {concat.status === 'done' && concat.outputPath && concat.outputMeta && (
+      {concat.status === 'done' && (concat.outputUrl || concat.outputPath) && concat.outputMeta && (
         <div className="output-bar" style={{ marginTop: 14 }}>
           <span className="check">🎉</span>
-          <span className="path">data/livestream/{job.id}/{concat.outputPath}</span>
+          <span className="path">
+            {concat.outputUrl ?? `data/livestream/${job.id}/${concat.outputPath}`}
+          </span>
           <span className="size">
             {formatSize(concat.outputMeta.sizeBytes)} · {Math.round(concat.outputMeta.durationSec)}s ·{' '}
             {concat.outputMeta.width}×{concat.outputMeta.height} · {concat.outputMeta.fps}fps
@@ -103,9 +109,13 @@ export function ConcatPanel({ job, onRefresh }: { job: LivestreamJob; onRefresh:
         </div>
       )}
 
-      {concat.status === 'done' && concat.outputPath && (
+      {concat.status === 'done' && (concat.outputUrl || concat.outputPath) && (
         <div style={{ marginTop: 14 }}>
-          <video controls src={`/api/livestream/${job.id}/media/${concat.outputPath}`} style={{ maxWidth: '100%', borderRadius: 10 }} />
+          <video
+            controls
+            src={concat.outputUrl ?? `/api/livestream/${job.id}/media/${concat.outputPath}`}
+            style={{ maxWidth: '100%', borderRadius: 10 }}
+          />
         </div>
       )}
     </div>

@@ -79,5 +79,6 @@ export function createNewJob(input: {
       checkedAt: null,
     },
     flowProjectId: null,
+    scriptSystemPromptOverride: null,
   };
 }

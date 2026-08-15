@@ -4,7 +4,7 @@ import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';
-import { LIVESTREAM_SYSTEM_PROMPT, buildLivestreamUserPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildLivestreamUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
 import { computeSegmentDurations, sanitizeSegments } from '@/lib/livestream/segmentSanitize';
 import { recomputeSegmentOrder } from '@/lib/livestream/reorder';
 
@@ -57,6 +57,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
+      // Prompt override không đổi trong 1 lần chạy — resolve 1 lần từ job đã đọc ở đầu route.
+      const systemPrompt = resolveScriptSystemPrompt(job);
+
       for (const product of targets) {
         send({ type: 'product_start', productId: product.id, name: product.name });
         await updateJob(id, (j) => {
@@ -68,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           const durations = computeSegmentDurations(product.targetDurationSec);
           const userPrompt = buildLivestreamUserPrompt(product.description, durations);
 
-          const raw = await generateScriptText(LIVESTREAM_SYSTEM_PROMPT, userPrompt, (e: ChatStreamEvent) => {
+          const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
             if (e.type === 'start' || e.type === 'retry') {
               send({ ...e, productId: product.id });
             }

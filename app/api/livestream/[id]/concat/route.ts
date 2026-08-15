@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { jobExists, readJob, updateJob } from '@/lib/livestream/jobStore';
 import { resolveWithinJob } from '@/lib/livestream/paths';
 import { runLivestreamConcat } from '@/lib/livestream/concat';
+import { uploadFileToR2 } from '@/lib/r2/client';
 import type { LivestreamJob } from '@/lib/livestream/types';
 
 export const runtime = 'nodejs';
@@ -81,13 +82,44 @@ async function runConcatInBackground(id: string): Promise<void> {
   };
 
   try {
-    const { outputMeta } = await runLivestreamConcat(job, appendLog);
+    const { outputMeta, mergedSegmentPaths } = await runLivestreamConcat(job, appendLog);
+
+    // Upload final lên R2 để xem/tải online không phụ thuộc route stream local. No-op nếu R2
+    // chưa cấu hình (outputUrl = null → UI fallback về route media local).
+    const finalAbsPath = resolveWithinJob(id, 'outputs/final.mp4');
+    const outputUrl = await uploadFileToR2(finalAbsPath, `livestream/${id}/final.mp4`, 'video/mp4');
+    if (outputUrl) {
+      await appendLog(`☁️ Đã upload final lên R2: ${outputUrl}`);
+    }
+
+    // Xoá các file segment local sau khi concat xong (đã có videoUrl trên R2 để preview) —
+    // deploy Ubuntu không giữ segment local lâu dài. Best-effort, nuốt lỗi từng file. Giữ
+    // videoUrl trên segment; chỉ set videoPath = null để UI biết chuyển sang dùng R2.
+    for (const relPath of mergedSegmentPaths) {
+      try {
+        await fs.rm(resolveWithinJob(id, relPath), { force: true });
+      } catch {
+        // bỏ qua — file có thể đã bị xoá, không chặn flow
+      }
+    }
+
     await updateJob(id, (j) => {
       j.concat.status = 'done';
       j.concat.outputPath = 'outputs/final.mp4';
+      j.concat.outputUrl = outputUrl;
       j.concat.outputMeta = outputMeta;
       j.concat.finishedAt = new Date().toISOString();
       j.status = 'done';
+      // Segment local đã xoá — bỏ videoPath để UI dùng videoUrl (R2). Chỉ đụng đoạn thực sự
+      // vừa được ghép (còn videoUrl), tránh xoá path của đoạn chưa upload R2 thành công.
+      const merged = new Set(mergedSegmentPaths);
+      for (const p of j.products) {
+        for (const s of p.segments) {
+          if (s.videoPath && merged.has(s.videoPath) && s.videoUrl) {
+            s.videoPath = null;
+          }
+        }
+      }
     });
   } catch (err) {
     const message = (err as Error).message;

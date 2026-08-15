@@ -1,20 +1,31 @@
 /**
- * Backfill R2 — upload video của các job (project) cũ đã generate xong nhưng chưa lên
- * Cloudflare R2 (videoUrl / concat.outputUrl còn null vì chạy trước khi có tính năng R2).
+ * Backfill R2 — upload video của các job cũ đã generate xong nhưng chưa lên Cloudflare R2
+ * (videoUrl / concat.outputUrl còn null vì chạy trước khi có tính năng R2).
  *
- * Tái hiện đúng logic của app:
- *  - Scene: upload outputs/scenes/<file>.mp4 với key projects/<id>/scenes/<file>.mp4,
- *    gán scene.videoUrl. GIỮ file local (app cũng giữ để bước ghép video đọc lại).
- *  - Final: upload outputs/final.mp4 với key projects/<id>/final.mp4, gán concat.outputUrl,
- *    rồi XOÁ final.mp4 local (giống concat/route.ts) — chỉ xoá sau khi project.json đã ghi outputUrl.
+ * Xử lý CẢ HAI loại job, tái hiện đúng logic của app:
+ *
+ * A) Pipeline gốc — data/projects/<id>/project.json (script.scenes[]):
+ *  - Scene: upload outputs/scenes/<file>.mp4 → key projects/<id>/scenes/<file>.mp4, gán
+ *    scene.videoUrl. GIỮ file local (app cũng giữ để bước ghép video đọc lại).
+ *  - Final: upload outputs/final.mp4 → key projects/<id>/final.mp4, gán concat.outputUrl,
+ *    rồi XOÁ final.mp4 local (giống concat/route.ts) — chỉ xoá sau khi ghi outputUrl.
+ *
+ * B) Livestream — data/livestream/<id>/job.json (products[].segments[]):
+ *  - Segment: upload outputs/segments/<file>.mp4 → key livestream/<id>/segments/<file>.mp4,
+ *    gán segment.videoUrl. GIỮ file local (bước concat livestream còn cần đọc; app chỉ xoá
+ *    segment local SAU khi concat xong — backfill không tự chạy concat nên không xoá).
+ *  - Final: nếu concat.status==='done' & thiếu outputUrl → upload outputs/final.mp4 →
+ *    key livestream/<id>/final.mp4, gán concat.outputUrl rồi xoá final.mp4 local.
  *
  * Chỉ upload khi status === 'done', file tồn tại, và url tương ứng còn null (idempotent —
- * chạy lại không upload lại cái đã có url). Ghi project.json atomic (tmp + rename).
+ * chạy lại không upload lại cái đã có url). Ghi job.json atomic (tmp + rename).
  *
  * Chạy:
- *   node scripts/backfill-r2.mjs            # thực thi
- *   node scripts/backfill-r2.mjs --dry-run  # chỉ in ra sẽ làm gì, không upload / không sửa file
- *   node scripts/backfill-r2.mjs <projectId> [<projectId> ...]   # giới hạn theo project id
+ *   node scripts/backfill-r2.mjs                     # cả projects + livestream
+ *   node scripts/backfill-r2.mjs --dry-run           # chỉ in, không upload / không sửa / không xoá
+ *   node scripts/backfill-r2.mjs --livestream        # chỉ livestream
+ *   node scripts/backfill-r2.mjs --projects          # chỉ projects
+ *   node scripts/backfill-r2.mjs <id> [<id> ...]     # giới hạn theo id (áp dụng cho loại đang chạy)
  */
 
 import fs from 'node:fs/promises';
@@ -60,11 +71,19 @@ const DATA_ROOT =
     ? process.env.PROJECTS_DIR
     : path.join(ROOT, 'data', 'projects');
 
-const PROJECT_ID_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const LIVESTREAM_ROOT =
+  process.env.LIVESTREAM_DIR && process.env.LIVESTREAM_DIR.trim() !== ''
+    ? process.env.LIVESTREAM_DIR
+    : path.join(ROOT, 'data', 'livestream');
+
+// id job có thể dài hơn (slug tiếng Việt đã chuẩn hoá + hash), nới độ dài cho khớp thực tế.
+const PROJECT_ID_REGEX = /^[a-z0-9][a-z0-9-]{0,127}$/;
 
 // ---- CLI args ------------------------------------------------------------------------
 const argv = process.argv.slice(2);
 const DRY_RUN = argv.includes('--dry-run');
+const ONLY_LIVESTREAM = argv.includes('--livestream');
+const ONLY_PROJECTS = argv.includes('--projects');
 const onlyIds = argv.filter((a) => !a.startsWith('--'));
 
 // ---- R2 client (khớp lib/r2/client.ts) -----------------------------------------------
@@ -198,6 +217,105 @@ async function backfillProject(id) {
   return summary;
 }
 
+// ---- livestream job.json helpers (atomic write khớp jobStore.ts) ---------------------
+function jobJsonPath(id) {
+  return path.join(LIVESTREAM_ROOT, id, 'job.json');
+}
+function resolveWithinJob(id, relPath) {
+  const base = path.join(LIVESTREAM_ROOT, id);
+  const normalized = path.normalize(relPath).replace(/^([.]{2}[/\\])+/, '');
+  const resolved = path.resolve(base, normalized);
+  const baseWithSep = base.endsWith(path.sep) ? base : base + path.sep;
+  if (!resolved.startsWith(baseWithSep) && resolved !== base) {
+    throw new Error('Đường dẫn không hợp lệ (path traversal bị chặn)');
+  }
+  return resolved;
+}
+async function readJobRaw(id) {
+  const raw = await fs.readFile(jobJsonPath(id), 'utf-8');
+  return JSON.parse(raw);
+}
+async function writeJobAtomic(job) {
+  job.updatedAt = new Date().toISOString();
+  const jsonPath = jobJsonPath(job.id);
+  const tmpPath = `${jsonPath}.tmp`;
+  await fs.writeFile(tmpPath, JSON.stringify(job, null, 2), 'utf-8');
+  await fs.rename(tmpPath, jsonPath);
+}
+
+// ---- Backfill 1 livestream job -------------------------------------------------------
+async function backfillLivestream(id) {
+  const job = await readJobRaw(id);
+  let changed = false;
+  const summary = { segmentsUploaded: 0, segmentsSkipped: 0, finalUploaded: false };
+
+  // 1) Video từng segment (nested trong products[])
+  for (const product of job.products || []) {
+    for (const segment of product.segments || []) {
+      if (segment.status !== 'done' || !segment.videoPath) continue;
+      if (segment.videoUrl) {
+        summary.segmentsSkipped++;
+        continue; // đã có url → bỏ qua (idempotent)
+      }
+      let abs;
+      try {
+        abs = resolveWithinJob(id, segment.videoPath);
+      } catch (e) {
+        console.error(`  ✗ segment ${segment.id}: ${e.message}`);
+        continue;
+      }
+      if (!existsSync(abs)) {
+        console.warn(`  ⚠ segment ${segment.id}: thiếu file local ${segment.videoPath} → bỏ qua`);
+        continue;
+      }
+      const destFileName = path.basename(segment.videoPath);
+      const key = `livestream/${id}/segments/${destFileName}`;
+      const url = await uploadFileToR2(abs, key, 'video/mp4');
+      if (url) {
+        segment.videoUrl = url;
+        changed = true;
+        summary.segmentsUploaded++;
+        console.log(`  ✓ segment ${segment.id} → ${key}`);
+      }
+    }
+  }
+
+  // 2) Video final (concat) — upload xong ghi outputUrl rồi xoá final.mp4 local
+  const concat = job.concat;
+  if (concat && concat.status === 'done' && !concat.outputUrl) {
+    const relFinal = concat.outputPath || 'outputs/final.mp4';
+    const absFinal = resolveWithinJob(id, relFinal);
+    if (existsSync(absFinal)) {
+      const key = `livestream/${id}/final.mp4`;
+      const url = await uploadFileToR2(absFinal, key, 'video/mp4');
+      if (url) {
+        concat.outputPath = relFinal;
+        concat.outputUrl = url;
+        changed = true;
+        summary.finalUploaded = true;
+        console.log(`  ✓ final → ${key}`);
+        if (!DRY_RUN) {
+          await writeJobAtomic(job); // ghi TRƯỚC khi xoá local, tránh mất dữ liệu nếu crash
+          await fs.unlink(absFinal).catch(() => {});
+          console.log(`  🗑  đã xoá final.mp4 local`);
+        } else {
+          console.log(`  (dry-run) sẽ xoá final.mp4 local sau khi ghi outputUrl`);
+        }
+        return summary;
+      }
+    } else {
+      console.warn(`  ⚠ final: thiếu file local ${relFinal} → bỏ qua`);
+    }
+  } else if (concat && concat.outputUrl) {
+    console.log(`  = final: đã có outputUrl, bỏ qua`);
+  }
+
+  if (changed && !DRY_RUN) {
+    await writeJobAtomic(job);
+  }
+  return summary;
+}
+
 // ---- main ----------------------------------------------------------------------------
 async function main() {
   if (!R2_ENABLED) {
@@ -205,47 +323,71 @@ async function main() {
     process.exit(1);
   }
   console.log(`R2 bucket: ${R2_BUCKET} | public: ${R2_PUBLIC_URL}`);
-  console.log(`DATA_ROOT: ${DATA_ROOT}`);
   if (DRY_RUN) console.log('*** DRY-RUN: không upload, không sửa file, không xoá ***');
   console.log('');
 
-  let ids;
-  if (onlyIds.length > 0) {
-    ids = onlyIds;
-  } else {
-    const entries = await fs.readdir(DATA_ROOT, { withFileTypes: true });
-    ids = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  // Mặc định chạy cả 2 loại; --projects / --livestream để giới hạn.
+  const runProjects = !ONLY_LIVESTREAM || ONLY_PROJECTS;
+  const runLivestream = !ONLY_PROJECTS || ONLY_LIVESTREAM;
+
+  const totals = {
+    projects: 0, scenesUploaded: 0, scenesSkipped: 0, projectFinals: 0,
+    jobs: 0, segmentsUploaded: 0, segmentsSkipped: 0, jobFinals: 0,
+  };
+
+  // ---- A) Projects (pipeline gốc) ----
+  if (runProjects && existsSync(DATA_ROOT)) {
+    console.log(`═══ PROJECTS (${DATA_ROOT}) ═══`);
+    let ids = onlyIds.length > 0
+      ? onlyIds
+      : (await fs.readdir(DATA_ROOT, { withFileTypes: true }))
+          .filter((e) => e.isDirectory()).map((e) => e.name);
+    for (const id of ids.sort()) {
+      if (!PROJECT_ID_REGEX.test(id)) { console.warn(`⚠ bỏ qua id không hợp lệ: ${id}`); continue; }
+      if (!existsSync(projectJsonPath(id))) { if (onlyIds.length > 0) console.warn(`⚠ ${id}: không có project.json`); continue; }
+      console.log(`■ ${id}`);
+      try {
+        const s = await backfillProject(id);
+        totals.projects++;
+        totals.scenesUploaded += s.scenesUploaded;
+        totals.scenesSkipped += s.scenesSkipped;
+        if (s.finalUploaded) totals.projectFinals++;
+        if (s.scenesUploaded === 0 && !s.finalUploaded) console.log('  (không có gì để upload)');
+      } catch (err) {
+        console.error(`  ✗ lỗi khi xử lý ${id}:`, err?.message || err);
+      }
+      console.log('');
+    }
   }
 
-  const totals = { scenesUploaded: 0, scenesSkipped: 0, finalsUploaded: 0, projects: 0 };
-  for (const id of ids.sort()) {
-    if (!PROJECT_ID_REGEX.test(id)) {
-      console.warn(`⚠ bỏ qua id không hợp lệ: ${id}`);
-      continue;
+  // ---- B) Livestream ----
+  if (runLivestream && existsSync(LIVESTREAM_ROOT)) {
+    console.log(`═══ LIVESTREAM (${LIVESTREAM_ROOT}) ═══`);
+    let ids = onlyIds.length > 0
+      ? onlyIds
+      : (await fs.readdir(LIVESTREAM_ROOT, { withFileTypes: true }))
+          .filter((e) => e.isDirectory()).map((e) => e.name);
+    for (const id of ids.sort()) {
+      if (!PROJECT_ID_REGEX.test(id)) { console.warn(`⚠ bỏ qua id không hợp lệ: ${id}`); continue; }
+      if (!existsSync(jobJsonPath(id))) { if (onlyIds.length > 0) console.warn(`⚠ ${id}: không có job.json`); continue; }
+      console.log(`■ ${id}`);
+      try {
+        const s = await backfillLivestream(id);
+        totals.jobs++;
+        totals.segmentsUploaded += s.segmentsUploaded;
+        totals.segmentsSkipped += s.segmentsSkipped;
+        if (s.finalUploaded) totals.jobFinals++;
+        if (s.segmentsUploaded === 0 && !s.finalUploaded) console.log('  (không có gì để upload)');
+      } catch (err) {
+        console.error(`  ✗ lỗi khi xử lý ${id}:`, err?.message || err);
+      }
+      console.log('');
     }
-    if (!existsSync(projectJsonPath(id))) {
-      console.warn(`⚠ bỏ qua ${id}: không có project.json`);
-      continue;
-    }
-    console.log(`■ ${id}`);
-    try {
-      const s = await backfillProject(id);
-      totals.projects++;
-      totals.scenesUploaded += s.scenesUploaded;
-      totals.scenesSkipped += s.scenesSkipped;
-      if (s.finalUploaded) totals.finalsUploaded++;
-      if (s.scenesUploaded === 0 && !s.finalUploaded) console.log('  (không có gì để upload)');
-    } catch (err) {
-      console.error(`  ✗ lỗi khi xử lý ${id}:`, err?.message || err);
-    }
-    console.log('');
   }
 
   console.log('──────── Tổng kết ────────');
-  console.log(`Projects xử lý:     ${totals.projects}`);
-  console.log(`Scene đã upload:    ${totals.scenesUploaded}`);
-  console.log(`Scene bỏ qua (đã có url): ${totals.scenesSkipped}`);
-  console.log(`Final đã upload:    ${totals.finalsUploaded}`);
+  console.log(`Projects xử lý: ${totals.projects} | scene upload: ${totals.scenesUploaded} | bỏ qua: ${totals.scenesSkipped} | final: ${totals.projectFinals}`);
+  console.log(`Livestream xử lý: ${totals.jobs} | segment upload: ${totals.segmentsUploaded} | bỏ qua: ${totals.segmentsSkipped} | final: ${totals.jobFinals}`);
   if (DRY_RUN) console.log('(dry-run — chưa thực sự thay đổi gì)');
 }
 

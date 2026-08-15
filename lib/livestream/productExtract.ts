@@ -1,19 +1,10 @@
 import { chatCompletion } from '../ai/chatClient';
 import { extractJson } from '../ai/jsonExtract';
 
-const EXTRACT_SYSTEM_PROMPT = `Bạn là trợ lý trích xuất thông tin sản phẩm từ văn bản thô (có thể là text
-cào từ trang web, mô tả người dùng dán tay, hoặc nội dung 1 dòng trong file liệt kê sản phẩm).
-
-Nhiệm vụ: đọc đoạn text được cung cấp, xác định đây là mô tả của 1 SẢN PHẨM DUY NHẤT, rồi trả về:
-- name: tên sản phẩm ngắn gọn, chính xác nhất có thể suy ra từ text
-- description: mô tả tổng hợp súc tích (đặc điểm, chất liệu, màu sắc, tính năng nổi bật, giá/ưu đãi nếu có,
-  đối tượng sử dụng...) — đủ chi tiết để dùng làm input viết lời thoại quảng cáo sau này, nhưng không thêm
-  thông tin bịa đặt không có trong text gốc.
-
-Nếu text quá ít thông tin để xác định tên sản phẩm, đặt name là mô tả ngắn chung (VD "Sản phẩm chưa rõ tên").
-
-Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
-{"name":"...","description":"..."}`;
+// Re-export prompt mặc định từ module thuần (promptDefaults) để client import được mà không
+// kéo theo chatClient/node:fs server-only. Đây vẫn là 1 nguồn sự thật duy nhất.
+export { EXTRACT_SYSTEM_PROMPT } from './promptDefaults';
+import { EXTRACT_SYSTEM_PROMPT } from './promptDefaults';
 
 export interface ExtractedProduct {
   name: string;

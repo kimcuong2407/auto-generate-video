@@ -15,6 +15,7 @@ import { pollJobStatus } from '../googleFlow/flowJobs';
 import { triggerSegmentGeneration, findNextSegment } from './segmentGenerate';
 import { extractLastFrame } from '../ffmpeg/frame';
 import { jobSegmentsDir, jobFramesDir, resolveWithinJob } from './paths';
+import { uploadFileToR2 } from '../r2/client';
 import { FLOW_JOB_TIMEOUT_MS } from '../constants';
 import type { LivestreamSegment } from './types';
 
@@ -55,6 +56,14 @@ export async function syncGeneratingSegments(jobId: string): Promise<SyncResult>
               const destPath = path.join(jobSegmentsDir(jobId), destFileName);
               await fs.copyFile(jobStatus.video_path, destPath);
               segment.videoPath = path.join('outputs', 'segments', destFileName);
+              // Upload lên R2 để preview/tải online không phụ thuộc route stream local — vẫn giữ
+              // file local vì bước concat cần ffmpeg đọc trực tiếp (file local sẽ được xoá SAU
+              // khi concat xong, xem runLivestreamConcat). No-op nếu R2 chưa cấu hình.
+              segment.videoUrl = await uploadFileToR2(
+                destPath,
+                `livestream/${jobId}/segments/${destFileName}`,
+                'video/mp4'
+              );
             }
             segment.status = 'done';
             segment.error = null;

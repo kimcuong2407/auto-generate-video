@@ -17,7 +17,7 @@ function aspectDimensions(aspectRatio: '9:16' | '16:9'): { width: number; height
 export async function runLivestreamConcat(
   job: LivestreamJob,
   onLog: (line: string) => Promise<void>
-): Promise<{ outputPath: string; outputMeta: ConcatMeta }> {
+): Promise<{ outputPath: string; outputMeta: ConcatMeta; mergedSegmentPaths: string[] }> {
   const tmpDir = jobTmpDir(job.id);
   const outputsDir = jobOutputsDir(job.id);
   await fs.mkdir(tmpDir, { recursive: true });
@@ -84,6 +84,10 @@ export async function runLivestreamConcat(
     fps,
   };
 
+  // Đường dẫn tương đối các đoạn vừa ghép — route concat dùng để xoá file local sau khi
+  // đã upload final lên R2 (deploy Ubuntu: không giữ segment local lâu dài).
+  const mergedSegmentPaths = available.map((s) => s.videoPath as string);
+
   await onLog(`🎉 Final video: ${outputPath}`);
-  return { outputPath, outputMeta };
+  return { outputPath, outputMeta, mergedSegmentPaths };
 }
