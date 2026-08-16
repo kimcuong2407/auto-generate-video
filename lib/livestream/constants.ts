@@ -28,6 +28,11 @@ export const MAX_PRODUCTS_PER_ENTRY = 30;
 
 export const INGEST_CONCURRENCY = 3;
 
+// Số ảnh tham chiếu (character reference) tối đa truyền cho Veo mỗi đoạn video. Cap ở 3 để tránh
+// Veo bị "loãng" đặc điểm khi có quá nhiều ảnh — quá ngưỡng này chất lượng thường giảm và tốn
+// thời gian upload. Xem lib/livestream/segmentGenerate.ts.
+export const MAX_REFERENCE_IMAGES = 3;
+
 // Timeout cho tier 2 fetch link (headless browser Playwright) — chậm hơn fetch thô nên
 // cần ngưỡng riêng, chỉ dùng khi tier 1 (fetch thô) thất bại.
 export const BROWSER_FETCH_TIMEOUT_MS = 15000;

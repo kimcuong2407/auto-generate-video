@@ -135,34 +135,51 @@ export async function ingestEntry(
   }
 
   // entry.type === 'file'
-  const file = entry.fileField ? form.get(entry.fileField) : null;
-  if (!(file instanceof File) || file.size === 0) {
+  // Lấy tất cả file cùng field (form khởi tạo có thể gửi nhiều ảnh cho 1 sản phẩm).
+  const rawFiles = entry.fileField ? form.getAll(entry.fileField) : [];
+  const files = rawFiles.filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) {
     return { products: [], warnings: [`Entry #${entryIndex + 1}: thiếu file`] };
   }
-  const ext = path.extname(file.name).toLowerCase();
+  const firstExt = path.extname(files[0].name).toLowerCase();
 
-  if (IMAGE_EXTS.has(ext)) {
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      return {
-        products: [],
-        warnings: [`Entry #${entryIndex + 1}: ảnh "${file.name}" vượt quá ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB`],
-      };
+  if (IMAGE_EXTS.has(firstExt)) {
+    // Lưu tất cả ảnh hợp lệ vào inputs/, thu thập đường dẫn tương đối làm ảnh tham chiếu.
+    const savedImagePaths: string[] = [];
+    let imgIndex = 0;
+    for (const file of files) {
+      const ext = path.extname(file.name).toLowerCase();
+      if (!IMAGE_EXTS.has(ext)) {
+        warnings.push(`Entry #${entryIndex + 1}: bỏ qua "${file.name}" (không phải ảnh khi entry là ảnh)`);
+        continue;
+      }
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        warnings.push(
+          `Entry #${entryIndex + 1}: ảnh "${file.name}" vượt quá ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB — đã bỏ qua`
+        );
+        continue;
+      }
+      const fileName = `product-${entryIndex + 1}-${imgIndex}${ext}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      await fs.writeFile(path.join(inputsDir, fileName), buffer);
+      savedImagePaths.push(path.join('inputs', fileName));
+      imgIndex += 1;
     }
-    const fileName = `product-${entryIndex + 1}${ext}`;
-    const absPath = path.join(inputsDir, fileName);
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(absPath, buffer);
 
-    // Nếu đã cấu hình AI_VISION_MODEL, đọc ảnh tự động ngay lúc ingest (giống nhánh text
-    // gọi extractOrFallback ở trên) — thất bại/chưa cấu hình thì fallback về needs_manual,
-    // người dùng vẫn có thể thử lại qua route products/[productId]/vision sau khi tạo job.
+    if (savedImagePaths.length === 0) {
+      return { products: [], warnings };
+    }
+
+    // Dùng ảnh đầu tiên để trích mô tả. Nếu đã cấu hình AI_VISION_MODEL, đọc ảnh tự động ngay lúc
+    // ingest (giống nhánh text gọi extractOrFallback ở trên) — thất bại/chưa cấu hình thì fallback
+    // về needs_manual, người dùng vẫn có thể thử lại qua route products/[productId]/vision sau.
     let ingestStatus: 'ready' | 'needs_manual' = 'needs_manual';
     let ingestError: string | null =
       'Chưa cấu hình AI_VISION_MODEL — vui lòng nhập mô tả sản phẩm thủ công từ ảnh này, hoặc thử lại ở trang chi tiết job.';
     let name: string | undefined;
     let description: string | undefined;
     try {
-      const info = await extractProductFromImage(absPath);
+      const info = await extractProductFromImage(path.join(inputsDir, path.basename(savedImagePaths[0])));
       ingestStatus = 'ready';
       ingestError = null;
       name = info.name;
@@ -176,18 +193,22 @@ export async function ingestEntry(
         buildProduct({
           order: 0,
           sourceType: 'file_image',
-          sourceFilePath: path.join('inputs', fileName),
+          sourceFilePath: savedImagePaths[0],
           ingestStatus,
           ingestError,
           name,
           description,
           targetDurationSec,
+          spokespersonImagePaths: savedImagePaths,
         }),
       ],
       warnings,
     };
   }
 
+  // Nhánh text: chỉ xử lý file đầu tiên (nhiều file text không hỗ trợ gộp).
+  const file = files[0];
+  const ext = firstExt;
   if (TEXT_EXTS.has(ext)) {
     if (file.size > MAX_TEXT_FILE_SIZE_BYTES) {
       return {

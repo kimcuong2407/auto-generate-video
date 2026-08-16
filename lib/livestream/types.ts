@@ -47,12 +47,14 @@ export interface LivestreamProduct {
   description: string;
   targetDurationSec: number;
   /**
-   * Đường dẫn tương đối ảnh người mẫu/người dẫn tham chiếu, null nếu không dùng. Chỉ dùng làm
-   * refPaths (character reference) cho đoạn không có startPath từ frame-chaining (đoạn đầu tiên
-   * của chuỗi chain, hoặc job.chaining='off') — refPaths và startPath loại trừ nhau ở tầng
-   * endpoint Google Flow nên không thể dùng đồng thời, xem lib/livestream/segmentGenerate.ts.
+   * Danh sách đường dẫn tương đối các ảnh tham chiếu (người mẫu/người dẫn + ảnh input sản phẩm),
+   * mảng rỗng nếu không dùng. Dùng làm refPaths (character reference) cho đoạn không có startPath
+   * từ frame-chaining (đoạn đầu tiên của chuỗi chain, hoặc job.chaining='off') — refPaths và
+   * startPath loại trừ nhau ở tầng endpoint Google Flow nên không thể dùng đồng thời. Khi gen chỉ
+   * lấy tối đa MAX_REFERENCE_IMAGES ảnh đầu để tránh Veo bị loãng, xem
+   * lib/livestream/segmentGenerate.ts. Ảnh input sản phẩm lúc khởi tạo cũng được lưu vào đây.
    */
-  spokespersonImagePath: string | null;
+  spokespersonImagePaths: string[];
   scriptStatus: ScriptStatus;
   scriptError: string | null;
   segments: LivestreamSegment[];

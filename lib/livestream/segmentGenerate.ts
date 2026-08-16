@@ -1,5 +1,6 @@
 import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { resolveWithinJob } from './paths';
+import { MAX_REFERENCE_IMAGES } from './constants';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
@@ -97,9 +98,13 @@ export async function triggerSegmentGeneration(
     // Google Flow (xem lib/googleFlow/videoGen.ts) — chỉ dùng ảnh người mẫu tham chiếu cho đoạn
     // KHÔNG có startPath (đoạn đầu chuỗi chain, hoặc chaining='off'), để không phá continuity của
     // các đoạn sau vốn đang được đảm bảo bằng frame chaining.
+    // Cap tối đa MAX_REFERENCE_IMAGES ảnh đầu để tránh Veo bị loãng đặc điểm (xem constants.ts).
     let refPaths: string[] | undefined;
-    if (!startPath && found.product.spokespersonImagePath) {
-      refPaths = [resolveWithinJob(jobId, found.product.spokespersonImagePath)];
+    const refImages = found.product.spokespersonImagePaths ?? [];
+    if (!startPath && refImages.length > 0) {
+      refPaths = refImages
+        .slice(0, MAX_REFERENCE_IMAGES)
+        .map((rel) => resolveWithinJob(jobId, rel));
     }
 
     const flowProjectId = await ensureJobFlowId(jobId);

@@ -29,32 +29,35 @@ export function ProductPanel({
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [uploadingSpokesperson, setUploadingSpokesperson] = useState(false);
 
-  async function handleSpokespersonUpload(file: File) {
+  async function handleSpokespersonUpload(files: File[]) {
+    if (files.length === 0) return;
     setUploadingSpokesperson(true);
     try {
       const form = new FormData();
-      form.set('image', file);
+      for (const f of files) form.append('image', f);
       const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/spokesperson`, {
         method: 'POST',
         body: form,
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Upload ảnh người mẫu thất bại');
+        alert(data.error || 'Upload ảnh tham chiếu thất bại');
         return;
       }
+      if (data.warnings?.length) alert(data.warnings.join('\n'));
       await onRefresh();
     } finally {
       setUploadingSpokesperson(false);
     }
   }
 
-  async function handleSpokespersonRemove() {
+  async function handleSpokespersonRemove(relPath: string) {
     setUploadingSpokesperson(true);
     try {
-      const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/spokesperson`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(
+        `/api/livestream/${jobId}/products/${product.id}/spokesperson?path=${encodeURIComponent(relPath)}`,
+        { method: 'DELETE' }
+      );
       const data = await res.json();
       if (!res.ok) alert(data.error || 'Xoá ảnh thất bại');
       await onRefresh();
@@ -173,26 +176,51 @@ export function ProductPanel({
       )}
 
       <div className="field-group">
-        <label>Ảnh người mẫu (tuỳ chọn) — giữ nhất quán ngoại hình khi gen video</label>
-        {product.spokespersonImagePath && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <img
-              src={`/api/livestream/${jobId}/media/${product.spokespersonImagePath}`}
-              alt="Ảnh người mẫu"
-              style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }}
-            />
-            <button className="btn" onClick={handleSpokespersonRemove} disabled={uploadingSpokesperson}>
-              🗑️ Xoá ảnh người mẫu
-            </button>
+        <label>Ảnh tham chiếu (tuỳ chọn) — giữ nhất quán ngoại hình/sản phẩm khi gen video (tối đa 3 ảnh đầu được dùng)</label>
+        {product.spokespersonImagePaths.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+            {product.spokespersonImagePaths.map((relPath) => (
+              <div key={relPath} style={{ position: 'relative', width: 64, height: 64 }}>
+                <img
+                  src={`/api/livestream/${jobId}/media/${relPath}`}
+                  alt="Ảnh tham chiếu"
+                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSpokespersonRemove(relPath)}
+                  disabled={uploadingSpokesperson}
+                  title="Xoá ảnh này"
+                  style={{
+                    position: 'absolute',
+                    top: -6,
+                    right: -6,
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: 'var(--surface2)',
+                    color: 'var(--text)',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    lineHeight: '20px',
+                    padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
         )}
         <input
           type="file"
           accept="image/*"
+          multiple
           disabled={uploadingSpokesperson}
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleSpokespersonUpload(file);
+            const files = e.target.files ? Array.from(e.target.files) : [];
+            if (files.length) handleSpokespersonUpload(files);
             e.target.value = '';
           }}
           style={{ fontSize: 12 }}

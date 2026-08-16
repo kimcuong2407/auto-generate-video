@@ -28,7 +28,13 @@ export async function readJob(jobId: string): Promise<LivestreamJob> {
   const job = JSON.parse(raw) as LivestreamJob;
   for (const product of job.products || []) {
     if (product.sourceFilePath === undefined) product.sourceFilePath = null;
-    if (product.spokespersonImagePath === undefined) product.spokespersonImagePath = null;
+    // Migrate field cũ spokespersonImagePath (1 ảnh, string|null) sang mảng
+    // spokespersonImagePaths — giữ job.json cũ chạy được sau khi đổi data model.
+    if (!Array.isArray(product.spokespersonImagePaths)) {
+      const legacy = (product as unknown as { spokespersonImagePath?: string | null })
+        .spokespersonImagePath;
+      product.spokespersonImagePaths = legacy ? [legacy] : [];
+    }
     for (const segment of product.segments || []) {
       if (segment.lastFramePath === undefined) segment.lastFramePath = null;
     }

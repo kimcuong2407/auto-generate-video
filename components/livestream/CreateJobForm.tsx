@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { LivestreamChaining } from '@/lib/livestream/types';
 import type { VeoModel } from '@/lib/types';
@@ -20,14 +20,84 @@ interface EntryFormState {
   type: EntryType;
   link: string;
   text: string;
-  file: File | null;
+  files: File[];
   targetDurationMin: string; // nhập theo phút cho dễ, quy đổi ra giây khi submit
 }
 
 let entryKeyCounter = 0;
 function newEntry(): EntryFormState {
   entryKeyCounter += 1;
-  return { key: `entry-${entryKeyCounter}`, type: 'link', link: '', text: '', file: null, targetDurationMin: '1' };
+  return { key: `entry-${entryKeyCounter}`, type: 'link', link: '', text: '', files: [], targetDurationMin: '1' };
+}
+
+/** Kiểm tra file có phải ảnh (để chỉ preview ảnh, không preview .txt/.csv). */
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/');
+}
+
+/** Thumbnail 1 file đã chọn (ảnh preview qua object URL, file text hiện tên) + nút xoá. */
+function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isImageFile(file)) return;
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  return (
+    <div style={{ position: 'relative', width: 64, height: 64 }}>
+      {url ? (
+        <img
+          src={url}
+          alt={file.name}
+          style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 10,
+            padding: 4,
+            textAlign: 'center',
+            wordBreak: 'break-all',
+            color: 'var(--text-muted)',
+          }}
+        >
+          📄 {file.name.slice(0, 18)}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Xoá file này"
+        style={{
+          position: 'absolute',
+          top: -6,
+          right: -6,
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          border: 'none',
+          background: 'var(--surface2)',
+          color: 'var(--text)',
+          cursor: 'pointer',
+          fontSize: 12,
+          lineHeight: '20px',
+          padding: 0,
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 
 export function CreateJobForm() {
@@ -80,12 +150,15 @@ export function CreateJobForm() {
         }
         entriesMeta.push({ type: 'manual', text: entry.text.trim(), targetDurationSec });
       } else {
-        if (!entry.file) {
+        if (entry.files.length === 0) {
           setError(`Sản phẩm #${i + 1}: thiếu file`);
           return;
         }
         const fileField = `entryFile_${i}`;
-        form.set(fileField, entry.file);
+        // Gửi nhiều file cùng field name — server đọc bằng form.getAll(fileField).
+        for (const f of entry.files) {
+          form.append(fileField, f);
+        }
         entriesMeta.push({ type: 'file', fileField, targetDurationSec });
       }
     }
@@ -237,11 +310,45 @@ export function CreateJobForm() {
                 />
               )}
               {entry.type === 'file' && (
-                <input
-                  type="file"
-                  accept="image/*,.txt,.csv"
-                  onChange={(e) => updateEntry(entry.key, { file: e.target.files?.[0] || null })}
-                />
+                <>
+                  <input
+                    type="file"
+                    accept="image/*,.txt,.csv"
+                    multiple
+                    onChange={(e) => {
+                      const picked = e.target.files ? Array.from(e.target.files) : [];
+                      // Append vào danh sách đã chọn để có thể chọn nhiều lần; giữ trùng lặp tối thiểu
+                      // bằng cách lọc theo name+size.
+                      updateEntry(entry.key, {
+                        files: [
+                          ...entry.files,
+                          ...picked.filter(
+                            (p) => !entry.files.some((f) => f.name === p.name && f.size === p.size)
+                          ),
+                        ],
+                      });
+                      e.target.value = '';
+                    }}
+                  />
+                  {entry.files.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                      {entry.files.map((f, fi) => (
+                        <FilePreview
+                          key={`${f.name}-${f.size}-${fi}`}
+                          file={f}
+                          onRemove={() =>
+                            updateEntry(entry.key, {
+                              files: entry.files.filter((_, idx) => idx !== fi),
+                            })
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Ảnh đầu tiên dùng để AI đọc mô tả; tất cả ảnh được lưu làm ảnh tham chiếu khi gen video.
+                  </span>
+                </>
               )}
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sản phẩm #{i + 1}</span>
             </div>

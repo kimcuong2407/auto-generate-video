@@ -18,9 +18,9 @@ async function unlinkIfExists(absPath: string) {
 }
 
 /**
- * Upload/thay ảnh người mẫu tham chiếu cho 1 sản phẩm trong job livestream — dùng làm refPaths
+ * Upload/thêm ảnh tham chiếu cho 1 sản phẩm trong job livestream — dùng làm refPaths
  * (character reference) khi gen video đoạn không có startPath từ frame-chaining, xem
- * lib/livestream/segmentGenerate.ts.
+ * lib/livestream/segmentGenerate.ts. Hỗ trợ nhiều ảnh: mỗi lần POST sẽ APPEND thêm (không ghi đè).
  */
 export async function POST(
   req: NextRequest,
@@ -38,34 +38,43 @@ export async function POST(
   }
 
   const form = await req.formData();
-  const file = form.get('image');
-  if (!(file instanceof File) || file.size === 0) {
-    return NextResponse.json({ error: 'Thiếu ảnh người mẫu' }, { status: 400 });
-  }
-  if (file.size > MAX_IMAGE_SIZE_BYTES) {
-    return NextResponse.json(
-      { error: `Ảnh vượt quá ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB` },
-      { status: 400 }
-    );
-  }
-  const ext = path.extname(file.name).toLowerCase() || '.jpg';
-  if (!IMAGE_EXTS.has(ext)) {
-    return NextResponse.json({ error: 'Chỉ nhận file ảnh (jpg/png/webp/gif)' }, { status: 400 });
+  const files = form.getAll('image').filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) {
+    return NextResponse.json({ error: 'Thiếu ảnh tham chiếu' }, { status: 400 });
   }
 
-  if (product.spokespersonImagePath) {
-    await unlinkIfExists(resolveWithinJob(id, product.spokespersonImagePath));
+  // Đặt tên duy nhất theo thời điểm + index để không đè ảnh đã có (append). Date.now() an toàn ở
+  // runtime server thường (chỉ bị chặn trong workflow script).
+  const stamp = Date.now();
+  const newRelPaths: string[] = [];
+  const warnings: string[] = [];
+  let k = 0;
+  for (const file of files) {
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      warnings.push(`Ảnh "${file.name}" vượt quá ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB — đã bỏ qua`);
+      continue;
+    }
+    const ext = path.extname(file.name).toLowerCase() || '.jpg';
+    if (!IMAGE_EXTS.has(ext)) {
+      warnings.push(`"${file.name}" không phải ảnh (jpg/png/webp/gif) — đã bỏ qua`);
+      continue;
+    }
+    const fileName = `${productId}-spokesperson-${stamp}-${k}${ext}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await fs.writeFile(path.join(jobInputsDir(id), fileName), buffer);
+    newRelPaths.push(path.join('inputs', fileName));
+    k += 1;
   }
 
-  const fileName = `${productId}-spokesperson${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(path.join(jobInputsDir(id), fileName), buffer);
-  const relPath = path.join('inputs', fileName);
+  if (newRelPaths.length === 0) {
+    return NextResponse.json({ error: warnings[0] || 'Không có ảnh hợp lệ' }, { status: 400 });
+  }
 
   const { job: updatedJob, result } = await updateJob(id, (j) => {
     const p = j.products.find((x) => x.id === productId);
     if (!p) return { error: 'Sản phẩm không tồn tại' };
-    p.spokespersonImagePath = relPath;
+    if (!Array.isArray(p.spokespersonImagePaths)) p.spokespersonImagePaths = [];
+    p.spokespersonImagePaths.push(...newRelPaths);
     return { error: null as string | null };
   });
 
@@ -73,11 +82,15 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: 404 });
   }
 
-  return NextResponse.json({ job: updatedJob });
+  return NextResponse.json({ job: updatedJob, warnings });
 }
 
+/**
+ * Xoá ảnh tham chiếu. Truyền query ?path=inputs/xxx.jpg để xoá đúng 1 ảnh; không truyền path thì
+ * xoá toàn bộ ảnh tham chiếu của sản phẩm.
+ */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string; productId: string } }
 ) {
   const { id, productId } = params;
@@ -91,14 +104,28 @@ export async function DELETE(
     return NextResponse.json({ error: 'Sản phẩm không tồn tại' }, { status: 404 });
   }
 
-  if (product.spokespersonImagePath) {
-    await unlinkIfExists(resolveWithinJob(id, product.spokespersonImagePath));
+  const targetPath = new URL(req.url).searchParams.get('path');
+  const current = product.spokespersonImagePaths ?? [];
+
+  if (targetPath) {
+    if (!current.includes(targetPath)) {
+      return NextResponse.json({ error: 'Ảnh không tồn tại trong sản phẩm' }, { status: 404 });
+    }
+    await unlinkIfExists(resolveWithinJob(id, targetPath));
+  } else {
+    for (const rel of current) {
+      await unlinkIfExists(resolveWithinJob(id, rel));
+    }
   }
 
   const { job: updatedJob, result } = await updateJob(id, (j) => {
     const p = j.products.find((x) => x.id === productId);
     if (!p) return { error: 'Sản phẩm không tồn tại' };
-    p.spokespersonImagePath = null;
+    if (targetPath) {
+      p.spokespersonImagePaths = (p.spokespersonImagePaths ?? []).filter((rel) => rel !== targetPath);
+    } else {
+      p.spokespersonImagePaths = [];
+    }
     return { error: null as string | null };
   });
 
