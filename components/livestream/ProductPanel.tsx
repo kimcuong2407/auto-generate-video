@@ -28,6 +28,8 @@ export function ProductPanel({
   const [savingManual, setSavingManual] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [uploadingSpokesperson, setUploadingSpokesperson] = useState(false);
+  const [uploadingBackground, setUploadingBackground] = useState(false);
+  const [selectingRef, setSelectingRef] = useState(false);
 
   async function handleSpokespersonUpload(files: File[]) {
     if (files.length === 0) return;
@@ -63,6 +65,59 @@ export function ProductPanel({
       await onRefresh();
     } finally {
       setUploadingSpokesperson(false);
+    }
+  }
+
+  async function handleSelectRef(relPath: string | null, kind: 'product' | 'background') {
+    setSelectingRef(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/select-ref`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: relPath, kind }),
+      });
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Chọn ảnh thất bại');
+      await onRefresh();
+    } finally {
+      setSelectingRef(false);
+    }
+  }
+
+  async function handleBackgroundUpload(files: File[]) {
+    if (files.length === 0) return;
+    setUploadingBackground(true);
+    try {
+      const form = new FormData();
+      for (const f of files) form.append('image', f);
+      const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/background`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Upload ảnh background thất bại');
+        return;
+      }
+      if (data.warnings?.length) alert(data.warnings.join('\n'));
+      await onRefresh();
+    } finally {
+      setUploadingBackground(false);
+    }
+  }
+
+  async function handleBackgroundRemove(relPath: string) {
+    setUploadingBackground(true);
+    try {
+      const res = await fetch(
+        `/api/livestream/${jobId}/products/${product.id}/background?path=${encodeURIComponent(relPath)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Xoá ảnh thất bại');
+      await onRefresh();
+    } finally {
+      setUploadingBackground(false);
     }
   }
 
@@ -117,6 +172,9 @@ export function ProductPanel({
   }
 
   const hasGenerating = product.segments.some((s) => s.status === 'generating');
+  // Bắt chọn tay: có ảnh trong kho nhưng chưa chọn ref → chặn gen mọi segment.
+  const needsRefSelection =
+    product.spokespersonImagePaths.length > 0 && !product.selectedRefImagePath;
 
   return (
     <div className="card">
@@ -176,41 +234,78 @@ export function ProductPanel({
       )}
 
       <div className="field-group">
-        <label>Ảnh tham chiếu (tuỳ chọn) — giữ nhất quán ngoại hình/sản phẩm khi gen video (tối đa 3 ảnh đầu được dùng)</label>
+        <label>Ảnh sản phẩm — bấm chọn 1 ảnh làm tham chiếu chính (bắt buộc để gen video)</label>
+        {needsRefSelection && (
+          <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginBottom: 6 }}>
+            ⚠️ Hãy chọn 1 ảnh sản phẩm làm tham chiếu thì mới gen được.
+          </div>
+        )}
         {product.spokespersonImagePaths.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
-            {product.spokespersonImagePaths.map((relPath) => (
-              <div key={relPath} style={{ position: 'relative', width: 64, height: 64 }}>
-                <img
-                  src={`/api/livestream/${jobId}/media/${relPath}`}
-                  alt="Ảnh tham chiếu"
-                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSpokespersonRemove(relPath)}
-                  disabled={uploadingSpokesperson}
-                  title="Xoá ảnh này"
-                  style={{
-                    position: 'absolute',
-                    top: -6,
-                    right: -6,
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    border: 'none',
-                    background: 'var(--surface2)',
-                    color: 'var(--text)',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    lineHeight: '20px',
-                    padding: 0,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+            {product.spokespersonImagePaths.map((relPath) => {
+              const selected = product.selectedRefImagePath === relPath;
+              return (
+                <div key={relPath} style={{ position: 'relative', width: 64, height: 64 }}>
+                  <img
+                    src={`/api/livestream/${jobId}/media/${relPath}`}
+                    alt="Ảnh sản phẩm"
+                    onClick={() => !selectingRef && handleSelectRef(relPath, 'product')}
+                    title={selected ? 'Ảnh tham chiếu chính' : 'Bấm để chọn làm tham chiếu chính'}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: selected ? '2px solid var(--accent-glow)' : '1px solid var(--border)',
+                      cursor: 'pointer',
+                      opacity: selectingRef ? 0.6 : 1,
+                    }}
+                  />
+                  {selected && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: -4,
+                        left: -4,
+                        background: 'var(--accent-glow)',
+                        color: '#fff',
+                        borderRadius: '50%',
+                        width: 18,
+                        height: 18,
+                        fontSize: 11,
+                        lineHeight: '18px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleSpokespersonRemove(relPath)}
+                    disabled={uploadingSpokesperson}
+                    title="Xoá ảnh này"
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: 'var(--surface2)',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      lineHeight: '20px',
+                      padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
         <input
@@ -226,6 +321,91 @@ export function ProductPanel({
           style={{ fontSize: 12 }}
         />
         {uploadingSpokesperson && <span style={{ fontSize: 12 }}>⏳ Đang xử lý...</span>}
+      </div>
+
+      <div className="field-group">
+        <label>Ảnh background (tuỳ chọn) — bấm chọn 1 ảnh làm bối cảnh khi gen video</label>
+        {product.backgroundImagePaths.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+            {product.backgroundImagePaths.map((relPath) => {
+              const selected = product.selectedBackgroundImagePath === relPath;
+              return (
+                <div key={relPath} style={{ position: 'relative', width: 64, height: 64 }}>
+                  <img
+                    src={`/api/livestream/${jobId}/media/${relPath}`}
+                    alt="Ảnh background"
+                    onClick={() => !selectingRef && handleSelectRef(selected ? null : relPath, 'background')}
+                    title={selected ? 'Đang chọn — bấm để bỏ chọn' : 'Bấm để chọn làm background'}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: selected ? '2px solid var(--accent-glow)' : '1px solid var(--border)',
+                      cursor: 'pointer',
+                      opacity: selectingRef ? 0.6 : 1,
+                    }}
+                  />
+                  {selected && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: -4,
+                        left: -4,
+                        background: 'var(--accent-glow)',
+                        color: '#fff',
+                        borderRadius: '50%',
+                        width: 18,
+                        height: 18,
+                        fontSize: 11,
+                        lineHeight: '18px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleBackgroundRemove(relPath)}
+                    disabled={uploadingBackground}
+                    title="Xoá ảnh này"
+                    style={{
+                      position: 'absolute',
+                      top: -6,
+                      right: -6,
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: 'var(--surface2)',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      lineHeight: '20px',
+                      padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={uploadingBackground}
+          onChange={(e) => {
+            const files = e.target.files ? Array.from(e.target.files) : [];
+            if (files.length) handleBackgroundUpload(files);
+            e.target.value = '';
+          }}
+          style={{ fontSize: 12 }}
+        />
+        {uploadingBackground && <span style={{ fontSize: 12 }}>⏳ Đang xử lý...</span>}
       </div>
 
       <div className="field-group">
@@ -270,7 +450,8 @@ export function ProductPanel({
                   <button
                     className="retry-btn"
                     onClick={() => callSegmentAction(segment.id, 'generate')}
-                    disabled={busySegmentId === segment.id}
+                    disabled={busySegmentId === segment.id || needsRefSelection}
+                    title={needsRefSelection ? 'Hãy chọn 1 ảnh sản phẩm làm tham chiếu' : undefined}
                   >
                     ▶ Gen
                   </button>
@@ -279,7 +460,8 @@ export function ProductPanel({
                   <button
                     className="retry-btn"
                     onClick={() => callSegmentAction(segment.id, 'retry')}
-                    disabled={busySegmentId === segment.id}
+                    disabled={busySegmentId === segment.id || needsRefSelection}
+                    title={needsRefSelection ? 'Hãy chọn 1 ảnh sản phẩm làm tham chiếu' : undefined}
                   >
                     ↺ Retry
                   </button>

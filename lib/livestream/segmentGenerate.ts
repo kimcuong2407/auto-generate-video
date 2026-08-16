@@ -1,6 +1,5 @@
 import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { resolveWithinJob } from './paths';
-import { MAX_REFERENCE_IMAGES } from './constants';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
@@ -86,25 +85,33 @@ export async function triggerSegmentGeneration(
   if (!segment.veoPrompt.trim()) {
     return { segmentId, ok: false, error: 'Đoạn chưa có Veo prompt — cần sinh script trước' };
   }
+  // Bắt chọn tay: nếu sản phẩm có ảnh trong kho nhưng chưa chọn ảnh ref → chặn gen (tránh gen
+  // nhầm/không nhất quán). Sản phẩm không có ảnh nào vẫn cho gen t2v như cũ.
+  if ((found.product.spokespersonImagePaths?.length ?? 0) > 0 && !found.product.selectedRefImagePath) {
+    return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn 1 ảnh ở phần chi tiết' };
+  }
 
   try {
-    let startPath: string | undefined;
-    const prevSegment = findPreviousSegment(job, found.product, segment);
-    if (prevSegment?.status === 'done' && prevSegment.lastFramePath) {
-      startPath = resolveWithinJob(jobId, prevSegment.lastFramePath);
+    // Ref (r2v) luôn ưu tiên hơn frame-chaining để giữ sản phẩm/nhân vật nhất quán xuyên suốt
+    // (video ghép lại sau). refPaths và startPath loại trừ nhau ở tầng endpoint Google Flow
+    // (xem lib/googleFlow/videoGen.ts) — khi đã có ref, KHÔNG dùng startPath. r2v cho phép nhiều
+    // referenceImages nên truyền cả ảnh sản phẩm đã chọn + ảnh background đã chọn (nếu có).
+    const refPathList: string[] = [];
+    if (found.product.selectedRefImagePath) {
+      refPathList.push(resolveWithinJob(jobId, found.product.selectedRefImagePath));
     }
+    if (found.product.selectedBackgroundImagePath) {
+      refPathList.push(resolveWithinJob(jobId, found.product.selectedBackgroundImagePath));
+    }
+    const refPaths = refPathList.length > 0 ? refPathList : undefined;
 
-    // refPaths (character reference) và startPath (frame chaining) loại trừ nhau ở tầng endpoint
-    // Google Flow (xem lib/googleFlow/videoGen.ts) — chỉ dùng ảnh người mẫu tham chiếu cho đoạn
-    // KHÔNG có startPath (đoạn đầu chuỗi chain, hoặc chaining='off'), để không phá continuity của
-    // các đoạn sau vốn đang được đảm bảo bằng frame chaining.
-    // Cap tối đa MAX_REFERENCE_IMAGES ảnh đầu để tránh Veo bị loãng đặc điểm (xem constants.ts).
-    let refPaths: string[] | undefined;
-    const refImages = found.product.spokespersonImagePaths ?? [];
-    if (!startPath && refImages.length > 0) {
-      refPaths = refImages
-        .slice(0, MAX_REFERENCE_IMAGES)
-        .map((rel) => resolveWithinJob(jobId, rel));
+    // Chỉ chain frame khi KHÔNG có ref (sản phẩm không có ảnh tham chiếu nào).
+    let startPath: string | undefined;
+    if (!refPaths) {
+      const prevSegment = findPreviousSegment(job, found.product, segment);
+      if (prevSegment?.status === 'done' && prevSegment.lastFramePath) {
+        startPath = resolveWithinJob(jobId, prevSegment.lastFramePath);
+      }
     }
 
     const flowProjectId = await ensureJobFlowId(jobId);

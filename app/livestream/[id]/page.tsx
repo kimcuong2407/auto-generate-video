@@ -137,6 +137,10 @@ export default function LivestreamDetailPage() {
   }
 
   const hasGeneratingSegment = job.products.some((p) => p.segments.some((s) => s.status === 'generating'));
+  // Có sản phẩm có ảnh trong kho nhưng chưa chọn ảnh tham chiếu → chặn "Gen tất cả".
+  const someProductNeedsRef = job.products.some(
+    (p) => p.spokespersonImagePaths.length > 0 && !p.selectedRefImagePath
+  );
 
   return (
     <div style={{ display: 'flex', width: '100%' }}>
@@ -162,8 +166,12 @@ export default function LivestreamDetailPage() {
             <button
               className="btn btn-primary"
               onClick={handleGenerateAllSegments}
-              disabled={actionBusy}
-              title="Tạo video cho tất cả đoạn (cần Orino Flow đã đăng nhập)"
+              disabled={actionBusy || someProductNeedsRef}
+              title={
+                someProductNeedsRef
+                  ? 'Có sản phẩm chưa chọn ảnh tham chiếu — hãy chọn 1 ảnh cho từng sản phẩm'
+                  : 'Tạo video cho tất cả đoạn (cần Orino Flow đã đăng nhập)'
+              }
             >
               ▶ Gen tất cả đoạn
             </button>

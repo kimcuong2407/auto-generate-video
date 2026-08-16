@@ -18,9 +18,9 @@ async function unlinkIfExists(absPath: string) {
 }
 
 /**
- * Upload/thêm ảnh tham chiếu cho 1 sản phẩm trong job livestream — dùng làm refPaths
- * (character reference) khi gen video đoạn không có startPath từ frame-chaining, xem
- * lib/livestream/segmentGenerate.ts. Hỗ trợ nhiều ảnh: mỗi lần POST sẽ APPEND thêm (không ghi đè).
+ * Upload/thêm ảnh background (bối cảnh) cho 1 sản phẩm — người dùng chọn 1 ảnh trong kho này qua
+ * route select-ref (kind='background'), dùng kèm ảnh sản phẩm làm refPaths (r2v) khi gen video.
+ * Mỗi lần POST sẽ APPEND thêm (không ghi đè).
  */
 export async function POST(
   req: NextRequest,
@@ -40,11 +40,9 @@ export async function POST(
   const form = await req.formData();
   const files = form.getAll('image').filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) {
-    return NextResponse.json({ error: 'Thiếu ảnh tham chiếu' }, { status: 400 });
+    return NextResponse.json({ error: 'Thiếu ảnh background' }, { status: 400 });
   }
 
-  // Đặt tên duy nhất theo thời điểm + index để không đè ảnh đã có (append). Date.now() an toàn ở
-  // runtime server thường (chỉ bị chặn trong workflow script).
   const stamp = Date.now();
   const newRelPaths: string[] = [];
   const warnings: string[] = [];
@@ -59,7 +57,7 @@ export async function POST(
       warnings.push(`"${file.name}" không phải ảnh (jpg/png/webp/gif) — đã bỏ qua`);
       continue;
     }
-    const fileName = `${productId}-spokesperson-${stamp}-${k}${ext}`;
+    const fileName = `${productId}-bg-${stamp}-${k}${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     await fs.writeFile(path.join(jobInputsDir(id), fileName), buffer);
     newRelPaths.push(path.join('inputs', fileName));
@@ -73,8 +71,8 @@ export async function POST(
   const { job: updatedJob, result } = await updateJob(id, (j) => {
     const p = j.products.find((x) => x.id === productId);
     if (!p) return { error: 'Sản phẩm không tồn tại' };
-    if (!Array.isArray(p.spokespersonImagePaths)) p.spokespersonImagePaths = [];
-    p.spokespersonImagePaths.push(...newRelPaths);
+    if (!Array.isArray(p.backgroundImagePaths)) p.backgroundImagePaths = [];
+    p.backgroundImagePaths.push(...newRelPaths);
     return { error: null as string | null };
   });
 
@@ -86,8 +84,8 @@ export async function POST(
 }
 
 /**
- * Xoá ảnh tham chiếu. Truyền query ?path=inputs/xxx.jpg để xoá đúng 1 ảnh; không truyền path thì
- * xoá toàn bộ ảnh tham chiếu của sản phẩm.
+ * Xoá ảnh background. Truyền query ?path=inputs/xxx.jpg để xoá đúng 1 ảnh; không truyền path thì
+ * xoá toàn bộ. Nếu ảnh bị xoá đang được chọn (selectedBackgroundImagePath) thì clear lựa chọn.
  */
 export async function DELETE(
   req: NextRequest,
@@ -105,7 +103,7 @@ export async function DELETE(
   }
 
   const targetPath = new URL(req.url).searchParams.get('path');
-  const current = product.spokespersonImagePaths ?? [];
+  const current = product.backgroundImagePaths ?? [];
 
   if (targetPath) {
     if (!current.includes(targetPath)) {
@@ -122,11 +120,11 @@ export async function DELETE(
     const p = j.products.find((x) => x.id === productId);
     if (!p) return { error: 'Sản phẩm không tồn tại' };
     if (targetPath) {
-      p.spokespersonImagePaths = (p.spokespersonImagePaths ?? []).filter((rel) => rel !== targetPath);
-      if (p.selectedRefImagePath === targetPath) p.selectedRefImagePath = null;
+      p.backgroundImagePaths = (p.backgroundImagePaths ?? []).filter((rel) => rel !== targetPath);
+      if (p.selectedBackgroundImagePath === targetPath) p.selectedBackgroundImagePath = null;
     } else {
-      p.spokespersonImagePaths = [];
-      p.selectedRefImagePath = null;
+      p.backgroundImagePaths = [];
+      p.selectedBackgroundImagePath = null;
     }
     return { error: null as string | null };
   });

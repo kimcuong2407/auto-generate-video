@@ -47,14 +47,25 @@ export interface LivestreamProduct {
   description: string;
   targetDurationSec: number;
   /**
-   * Danh sách đường dẫn tương đối các ảnh tham chiếu (người mẫu/người dẫn + ảnh input sản phẩm),
-   * mảng rỗng nếu không dùng. Dùng làm refPaths (character reference) cho đoạn không có startPath
-   * từ frame-chaining (đoạn đầu tiên của chuỗi chain, hoặc job.chaining='off') — refPaths và
-   * startPath loại trừ nhau ở tầng endpoint Google Flow nên không thể dùng đồng thời. Khi gen chỉ
-   * lấy tối đa MAX_REFERENCE_IMAGES ảnh đầu để tránh Veo bị loãng, xem
-   * lib/livestream/segmentGenerate.ts. Ảnh input sản phẩm lúc khởi tạo cũng được lưu vào đây.
+   * KHO ảnh sản phẩm (người mẫu/người dẫn + ảnh input sản phẩm) — mảng đường dẫn tương đối,
+   * rỗng nếu không dùng. Người dùng chọn ĐÚNG 1 ảnh trong kho này làm ref chính qua
+   * `selectedRefImagePath`. Ảnh input sản phẩm lúc khởi tạo cũng được lưu vào đây.
    */
   spokespersonImagePaths: string[];
+  /**
+   * Đường dẫn tương đối ảnh sản phẩm ĐƯỢC CHỌN làm reference chính (bắt buộc chọn tay ở detail
+   * mới gen được nếu kho ảnh không rỗng). Phải nằm trong `spokespersonImagePaths`. null = chưa chọn.
+   * Dùng làm refPaths (r2v, IMAGE_USAGE_TYPE_ASSET) — ref luôn ưu tiên hơn frame-chaining để giữ
+   * sản phẩm nhất quán xuyên suốt, xem lib/livestream/segmentGenerate.ts.
+   */
+  selectedRefImagePath: string | null;
+  /** KHO ảnh background (bối cảnh) người dùng upload — mảng đường dẫn tương đối, rỗng nếu không dùng. */
+  backgroundImagePaths: string[];
+  /**
+   * Ảnh background ĐƯỢC CHỌN (tuỳ chọn) — phải nằm trong `backgroundImagePaths`, null = không dùng.
+   * Nếu có, truyền kèm ảnh sản phẩm làm ref thứ 2 khi gen (r2v cho phép nhiều referenceImages).
+   */
+  selectedBackgroundImagePath: string | null;
   scriptStatus: ScriptStatus;
   scriptError: string | null;
   segments: LivestreamSegment[];

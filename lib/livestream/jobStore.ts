@@ -35,6 +35,10 @@ export async function readJob(jobId: string): Promise<LivestreamJob> {
         .spokespersonImagePath;
       product.spokespersonImagePaths = legacy ? [legacy] : [];
     }
+    // Field chọn ref/background (bắt chọn tay — KHÔNG mặc định ảnh đầu để tránh gen nhầm ảnh).
+    if (product.selectedRefImagePath === undefined) product.selectedRefImagePath = null;
+    if (!Array.isArray(product.backgroundImagePaths)) product.backgroundImagePaths = [];
+    if (product.selectedBackgroundImagePath === undefined) product.selectedBackgroundImagePath = null;
     for (const segment of product.segments || []) {
       if (segment.lastFramePath === undefined) segment.lastFramePath = null;
     }

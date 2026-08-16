@@ -22,6 +22,7 @@ export function buildProduct(fields: {
   description?: string;
   targetDurationSec: number;
   spokespersonImagePaths?: string[];
+  backgroundImagePaths?: string[];
 }): LivestreamProduct {
   productCounter += 1;
   const idBase = slugify(fields.name || `prod-${fields.order}`).slice(0, 30) || `prod-${fields.order}`;
@@ -38,6 +39,9 @@ export function buildProduct(fields: {
     description: fields.description || '',
     targetDurationSec: fields.targetDurationSec,
     spokespersonImagePaths: fields.spokespersonImagePaths ?? [],
+    selectedRefImagePath: null,
+    backgroundImagePaths: fields.backgroundImagePaths ?? [],
+    selectedBackgroundImagePath: null,
     scriptStatus: 'idle',
     scriptError: null,
     segments: [],
