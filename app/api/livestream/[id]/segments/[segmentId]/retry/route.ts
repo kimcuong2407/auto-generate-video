@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: { id: string; segmentId: string } }
 ) {
   const { id, segmentId } = params;
-  if (!jobExists(id)) {
+  if (!(await jobExists(id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 

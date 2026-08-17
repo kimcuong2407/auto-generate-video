@@ -15,7 +15,7 @@ const VALID_MODELS: VeoModel[] = [
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!projectExists(id)) {
+  if (!(await projectExists(id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

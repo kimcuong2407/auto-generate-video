@@ -25,7 +25,7 @@ async function unlinkIfExists(absPath: string) {
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!jobExists(id)) {
+  if (!(await jobExists(id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 /** Xoá ảnh mẫu hiện tại của job (nếu có) và clear selectedModelImagePath. */
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!jobExists(id)) {
+  if (!(await jobExists(id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 

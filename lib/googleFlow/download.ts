@@ -7,7 +7,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { labsRequest, readJson } from './client';
+import { labsRequest, readJson, fetchRetry } from './client';
 import { FlowApiError } from './errors';
 
 /** Lấy signed URL tải media (không follow redirect). */
@@ -33,7 +33,7 @@ export async function downloadUrlTo(url: string, destAbsPath: string): Promise<s
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5 * 60_000);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetchRetry(url, { signal: controller.signal });
     if (!res.ok) {
       throw new FlowApiError(`Tải media thất bại HTTP ${res.status}`, res.status);
     }

@@ -26,6 +26,22 @@ function buildErrorMessage(status: number, body: string): string {
   return `Google Flow HTTP ${status}${snippet ? `: ${snippet}` : ''}`;
 }
 
+/**
+ * Retry 1 lần khi fetch() ném lỗi mạng "fetch failed" thuần (undici) — thường do socket
+ * keep-alive bị phía server đóng âm thầm sau khi idle lâu (dev server chạy nhiều giờ). Không
+ * retry lỗi abort (timeout) hay các lỗi khác — chỉ lỗi kết nối cấp thấp này mới đáng thử lại.
+ */
+export async function fetchRetry(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err instanceof TypeError && err.message === 'fetch failed') {
+      return await fetch(url, init);
+    }
+    throw err;
+  }
+}
+
 /** Gọi request tới labs.google (auth = cookie). `json` nếu có sẽ gửi body JSON. */
 export async function labsRequest(
   path: string,
@@ -48,7 +64,7 @@ export async function labsRequest(
   }
 
   try {
-    return await fetch(`${LABS_BASE}${path}`, {
+    return await fetchRetry(`${LABS_BASE}${path}`, {
       method: opts.method ?? (opts.json !== undefined ? 'POST' : 'GET'),
       headers,
       body,
@@ -81,7 +97,7 @@ export async function apiRequest(
   }
 
   try {
-    return await fetch(`${API_BASE}${path}`, {
+    return await fetchRetry(`${API_BASE}${path}`, {
       method: opts.json !== undefined ? 'POST' : 'GET',
       headers,
       body,

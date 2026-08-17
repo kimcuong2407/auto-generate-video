@@ -44,13 +44,19 @@ Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thí
  * người dùng có thể chọn làm ref chính khi gen video. Mô tả sản phẩm (product.description) sẽ được
  * ghép vào cuối prompt này lúc gọi.
  */
-export const BACKGROUND_SYSTEM_PROMPT = `Generate a single realistic livestream frame: a host/presenter naturally holding or using the product below, inside a believable real-world live-selling setting (a home room, kitchen, small studio, or shop corner that fits the product).
+export const BACKGROUND_SYSTEM_PROMPT = `Generate a single realistic livestream frame composed like a real Vietnamese e-commerce live-selling session (Shopee Live style), inside a believable real-world setting.
+
+Composition (frame this exactly like a real seller streaming from their phone):
+- A host/presenter SITS at a table (seated, stationary — never standing or walking), positioned OFF-CENTER toward one side of the frame (not dead center), shown from roughly the waist up, actively interacting with the product below — holding, showing, or gesturing toward it with the hands like a live seller talking to viewers.
+- The products are laid out on the table IN FRONT of the presenter, within easy reach: several items arranged side by side (bottles, jars, tubs, boxes as appropriate), with the main product clearly the most visible and recognizable. The products stay in front of the presenter at all times.
+- Setting: a bright, believable home corner or small studio — light-colored walls, maybe a shelf or light decor behind — a real live-selling space, never an empty or plain backdrop.
+- Vertical portrait framing (phone-shot orientation). Keep the presenter and products within the central band of the frame, leaving comfortable empty margin at the very top and very bottom of the frame.
 
 Requirements:
 - The presenter is clearly present and interacting with the product; the product is visible and recognizable.
 - Natural, slightly imperfect lighting like a real room — not a flawless studio. Authentic, candid, shot-on-phone look with realistic skin and material textures. Avoid glossy/CGI/3D-render perfection.
 - Natural hand anatomy: exactly two hands, exactly two arms, no extra limbs. Keep hands simple and close to the body; do not depict complex multi-finger gestures.
-- No subtitles, no captions, no on-screen text, no watermark.
+- No subtitles, no captions, no on-screen text, no watermark, no UI elements, no app interface, no buttons, no icons, no overlays. This must be a clean photographic scene only.
 
 Product context:`;
 
@@ -75,11 +81,20 @@ b. 1 "người mẫu/người dẫn livestream" DUY NHẤT: chốt cố định 
    tóc/màu tóc, vóc dáng, trang phục (kiểu dáng + màu sắc cụ thể), và đặc điểm nhận diện riêng
    (VD: đeo kính, hình xăm, trang sức...) nếu có. Mô tả này PHẢI giống hệt nhau ở MỌI đoạn — TUYỆT
    ĐỐI KHÔNG đổi trang phục, kiểu tóc, hay đặc điểm ngoại hình giữa các đoạn, kể cả khi thời lượng
-   video dài, vì đây là 1 buổi live liên tục chứ không phải nhiều lần lên hình khác nhau.
+   video dài, vì đây là 1 buổi live liên tục chứ không phải nhiều lần lên hình khác nhau. Nếu có
+   ảnh reference người mẫu, mô tả PHẢI khớp đúng người trong ảnh (trang phục, kiểu tóc, ngoại hình)
+   và giữ y hệt xuyên suốt.
 
-Cả 2 yếu tố này PHẢI được nhắc lại nhất quán (giữ nguyên từ ngữ mô tả, không diễn đạt lại khác đi)
+c. TƯ THẾ & BỐ CỤC CỐ ĐỊNH cho MỌI đoạn: người dẫn NGỒI TẠI CHỖ trước bàn suốt buổi live (ngồi cố
+   định — TUYỆT ĐỐI KHÔNG đứng dậy, KHÔNG đi lại, KHÔNG rời khỏi ghế, KHÔNG đổi địa điểm giữa các
+   đoạn), chỉ CỬ ĐỘNG TAY và phần thân trên để cầm/giới thiệu sản phẩm. Sản phẩm LUÔN được đặt trên
+   bàn NGAY TRƯỚC MẶT người dẫn trong tầm với ở MỌI đoạn — không cất đi, không đổi vị trí sản phẩm
+   ra khỏi khung. Góc máy và khung hình giữ ổn định (máy đặt cố định quay người ngồi), chỉ có tay và
+   sản phẩm chuyển động.
+
+Cả 3 yếu tố này PHẢI được nhắc lại nhất quán (giữ nguyên từ ngữ mô tả, không diễn đạt lại khác đi)
 trong veoPrompt của MỌI đoạn để khi ghép nối, người xem cảm giác đây là 1 buổi live liên tục do
-đúng 1 người quay tại đúng 1 địa điểm, không phải các đoạn clip rời rạc ghép từ nhiều nơi/nhiều
+đúng 1 người ngồi quay tại đúng 1 chỗ, không phải các đoạn clip rời rạc ghép từ nhiều nơi/nhiều
 người khác nhau.
 
 Hệ thống sẽ tự động lấy khung hình CUỐI CÙNG của video đoạn trước làm khung hình BẮT ĐẦU khi tạo
@@ -100,10 +115,12 @@ nhưng BẮT BUỘC bao phủ đủ 7 thành phần chuyên nghiệp sau (không
 dung có mặt):
 (1) Subject — mô tả người dẫn livestream ĐÚNG theo mô tả cố định đã chốt ở Bước 1.b (giữ nguyên
     giới tính, kiểu tóc, trang phục, đặc điểm nhận diện — KHÔNG thay đổi hay viết lại khác đi giữa
-    các đoạn) và/hoặc sản phẩm (chất liệu, màu sắc, kích thước);
-(2) Action — hành động/cử chỉ cụ thể đang diễn ra; với đoạn thứ 2 trở đi, câu mô tả hành động mở
-    đầu PHẢI tiếp nối trực tiếp từ tư thế/hành động kết thúc của đoạn ngay trước (xem chỉ dẫn
-    image-to-video chaining ở trên).
+    các đoạn), ĐANG NGỒI tại bàn (tư thế ngồi cố định như đã chốt ở Bước 1.c), và/hoặc sản phẩm
+    (chất liệu, màu sắc, kích thước) đặt NGAY TRƯỚC MẶT trên bàn;
+(2) Action — hành động/cử chỉ cụ thể đang diễn ra, CHỈ là cử động tay/thân trên khi ngồi (cầm,
+    xoay, chỉ vào sản phẩm) — người dẫn NGỒI YÊN tại chỗ, KHÔNG đứng dậy/đi lại/rời ghế; với đoạn
+    thứ 2 trở đi, câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/hành động kết thúc
+    của đoạn ngay trước (xem chỉ dẫn image-to-video chaining ở trên).
     RÀNG BUỘC TAY/CHÂN (bắt buộc, áp dụng mọi đoạn có người):
     - Mỗi người CHỈ có đúng 2 tay và 2 chân. TUYỆT ĐỐI KHÔNG mô tả người cầm/giữ/nắm cùng lúc
       nhiều vật bằng quá 2 tay, KHÔNG để 1 vật được nhiều hơn 2 tay giữ, KHÔNG mô tả thao tác cần

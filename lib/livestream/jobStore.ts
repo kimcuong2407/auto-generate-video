@@ -1,80 +1,406 @@
+/**
+ * Store livestream — ruột đã chuyển từ file JSON sang MariaDB (Drizzle).
+ *
+ * Public API GIỮ NGUYÊN chữ ký cũ (readJob/writeJob/updateJob/listJobs/ensureJobFlowId...) để
+ * hàng chục call-site ở app/api/** và lib/** không phải sửa logic — chỉ đọc/ghi object
+ * LivestreamJob lồng đầy đủ như trước. Bên trong: SELECT 3 bảng rồi assemble lại nested object;
+ * ghi thì tách ra job + products + segments, diff INSERT/UPDATE/DELETE trong 1 transaction.
+ *
+ * NGOẠI LỆ chữ ký: jobExists cũ là sync (existsSync) → nay async (SELECT 1) vì DB I/O.
+ *
+ * Chống lost-update: thay write-queue in-memory bằng transaction + SELECT ... FOR UPDATE
+ * (an toàn cả khi chạy nhiều process PM2, khác hẳn queue cũ chỉ đúng trong 1 process).
+ *
+ * Thư mục media (createJobDirs / ensureLivestreamDataRoot) GIỮ NGUYÊN — ảnh/video vẫn ở disk/R2,
+ * DB chỉ lưu đường dẫn/URL.
+ */
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import type { MySql2Database } from 'drizzle-orm/mysql2';
+import { getDb } from '../db/client';
+import * as schema from '../db/schema';
+import { isoToSql, sqlToIso } from '../db/datetime';
 import { LIVESTREAM_DATA_ROOT } from './constants';
-import { jobDir, jobJsonPath, assertValidJobId } from './paths';
+import { jobDir, assertValidJobId } from './paths';
 import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
-import type { LivestreamJob, LivestreamJobSummary } from './types';
+import type {
+  ConcatState,
+  FlowStatusCache,
+  VeoModel,
+} from '../types';
+import type {
+  LivestreamJob,
+  LivestreamJobSummary,
+  LivestreamJobStatus,
+  LivestreamProduct,
+  LivestreamSegment,
+  LivestreamChaining,
+  ProductSourceType,
+  IngestStatus,
+  ScriptStatus,
+  SegmentStatus,
+} from './types';
 
-// Chain các thao tác đọc-sửa-ghi trên cùng 1 job-id để tránh lost-update
-// khi nhiều request (poll, generate, patch product...) chồng nhau — cùng cơ chế
-// writeQueues theo id đang dùng cho project ở lib/data/projectStore.ts.
-const writeQueues = new Map<string, Promise<void>>();
+type Db = MySql2Database<typeof schema>;
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-function enqueue<T>(jobId: string, task: () => Promise<T>): Promise<T> {
-  const prev = writeQueues.get(jobId) || Promise.resolve();
-  const result = prev.then(task, task);
-  const settled = result.then(
-    () => undefined,
-    () => undefined
-  );
-  writeQueues.set(jobId, settled);
-  return result;
+const { livestreamJobs, livestreamProducts, livestreamSegments } = schema;
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
+// ------------------------------------------------------------------
+// Assemble: row DB → object LivestreamJob lồng đầy đủ (khớp boundary cũ).
+// ------------------------------------------------------------------
+
+type JobRow = typeof livestreamJobs.$inferSelect;
+type ProductRow = typeof livestreamProducts.$inferSelect;
+type SegmentRow = typeof livestreamSegments.$inferSelect;
+
+function assembleSegment(row: SegmentRow): LivestreamSegment {
+  return {
+    id: row.segmentKey,
+    order: row.order,
+    voiceoverVi: row.voiceoverVi,
+    veoPrompt: row.veoPrompt,
+    duration: row.duration,
+    status: row.status as SegmentStatus,
+    jobId: row.flowJobId,
+    videoPath: row.videoPath,
+    videoUrl: row.videoUrl,
+    lastFramePath: row.lastFramePath,
+    error: row.error,
+    attempts: row.attempts,
+    lastUpdatedAt: sqlToIso(row.lastUpdatedAt),
+  };
+}
+
+function assembleProduct(row: ProductRow, segments: LivestreamSegment[]): LivestreamProduct {
+  return {
+    id: row.productKey,
+    order: row.order,
+    sourceType: row.sourceType as ProductSourceType,
+    sourceLink: row.sourceLink,
+    sourceFilePath: row.sourceFilePath,
+    rawText: row.rawText,
+    ingestStatus: row.ingestStatus as IngestStatus,
+    ingestError: row.ingestError,
+    name: row.name,
+    description: row.description,
+    targetDurationSec: row.targetDurationSec,
+    scriptStatus: row.scriptStatus as ScriptStatus,
+    scriptError: row.scriptError,
+    segments,
+  };
+}
+
+function assembleJob(
+  jobRow: JobRow,
+  productRows: ProductRow[],
+  segmentRows: SegmentRow[]
+): LivestreamJob {
+  // Nhóm segment theo productRowId, sắp theo order tuyệt đối toàn job.
+  const segsByProduct = new Map<number, SegmentRow[]>();
+  for (const seg of segmentRows) {
+    const list = segsByProduct.get(seg.productRowId) || [];
+    list.push(seg);
+    segsByProduct.set(seg.productRowId, list);
+  }
+  const products = [...productRows]
+    .sort((a, b) => a.order - b.order)
+    .map((p) => {
+      const segs = (segsByProduct.get(p.rowId) || [])
+        .sort((a, b) => a.order - b.order)
+        .map(assembleSegment);
+      return assembleProduct(p, segs);
+    });
+
+  return {
+    id: jobRow.id,
+    name: jobRow.name,
+    createdAt: sqlToIso(jobRow.createdAt) ?? jobRow.createdAt,
+    updatedAt: sqlToIso(jobRow.updatedAt) ?? jobRow.updatedAt,
+    aspectRatio: jobRow.aspectRatio as '9:16' | '16:9',
+    veoModel: jobRow.veoModel as VeoModel,
+    chaining: jobRow.chaining as LivestreamChaining,
+    status: jobRow.status as LivestreamJobStatus,
+    products,
+    spokespersonImagePaths: jobRow.spokespersonImagePaths,
+    selectedRefImagePath: jobRow.selectedRefImagePath,
+    selectedModelImagePath: jobRow.selectedModelImagePath,
+    backgroundImagePaths: jobRow.backgroundImagePaths,
+    selectedBackgroundImagePath: jobRow.selectedBackgroundImagePath,
+    imageR2Urls: jobRow.imageR2Urls,
+    concat: jobRow.concat,
+    flowStatusCache: jobRow.flowStatusCache,
+    flowProjectId: jobRow.flowProjectId,
+    scriptSystemPromptOverride: jobRow.scriptSystemPromptOverride,
+  };
+}
+
+// ------------------------------------------------------------------
+// Tách: object LivestreamJob → giá trị cột (dùng khi INSERT/UPDATE).
+// ------------------------------------------------------------------
+
+function jobToRow(job: LivestreamJob): typeof livestreamJobs.$inferInsert {
+  return {
+    id: job.id,
+    name: job.name,
+    createdAt: isoToSql(job.createdAt) ?? job.createdAt,
+    updatedAt: isoToSql(job.updatedAt) ?? job.updatedAt,
+    aspectRatio: job.aspectRatio,
+    veoModel: job.veoModel,
+    chaining: job.chaining,
+    status: job.status,
+    spokespersonImagePaths: job.spokespersonImagePaths ?? [],
+    selectedRefImagePath: job.selectedRefImagePath ?? null,
+    selectedModelImagePath: job.selectedModelImagePath ?? null,
+    backgroundImagePaths: job.backgroundImagePaths ?? [],
+    selectedBackgroundImagePath: job.selectedBackgroundImagePath ?? null,
+    imageR2Urls: job.imageR2Urls ?? {},
+    concat: job.concat,
+    flowStatusCache: job.flowStatusCache,
+    flowProjectId: job.flowProjectId ?? null,
+    scriptSystemPromptOverride: job.scriptSystemPromptOverride ?? null,
+  };
+}
+
+// ------------------------------------------------------------------
+// Đọc
+// ------------------------------------------------------------------
+
+/** Đọc 1 job + products + segments từ DB, assemble thành LivestreamJob lồng đầy đủ. */
 export async function readJob(jobId: string): Promise<LivestreamJob> {
   assertValidJobId(jobId);
-  const raw = await fs.readFile(jobJsonPath(jobId), 'utf-8');
-  const job = JSON.parse(raw) as LivestreamJob;
-  for (const product of job.products || []) {
-    if (product.sourceFilePath === undefined) product.sourceFilePath = null;
-    for (const segment of product.segments || []) {
-      if (segment.lastFramePath === undefined) segment.lastFramePath = null;
-    }
+  const db = getDb();
+  const jobRows = await db
+    .select()
+    .from(livestreamJobs)
+    .where(eq(livestreamJobs.id, jobId))
+    .limit(1);
+  const jobRow = jobRows[0];
+  if (!jobRow) {
+    throw new Error(`Livestream job không tồn tại: ${jobId}`);
   }
-  // Bộ ảnh CHUNG cả job (đã chuyển từ per-product sang job-level). Job cũ chưa có field này →
-  // khởi tạo RỖNG (không backfill từ product theo quyết định của người dùng); người dùng upload lại.
-  if (!Array.isArray(job.spokespersonImagePaths)) job.spokespersonImagePaths = [];
-  if (job.selectedRefImagePath === undefined) job.selectedRefImagePath = null;
-  if (job.selectedModelImagePath === undefined) job.selectedModelImagePath = null;
-  if (!Array.isArray(job.backgroundImagePaths)) job.backgroundImagePaths = [];
-  if (job.selectedBackgroundImagePath === undefined) job.selectedBackgroundImagePath = null;
-  // Map URL R2 của ảnh input — job cũ chưa có → map rỗng (ảnh cũ chỉ có local, xem imageR2.ts).
-  if (!job.imageR2Urls || typeof job.imageR2Urls !== 'object') job.imageR2Urls = {};
-  if (job.scriptSystemPromptOverride === undefined) job.scriptSystemPromptOverride = null;
-  return job;
+  const productRows = await db
+    .select()
+    .from(livestreamProducts)
+    .where(eq(livestreamProducts.jobId, jobId));
+  const segmentRows = await db
+    .select()
+    .from(livestreamSegments)
+    .where(eq(livestreamSegments.jobId, jobId));
+  return assembleJob(jobRow, productRows, segmentRows);
 }
 
-export function jobExists(jobId: string): boolean {
+/** Kiểm tra job tồn tại (async — cũ là sync existsSync). Mọi call-site cần thêm await. */
+export async function jobExists(jobId: string): Promise<boolean> {
   try {
     assertValidJobId(jobId);
   } catch {
     return false;
   }
-  return existsSync(jobJsonPath(jobId));
+  const db = getDb();
+  const rows = await db
+    .select({ id: livestreamJobs.id })
+    .from(livestreamJobs)
+    .where(eq(livestreamJobs.id, jobId))
+    .limit(1);
+  return rows.length > 0;
 }
 
-async function writeJobRaw(job: LivestreamJob): Promise<void> {
-  job.updatedAt = new Date().toISOString();
-  const jsonPath = jobJsonPath(job.id);
-  const tmpPath = `${jsonPath}.tmp`;
-  await fs.writeFile(tmpPath, JSON.stringify(job, null, 2), 'utf-8');
-  await fs.rename(tmpPath, jsonPath);
+// ------------------------------------------------------------------
+// Ghi (diff nested arrays trong transaction)
+// ------------------------------------------------------------------
+
+/**
+ * Ghi toàn bộ job vào DB trong 1 transaction: upsert job, rồi diff products/segments để
+ * INSERT/UPDATE/DELETE. updatedAt cấp job luôn được đặt = now (giữ ngữ nghĩa writeJobRaw cũ).
+ */
+async function persistJob(tx: Tx, job: LivestreamJob): Promise<void> {
+  job.updatedAt = nowIso();
+
+  // 1) Upsert job (INSERT ... ON DUPLICATE KEY UPDATE).
+  const row = jobToRow(job);
+  await tx
+    .insert(livestreamJobs)
+    .values(row)
+    .onDuplicateKeyUpdate({ set: { ...row, id: sql`id` } });
+
+  // 2) Products: đọc row hiện có (lấy rowId theo productKey) để diff.
+  const existingProducts = await tx
+    .select({
+      rowId: livestreamProducts.rowId,
+      productKey: livestreamProducts.productKey,
+    })
+    .from(livestreamProducts)
+    .where(eq(livestreamProducts.jobId, job.id));
+  const productRowIdByKey = new Map(existingProducts.map((p) => [p.productKey, p.rowId]));
+  const keepProductKeys = new Set(job.products.map((p) => p.id));
+
+  // Xóa product không còn (cascade tay: xóa segment của nó trước — không đặt FK cứng).
+  const removedProductRowIds = existingProducts
+    .filter((p) => !keepProductKeys.has(p.productKey))
+    .map((p) => p.rowId);
+  if (removedProductRowIds.length > 0) {
+    await tx
+      .delete(livestreamSegments)
+      .where(inArray(livestreamSegments.productRowId, removedProductRowIds));
+    await tx
+      .delete(livestreamProducts)
+      .where(inArray(livestreamProducts.rowId, removedProductRowIds));
+  }
+
+  // Dấu thời gian dùng cho created_at/updated_at cấp product/segment — đã ở dạng SQL DATETIME.
+  const nowStamp = isoToSql(nowIso())!;
+  for (const product of job.products) {
+    let productRowId = productRowIdByKey.get(product.id);
+    const productValues = {
+      jobId: job.id,
+      productKey: product.id,
+      order: product.order,
+      sourceType: product.sourceType,
+      sourceLink: product.sourceLink ?? null,
+      sourceFilePath: product.sourceFilePath ?? null,
+      rawText: product.rawText ?? null,
+      ingestStatus: product.ingestStatus,
+      ingestError: product.ingestError ?? null,
+      name: product.name,
+      description: product.description,
+      targetDurationSec: product.targetDurationSec,
+      scriptStatus: product.scriptStatus,
+      scriptError: product.scriptError ?? null,
+      updatedAt: nowStamp,
+    };
+
+    if (productRowId === undefined) {
+      // Product mới: INSERT (createdAt = now) rồi lấy lại rowId.
+      await tx
+        .insert(livestreamProducts)
+        .values({ ...productValues, createdAt: nowStamp });
+      const inserted = await tx
+        .select({ rowId: livestreamProducts.rowId })
+        .from(livestreamProducts)
+        .where(
+          and(
+            eq(livestreamProducts.jobId, job.id),
+            eq(livestreamProducts.productKey, product.id)
+          )
+        )
+        .limit(1);
+      productRowId = inserted[0]?.rowId;
+      if (productRowId === undefined) {
+        throw new Error(`Không lấy được rowId sau khi chèn product ${product.id}`);
+      }
+    } else {
+      await tx
+        .update(livestreamProducts)
+        .set(productValues)
+        .where(eq(livestreamProducts.rowId, productRowId));
+    }
+
+    await persistSegments(tx, job.id, productRowId, product.segments, nowStamp);
+  }
 }
 
+/** Diff segments của 1 product: INSERT/UPDATE/DELETE theo segmentKey. */
+async function persistSegments(
+  tx: Tx,
+  jobId: string,
+  productRowId: number,
+  segments: LivestreamSegment[],
+  nowStamp: string
+): Promise<void> {
+  const existing = await tx
+    .select({
+      rowId: livestreamSegments.rowId,
+      segmentKey: livestreamSegments.segmentKey,
+    })
+    .from(livestreamSegments)
+    .where(eq(livestreamSegments.productRowId, productRowId));
+  const rowIdByKey = new Map(existing.map((s) => [s.segmentKey, s.rowId]));
+  const keepKeys = new Set(segments.map((s) => s.id));
+
+  const removedRowIds = existing
+    .filter((s) => !keepKeys.has(s.segmentKey))
+    .map((s) => s.rowId);
+  if (removedRowIds.length > 0) {
+    await tx.delete(livestreamSegments).where(inArray(livestreamSegments.rowId, removedRowIds));
+  }
+
+  for (const seg of segments) {
+    const values = {
+      productRowId,
+      jobId,
+      segmentKey: seg.id,
+      order: seg.order,
+      voiceoverVi: seg.voiceoverVi,
+      veoPrompt: seg.veoPrompt,
+      duration: seg.duration,
+      status: seg.status,
+      flowJobId: seg.jobId ?? null,
+      videoPath: seg.videoPath ?? null,
+      videoUrl: seg.videoUrl ?? null,
+      lastFramePath: seg.lastFramePath ?? null,
+      error: seg.error ?? null,
+      attempts: seg.attempts,
+      lastUpdatedAt: isoToSql(seg.lastUpdatedAt),
+      updatedAt: nowStamp,
+    };
+    const rowId = rowIdByKey.get(seg.id);
+    if (rowId === undefined) {
+      await tx.insert(livestreamSegments).values({ ...values, createdAt: nowStamp });
+    } else {
+      await tx.update(livestreamSegments).set(values).where(eq(livestreamSegments.rowId, rowId));
+    }
+  }
+}
+
+/** Ghi toàn bộ job (transaction). Giữ chữ ký cũ. */
 export async function writeJob(job: LivestreamJob): Promise<void> {
-  return enqueue(job.id, () => writeJobRaw(job));
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    await persistJob(tx, job);
+  });
 }
 
-/** Đọc → sửa → ghi trong 1 thao tác nguyên tử (theo hàng đợi của job-id đó). */
+/**
+ * Đọc → sửa → ghi nguyên tử trong 1 transaction. SELECT ... FOR UPDATE khóa row job để
+ * chống lost-update (thay hàng đợi in-memory cũ). GIỮ ràng buộc KHÔNG gọi updateJob lồng
+ * nhau (deadlock — xem cảnh báo ở segmentSync.ts).
+ */
 export async function updateJob<T = void>(
   jobId: string,
   mutator: (job: LivestreamJob) => T | Promise<T>
 ): Promise<{ job: LivestreamJob; result: T }> {
-  return enqueue(jobId, async () => {
-    const job = await readJob(jobId);
+  assertValidJobId(jobId);
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    // Khóa row job trong transaction (chống 2 update chồng nhau).
+    const lockedRows = await tx
+      .select()
+      .from(livestreamJobs)
+      .where(eq(livestreamJobs.id, jobId))
+      .for('update')
+      .limit(1);
+    const jobRow = lockedRows[0];
+    if (!jobRow) {
+      throw new Error(`Livestream job không tồn tại: ${jobId}`);
+    }
+    const productRows = await tx
+      .select()
+      .from(livestreamProducts)
+      .where(eq(livestreamProducts.jobId, jobId));
+    const segmentRows = await tx
+      .select()
+      .from(livestreamSegments)
+      .where(eq(livestreamSegments.jobId, jobId));
+    const job = assembleJob(jobRow, productRows, segmentRows);
+
     const result = await mutator(job);
-    await writeJobRaw(job);
+    await persistJob(tx, job);
     return { job, result };
   });
 }
@@ -93,31 +419,54 @@ export async function ensureJobFlowId(jobId: string): Promise<string | null> {
   return updated.flowProjectId;
 }
 
+// ------------------------------------------------------------------
+// Thư mục media — GIỮ NGUYÊN (không đụng đến DB)
+// ------------------------------------------------------------------
+
 export async function ensureLivestreamDataRoot(): Promise<void> {
   await fs.mkdir(LIVESTREAM_DATA_ROOT, { recursive: true });
 }
 
+/** Danh sách job (1 query JOIN + COUNT products) thay vì đọc mọi file JSON. */
 export async function listJobs(): Promise<LivestreamJobSummary[]> {
-  await ensureLivestreamDataRoot();
-  const entries = await fs.readdir(LIVESTREAM_DATA_ROOT, { withFileTypes: true });
-  const summaries: LivestreamJobSummary[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    try {
-      const job = await readJob(entry.name);
-      summaries.push({
-        id: job.id,
-        name: job.name,
-        updatedAt: job.updatedAt,
-        status: job.status,
-        productCount: job.products.length,
-      });
-    } catch {
-      // bỏ qua thư mục hỏng/không phải job hợp lệ
-    }
-  }
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: livestreamJobs.id,
+      name: livestreamJobs.name,
+      updatedAt: livestreamJobs.updatedAt,
+      status: livestreamJobs.status,
+      productCount: sql<number>`count(${livestreamProducts.rowId})`,
+    })
+    .from(livestreamJobs)
+    .leftJoin(livestreamProducts, eq(livestreamProducts.jobId, livestreamJobs.id))
+    .groupBy(
+      livestreamJobs.id,
+      livestreamJobs.name,
+      livestreamJobs.updatedAt,
+      livestreamJobs.status
+    );
+  const summaries: LivestreamJobSummary[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    updatedAt: sqlToIso(r.updatedAt) ?? r.updatedAt,
+    status: r.status as LivestreamJobStatus,
+    // count() trả string qua mysql2 ở một số cấu hình → ép số cho chắc.
+    productCount: Number(r.productCount),
+  }));
   summaries.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   return summaries;
+}
+
+/** Xóa row job + products + segments (media dir do call-site tự fs.rm riêng). */
+export async function deleteJob(jobId: string): Promise<void> {
+  assertValidJobId(jobId);
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    await tx.delete(livestreamSegments).where(eq(livestreamSegments.jobId, jobId));
+    await tx.delete(livestreamProducts).where(eq(livestreamProducts.jobId, jobId));
+    await tx.delete(livestreamJobs).where(eq(livestreamJobs.id, jobId));
+  });
 }
 
 export async function createJobDirs(jobId: string): Promise<void> {

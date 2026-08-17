@@ -124,7 +124,7 @@ Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thí
 {"scenes":[{"id":"...","label":"...","duration":8,"camera":"...","type":"...","voiceoverVi":"...","onScreenText":"...","veoPrompt":"..."}]}`;
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  if (!projectExists(params.id)) {
+  if (!(await projectExists(params.id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs/promises';
-import { jobExists, readJob } from '@/lib/livestream/jobStore';
+import { jobExists, readJob, deleteJob } from '@/lib/livestream/jobStore';
 import { jobDir } from '@/lib/livestream/paths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  if (!jobExists(params.id)) {
+  if (!(await jobExists(params.id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
   const job = await readJob(params.id);
@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!jobExists(id)) {
+  if (!(await jobExists(id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 
@@ -31,6 +31,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     );
   }
 
+  // Xóa metadata trong DB (job + products + segments) rồi mới xóa thư mục media.
+  await deleteJob(id);
   await fs.rm(jobDir(id), { recursive: true, force: true });
   return NextResponse.json({ ok: true });
 }

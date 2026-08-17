@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 /** Sinh prompt AI cho mọi ảnh storyboard chưa "generating" (ghi đè prompt hiện có nếu đã có). */
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!projectExists(id)) {
+  if (!(await projectExists(id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

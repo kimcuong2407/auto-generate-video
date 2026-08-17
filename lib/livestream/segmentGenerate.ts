@@ -91,14 +91,24 @@ export async function triggerSegmentGeneration(
   if ((job.spokespersonImagePaths?.length ?? 0) > 0 && !job.selectedRefImagePath) {
     return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn 1 ảnh ở phần cấu hình ảnh đầu trang' };
   }
+  // Bắt tuần tự: khi có chaining, không cho gen đoạn nếu đoạn liền trước (theo chế độ chaining)
+  // chưa xong — tránh gen lệch thứ tự (frame cuối làm ref chưa có, hoặc 2 đoạn chạy chồng nhau)
+  // khi người dùng bấm tay nút gen/retry từng đoạn thay vì generate-all. Route generate-all lọc
+  // trước rồi mới gọi nên không bao giờ vướng guard này; guard chỉ chặn thao tác tay lệch thứ tự.
+  if (job.chaining !== 'off') {
+    const prevSegment = findPreviousSegment(job, found.product, segment);
+    if (prevSegment && prevSegment.status !== 'done') {
+      return { segmentId, ok: false, error: 'Đoạn liền trước chưa xong — chờ hoàn tất để giữ đúng thứ tự' };
+    }
+  }
 
   try {
-    // Ref (r2v) luôn ưu tiên hơn frame-chaining để giữ sản phẩm/nhân vật nhất quán xuyên suốt
-    // (video ghép lại sau). refPaths và startPath loại trừ nhau ở tầng endpoint Google Flow
-    // (xem lib/googleFlow/videoGen.ts) — khi đã có ref, KHÔNG dùng startPath. r2v cho phép nhiều
-    // referenceImages nên truyền cả ảnh sản phẩm đã chọn + ảnh background đã chọn (nếu có).
-    // Thứ tự ưu tiên ref: ảnh sản phẩm → ảnh mẫu (người dẫn) → ảnh background. Ảnh mẫu là 1 ảnh
-    // duy nhất áp cho MỌI segment của sản phẩm (giữ nhân vật nhất quán xuyên suốt).
+    // Ref (r2v) luôn ưu tiên hơn i2v chaining thuần (startPath) để giữ sản phẩm/nhân vật nhất
+    // quán xuyên suốt. r2v cho phép nhiều referenceImages nên truyền cả ảnh sản phẩm + ảnh mẫu +
+    // ảnh background đã chọn (nếu có), CỘNG THÊM khung hình cuối đoạn liền trước (nếu có) để giữ
+    // liên tục bối cảnh giữa 2 đoạn — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn không
+    // có ref nào khác. Thứ tự ref: ảnh sản phẩm → ảnh mẫu (người dẫn) → ảnh background → frame
+    // cuối đoạn trước. Ảnh mẫu là 1 ảnh duy nhất áp cho MỌI segment của sản phẩm.
     // Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc
     // file local để làm refPaths. No-op nếu file đã có / không có bản R2.
     const refPathList: string[] = [];
@@ -114,16 +124,22 @@ export async function triggerSegmentGeneration(
       await ensureLocalImage(jobId, job.selectedBackgroundImagePath, job.imageR2Urls?.[job.selectedBackgroundImagePath]);
       refPathList.push(resolveWithinJob(jobId, job.selectedBackgroundImagePath));
     }
-    const refPaths = refPathList.length > 0 ? refPathList : undefined;
 
-    // Chỉ chain frame khi KHÔNG có ref (sản phẩm không có ảnh tham chiếu nào).
+    const prevSegment = findPreviousSegment(job, found.product, segment);
+    const prevLastFramePath =
+      prevSegment?.status === 'done' && prevSegment.lastFramePath
+        ? resolveWithinJob(jobId, prevSegment.lastFramePath)
+        : undefined;
+
     let startPath: string | undefined;
-    if (!refPaths) {
-      const prevSegment = findPreviousSegment(job, found.product, segment);
-      if (prevSegment?.status === 'done' && prevSegment.lastFramePath) {
-        startPath = resolveWithinJob(jobId, prevSegment.lastFramePath);
+    if (prevLastFramePath) {
+      if (refPathList.length > 0) {
+        refPathList.push(prevLastFramePath);
+      } else {
+        startPath = prevLastFramePath;
       }
     }
+    const refPaths = refPathList.length > 0 ? refPathList : undefined;
 
     const flowProjectId = await ensureJobFlowId(jobId);
 

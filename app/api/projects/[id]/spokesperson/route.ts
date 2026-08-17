@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!projectExists(id)) {
+  if (!(await projectExists(id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!projectExists(id)) {
+  if (!(await projectExists(id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

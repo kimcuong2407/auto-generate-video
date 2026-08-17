@@ -5,7 +5,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  if (!projectExists(params.id)) {
+  if (!(await projectExists(params.id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
   const project = await readProject(params.id);
@@ -19,7 +19,7 @@ interface StoryboardImagePayload {
 
 /** Cập nhật prompt cho từng ảnh storyboard/background theo sceneId — không cho sửa khi đang generating. */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  if (!projectExists(params.id)) {
+  if (!(await projectExists(params.id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

@@ -22,11 +22,24 @@ function statusBadgeClass(status: LivestreamJobSummary['status']): string {
 
 export default function LivestreamListPage() {
   const [jobs, setJobs] = useState<LivestreamJobSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Bọc r.ok + catch: khi API lỗi tạm thời (server recompile, DB timeout) response có thể
+    // rỗng → r.json() ném "Unexpected end of JSON input" và trắng màn hình nếu không bắt.
     fetch('/api/livestream')
-      .then((r) => r.json())
-      .then((data) => setJobs(data.jobs || []));
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`API lỗi ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        setJobs(data.jobs || []);
+        setError(null);
+      })
+      .catch((err) => {
+        setError((err as Error).message || 'Không tải được danh sách job');
+        setJobs([]);
+      });
   }, []);
 
   return (
@@ -43,7 +56,13 @@ export default function LivestreamListPage() {
         <div className="card">
           {jobs === null && <div style={{ color: 'var(--text-muted)' }}>Đang tải danh sách job...</div>}
 
-          {jobs !== null && jobs.length === 0 && (
+          {error && (
+            <div className="badge-error" style={{ marginBottom: 12 }}>
+              Lỗi tải danh sách: {error}. Thử tải lại trang.
+            </div>
+          )}
+
+          {jobs !== null && !error && jobs.length === 0 && (
             <div style={{ color: 'var(--text-muted)' }}>
               Chưa có job livestream nào.{' '}
               <Link href="/shopee-crawl">Tạo job từ Shopee Crawl →</Link>

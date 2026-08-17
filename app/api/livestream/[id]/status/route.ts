@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
-  if (!jobExists(id)) {
+  if (!(await jobExists(id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 

@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  if (!projectExists(params.id)) {
+  if (!(await projectExists(params.id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
   const project = await readProject(params.id);
@@ -33,7 +33,7 @@ interface ScenePayload {
  * trong mảng gửi lên coi như bị xoá; id lạ coi như cảnh mới.
  */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  if (!projectExists(params.id)) {
+  if (!(await projectExists(params.id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

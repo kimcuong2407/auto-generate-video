@@ -29,7 +29,7 @@ export async function GET(
   { params }: { params: { id: string; path: string[] } }
 ) {
   const { id, path: pathSegments } = params;
-  if (!jobExists(id)) {
+  if (!(await jobExists(id))) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 

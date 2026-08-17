@@ -53,6 +53,10 @@ jobs:
             git reset --hard origin/master
             npm ci
             npm run build
+            # Áp migration DB (tạo/đổi bảng) trước khi reload app. Idempotent: drizzle-kit
+            # bỏ qua migration đã chạy. Cần DB_* trong .env.local trên VPS (drizzle.config
+            # tự nạp .env.local). Fail ở đây sẽ dừng deploy (set -e) → không reload bundle lỗi.
+            npm run db:migrate
             # Chỉ reload khi process đã tồn tại; nếu chưa có mới start (tránh đẻ process trùng tên).
             if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
               pm2 reload "$APP_NAME" --update-env

@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * thật) và lưu vào product.visualDescription. Dùng cho nút "AI phân tích ảnh" ở Bước 1.
  */
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
-  if (!projectExists(params.id)) {
+  if (!(await projectExists(params.id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 

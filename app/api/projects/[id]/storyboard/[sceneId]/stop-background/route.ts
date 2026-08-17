@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: { id: string; sceneId: string } }
 ) {
   const { id, sceneId } = params;
-  if (!projectExists(id)) {
+  if (!(await projectExists(id))) {
     return NextResponse.json({ error: 'Project không tồn tại' }, { status: 404 });
   }
 
