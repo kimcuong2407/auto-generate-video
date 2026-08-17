@@ -29,6 +29,12 @@ export interface EntryInput {
 export interface IngestEntryResult {
   products: LivestreamProduct[];
   warnings: string[];
+  /**
+   * Ảnh sản phẩm (crawl remote / file ảnh) thu được từ entry này — đường dẫn tương đối. Nơi gọi
+   * (app/api/livestream/route.ts) gom tất cả entry rồi gán vào BỘ ẢNH CHUNG cấp job
+   * (job.spokespersonImagePaths), vì ảnh nay áp chung cả job chứ không gắn theo từng sản phẩm.
+   */
+  imagePaths?: string[];
 }
 
 /** Trả về tên + mô tả sản phẩm, kèm cảnh báo mềm nếu AI chuẩn hoá thất bại (vẫn dùng text gốc). */
@@ -139,11 +145,10 @@ export async function ingestEntry(
     const products = await ingestTextBlocks(text, 'manual', targetDurationSec, warnings, null);
 
     // Kho ảnh sản phẩm cho luồng crawl: tải ảnh remote (imageUrls) + ảnh File (field 'images')
-    // vào inputs/, gán vào product ĐẦU TIÊN. Luồng crawl luôn 1 sản phẩm/1 entry manual nên
-    // gán cho products[0] là đủ và đúng ngữ nghĩa; nếu text tách ra nhiều block thì ảnh vẫn thuộc
-    // sản phẩm đầu (không có cách map ảnh sang từng block).
+    // vào inputs/. Ảnh nay áp CHUNG cả job nên trả về imagePaths cho nơi gọi gom vào
+    // job.spokespersonImagePaths (không gắn theo product nữa).
+    const imagePaths: string[] = [];
     if (products.length > 0) {
-      const imagePaths: string[] = [];
       const urls = Array.isArray(entry.imageUrls) ? entry.imageUrls : [];
       if (urls.length > 0) {
         imagePaths.push(...(await downloadImageUrls(urls, inputsDir, imagePaths.length)));
@@ -167,12 +172,9 @@ export async function ingestEntry(
         await fs.writeFile(path.join(inputsDir, fileName), buffer);
         imagePaths.push(path.join('inputs', fileName));
       }
-      if (imagePaths.length > 0) {
-        products[0].spokespersonImagePaths = imagePaths;
-      }
     }
 
-    return { products, warnings };
+    return { products, warnings, imagePaths };
   }
 
   // entry.type === 'file'
@@ -240,10 +242,10 @@ export async function ingestEntry(
           name,
           description,
           targetDurationSec,
-          spokespersonImagePaths: savedImagePaths,
         }),
       ],
       warnings,
+      imagePaths: savedImagePaths,
     };
   }
 

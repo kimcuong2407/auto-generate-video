@@ -68,6 +68,11 @@ export async function POST(req: NextRequest) {
   }
 
   const job = createNewJob({ id, name, aspectRatio, veoModel, chaining, products });
+  // Gom ảnh sản phẩm crawl/upload từ mọi entry vào BỘ ẢNH CHUNG cấp job (không gắn theo product).
+  const allImagePaths = results.flatMap((r) => r.imagePaths ?? []);
+  if (allImagePaths.length > 0) {
+    job.spokespersonImagePaths = allImagePaths;
+  }
   // Gán sẵn flowProjectId ngay khi tạo — xem giải thích tương ứng ở app/api/projects/route.ts.
   job.flowProjectId = await resolveFlowProjectIdSafe(name);
   await writeJob(job);

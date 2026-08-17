@@ -1,5 +1,6 @@
 import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { resolveWithinJob } from './paths';
+import { ensureLocalImage } from './imageR2';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
@@ -85,10 +86,10 @@ export async function triggerSegmentGeneration(
   if (!segment.veoPrompt.trim()) {
     return { segmentId, ok: false, error: 'Đoạn chưa có Veo prompt — cần sinh script trước' };
   }
-  // Bắt chọn tay: nếu sản phẩm có ảnh trong kho nhưng chưa chọn ảnh ref → chặn gen (tránh gen
-  // nhầm/không nhất quán). Sản phẩm không có ảnh nào vẫn cho gen t2v như cũ.
-  if ((found.product.spokespersonImagePaths?.length ?? 0) > 0 && !found.product.selectedRefImagePath) {
-    return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn 1 ảnh ở phần chi tiết' };
+  // Bắt chọn tay: nếu job có ảnh trong kho chung nhưng chưa chọn ảnh ref → chặn gen (tránh gen
+  // nhầm/không nhất quán). Job không có ảnh nào vẫn cho gen t2v như cũ.
+  if ((job.spokespersonImagePaths?.length ?? 0) > 0 && !job.selectedRefImagePath) {
+    return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn 1 ảnh ở phần cấu hình ảnh đầu trang' };
   }
 
   try {
@@ -96,12 +97,22 @@ export async function triggerSegmentGeneration(
     // (video ghép lại sau). refPaths và startPath loại trừ nhau ở tầng endpoint Google Flow
     // (xem lib/googleFlow/videoGen.ts) — khi đã có ref, KHÔNG dùng startPath. r2v cho phép nhiều
     // referenceImages nên truyền cả ảnh sản phẩm đã chọn + ảnh background đã chọn (nếu có).
+    // Thứ tự ưu tiên ref: ảnh sản phẩm → ảnh mẫu (người dẫn) → ảnh background. Ảnh mẫu là 1 ảnh
+    // duy nhất áp cho MỌI segment của sản phẩm (giữ nhân vật nhất quán xuyên suốt).
+    // Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc
+    // file local để làm refPaths. No-op nếu file đã có / không có bản R2.
     const refPathList: string[] = [];
-    if (found.product.selectedRefImagePath) {
-      refPathList.push(resolveWithinJob(jobId, found.product.selectedRefImagePath));
+    if (job.selectedRefImagePath) {
+      await ensureLocalImage(jobId, job.selectedRefImagePath, job.imageR2Urls?.[job.selectedRefImagePath]);
+      refPathList.push(resolveWithinJob(jobId, job.selectedRefImagePath));
     }
-    if (found.product.selectedBackgroundImagePath) {
-      refPathList.push(resolveWithinJob(jobId, found.product.selectedBackgroundImagePath));
+    if (job.selectedModelImagePath) {
+      await ensureLocalImage(jobId, job.selectedModelImagePath, job.imageR2Urls?.[job.selectedModelImagePath]);
+      refPathList.push(resolveWithinJob(jobId, job.selectedModelImagePath));
+    }
+    if (job.selectedBackgroundImagePath) {
+      await ensureLocalImage(jobId, job.selectedBackgroundImagePath, job.imageR2Urls?.[job.selectedBackgroundImagePath]);
+      refPathList.push(resolveWithinJob(jobId, job.selectedBackgroundImagePath));
     }
     const refPaths = refPathList.length > 0 ? refPathList : undefined;
 

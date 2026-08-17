@@ -28,21 +28,19 @@ export async function readJob(jobId: string): Promise<LivestreamJob> {
   const job = JSON.parse(raw) as LivestreamJob;
   for (const product of job.products || []) {
     if (product.sourceFilePath === undefined) product.sourceFilePath = null;
-    // Migrate field cũ spokespersonImagePath (1 ảnh, string|null) sang mảng
-    // spokespersonImagePaths — giữ job.json cũ chạy được sau khi đổi data model.
-    if (!Array.isArray(product.spokespersonImagePaths)) {
-      const legacy = (product as unknown as { spokespersonImagePath?: string | null })
-        .spokespersonImagePath;
-      product.spokespersonImagePaths = legacy ? [legacy] : [];
-    }
-    // Field chọn ref/background (bắt chọn tay — KHÔNG mặc định ảnh đầu để tránh gen nhầm ảnh).
-    if (product.selectedRefImagePath === undefined) product.selectedRefImagePath = null;
-    if (!Array.isArray(product.backgroundImagePaths)) product.backgroundImagePaths = [];
-    if (product.selectedBackgroundImagePath === undefined) product.selectedBackgroundImagePath = null;
     for (const segment of product.segments || []) {
       if (segment.lastFramePath === undefined) segment.lastFramePath = null;
     }
   }
+  // Bộ ảnh CHUNG cả job (đã chuyển từ per-product sang job-level). Job cũ chưa có field này →
+  // khởi tạo RỖNG (không backfill từ product theo quyết định của người dùng); người dùng upload lại.
+  if (!Array.isArray(job.spokespersonImagePaths)) job.spokespersonImagePaths = [];
+  if (job.selectedRefImagePath === undefined) job.selectedRefImagePath = null;
+  if (job.selectedModelImagePath === undefined) job.selectedModelImagePath = null;
+  if (!Array.isArray(job.backgroundImagePaths)) job.backgroundImagePaths = [];
+  if (job.selectedBackgroundImagePath === undefined) job.selectedBackgroundImagePath = null;
+  // Map URL R2 của ảnh input — job cũ chưa có → map rỗng (ảnh cũ chỉ có local, xem imageR2.ts).
+  if (!job.imageR2Urls || typeof job.imageR2Urls !== 'object') job.imageR2Urls = {};
   if (job.scriptSystemPromptOverride === undefined) job.scriptSystemPromptOverride = null;
   return job;
 }

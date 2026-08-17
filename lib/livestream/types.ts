@@ -46,26 +46,6 @@ export interface LivestreamProduct {
   name: string;
   description: string;
   targetDurationSec: number;
-  /**
-   * KHO ảnh sản phẩm (người mẫu/người dẫn + ảnh input sản phẩm) — mảng đường dẫn tương đối,
-   * rỗng nếu không dùng. Người dùng chọn ĐÚNG 1 ảnh trong kho này làm ref chính qua
-   * `selectedRefImagePath`. Ảnh input sản phẩm lúc khởi tạo cũng được lưu vào đây.
-   */
-  spokespersonImagePaths: string[];
-  /**
-   * Đường dẫn tương đối ảnh sản phẩm ĐƯỢC CHỌN làm reference chính (bắt buộc chọn tay ở detail
-   * mới gen được nếu kho ảnh không rỗng). Phải nằm trong `spokespersonImagePaths`. null = chưa chọn.
-   * Dùng làm refPaths (r2v, IMAGE_USAGE_TYPE_ASSET) — ref luôn ưu tiên hơn frame-chaining để giữ
-   * sản phẩm nhất quán xuyên suốt, xem lib/livestream/segmentGenerate.ts.
-   */
-  selectedRefImagePath: string | null;
-  /** KHO ảnh background (bối cảnh) người dùng upload — mảng đường dẫn tương đối, rỗng nếu không dùng. */
-  backgroundImagePaths: string[];
-  /**
-   * Ảnh background ĐƯỢC CHỌN (tuỳ chọn) — phải nằm trong `backgroundImagePaths`, null = không dùng.
-   * Nếu có, truyền kèm ảnh sản phẩm làm ref thứ 2 khi gen (r2v cho phép nhiều referenceImages).
-   */
-  selectedBackgroundImagePath: string | null;
   scriptStatus: ScriptStatus;
   scriptError: string | null;
   segments: LivestreamSegment[];
@@ -89,6 +69,39 @@ export interface LivestreamJob {
   chaining: LivestreamChaining;
   status: LivestreamJobStatus;
   products: LivestreamProduct[];
+  /**
+   * KHO ảnh sản phẩm CHUNG cả job (crawl/upload) — mảng đường dẫn tương đối, rỗng nếu không dùng.
+   * Người dùng chọn ĐÚNG 1 ảnh trong kho này làm ref chính qua `selectedRefImagePath`, áp cho MỌI
+   * segment của MỌI sản phẩm trong job (1 buổi live thường 1 bối cảnh/1 người dẫn nhất quán).
+   */
+  spokespersonImagePaths: string[];
+  /**
+   * Đường dẫn tương đối ảnh sản phẩm ĐƯỢC CHỌN làm reference chính (bắt buộc chọn tay ở đầu trang
+   * mới gen được nếu kho ảnh không rỗng). Phải nằm trong `spokespersonImagePaths`. null = chưa chọn.
+   * Dùng làm refPaths (r2v, IMAGE_USAGE_TYPE_ASSET) — ref luôn ưu tiên hơn frame-chaining để giữ
+   * sản phẩm nhất quán xuyên suốt, xem lib/livestream/segmentGenerate.ts.
+   */
+  selectedRefImagePath: string | null;
+  /**
+   * Đường dẫn tương đối ảnh MẪU/NGƯỜI DẪN riêng (upload tay), tuỳ chọn — 1 ảnh duy nhất áp cho
+   * MỌI segment của MỌI sản phẩm, truyền kèm ảnh sản phẩm + background làm refPaths (r2v) khi gen
+   * video. Tách biệt kho ảnh sản phẩm (spokespersonImagePaths). null = không dùng.
+   */
+  selectedModelImagePath: string | null;
+  /** KHO ảnh background (bối cảnh) chung cả job — mảng đường dẫn tương đối, rỗng nếu không dùng. */
+  backgroundImagePaths: string[];
+  /**
+   * Ảnh background ĐƯỢC CHỌN (tuỳ chọn) — phải nằm trong `backgroundImagePaths`, null = không dùng.
+   * Nếu có, truyền kèm ảnh sản phẩm làm ref khi gen (r2v cho phép nhiều referenceImages).
+   */
+  selectedBackgroundImagePath: string | null;
+  /**
+   * URL R2 (bản sao bền vững) của các ảnh input — key = relPath đang có trong 5 field ảnh trên
+   * (vd 'inputs/spokesperson-...jpg'), value = URL public R2 hoặc null (chỉ có local / R2 tắt).
+   * UI ưu tiên URL R2 khi hiển thị; khi gen video/background, nếu file local mất sẽ tải lại từ URL
+   * này về local (xem lib/livestream/imageR2.ts). Chỉ áp cho ảnh MỚI upload/gen — ảnh cũ giữ local.
+   */
+  imageR2Urls: Record<string, string | null>;
   concat: ConcatState;
   flowStatusCache: FlowStatusCache;
   flowProjectId: string | null;

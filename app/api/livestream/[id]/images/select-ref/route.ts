@@ -5,16 +5,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Chọn ảnh tham chiếu cho 1 sản phẩm:
+ * Chọn ảnh tham chiếu CHUNG cả job:
  * - kind='product': chọn 1 ảnh trong kho spokespersonImagePaths làm ref chính (bắt buộc, path != null).
  * - kind='background': chọn 1 ảnh trong kho backgroundImagePaths (tuỳ chọn, path=null để bỏ chọn).
  * Ảnh đã chọn được dùng làm refPaths (r2v) khi gen video — xem lib/livestream/segmentGenerate.ts.
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string; productId: string } }
-) {
-  const { id, productId } = params;
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const { id } = params;
   if (!jobExists(id)) {
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
@@ -27,34 +24,23 @@ export async function POST(
   const targetPath = body.path ?? null;
 
   const job = await readJob(id);
-  const product = job.products.find((p) => p.id === productId);
-  if (!product) {
-    return NextResponse.json({ error: 'Sản phẩm không tồn tại' }, { status: 404 });
-  }
 
   // product: bắt buộc chọn 1 ảnh hợp lệ. background: cho phép null (bỏ chọn).
   if (kind === 'product') {
-    if (!targetPath || !(product.spokespersonImagePaths ?? []).includes(targetPath)) {
+    if (!targetPath || !(job.spokespersonImagePaths ?? []).includes(targetPath)) {
       return NextResponse.json({ error: 'Ảnh không tồn tại trong kho ảnh sản phẩm' }, { status: 400 });
     }
-  } else if (targetPath && !(product.backgroundImagePaths ?? []).includes(targetPath)) {
+  } else if (targetPath && !(job.backgroundImagePaths ?? []).includes(targetPath)) {
     return NextResponse.json({ error: 'Ảnh không tồn tại trong kho ảnh background' }, { status: 400 });
   }
 
-  const { job: updatedJob, result } = await updateJob(id, (j) => {
-    const p = j.products.find((x) => x.id === productId);
-    if (!p) return { error: 'Sản phẩm không tồn tại' };
+  const { job: updatedJob } = await updateJob(id, (j) => {
     if (kind === 'product') {
-      p.selectedRefImagePath = targetPath;
+      j.selectedRefImagePath = targetPath;
     } else {
-      p.selectedBackgroundImagePath = targetPath;
+      j.selectedBackgroundImagePath = targetPath;
     }
-    return { error: null as string | null };
   });
-
-  if (result.error) {
-    return NextResponse.json({ error: result.error }, { status: 404 });
-  }
 
   return NextResponse.json({ job: updatedJob });
 }

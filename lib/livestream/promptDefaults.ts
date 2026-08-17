@@ -38,6 +38,23 @@ Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thí
 {"name":"...","description":"..."}`;
 
 /**
+ * Prompt gen ẢNH BACKGROUND (1 khung hình livestream hoàn chỉnh) qua AI tạo ảnh (Google Flow).
+ * Ảnh sản phẩm + ảnh mẫu (nếu có) được truyền làm reference; prompt này mô tả yêu cầu tạo 1 cảnh
+ * CÓ người mẫu đang cầm/dùng sản phẩm trong bối cảnh live thực tế (KHÔNG phải phông nền trống) để
+ * người dùng có thể chọn làm ref chính khi gen video. Mô tả sản phẩm (product.description) sẽ được
+ * ghép vào cuối prompt này lúc gọi.
+ */
+export const BACKGROUND_SYSTEM_PROMPT = `Generate a single realistic livestream frame: a host/presenter naturally holding or using the product below, inside a believable real-world live-selling setting (a home room, kitchen, small studio, or shop corner that fits the product).
+
+Requirements:
+- The presenter is clearly present and interacting with the product; the product is visible and recognizable.
+- Natural, slightly imperfect lighting like a real room — not a flawless studio. Authentic, candid, shot-on-phone look with realistic skin and material textures. Avoid glossy/CGI/3D-render perfection.
+- Natural hand anatomy: exactly two hands, exactly two arms, no extra limbs. Keep hands simple and close to the body; do not depict complex multi-finger gestures.
+- No subtitles, no captions, no on-screen text, no watermark.
+
+Product context:`;
+
+/**
  * Prompt cốt lõi sinh lời thoại + veoPrompt cho các đoạn ~8s của 1 sản phẩm trong video
  * livestream liên tục — adapt từ BASE_SYSTEM_PROMPT của pipeline 6 bước
  * (app/api/projects/[id]/script/generate/route.ts), giữ nguyên toàn bộ kỹ thuật prompt

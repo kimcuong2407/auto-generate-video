@@ -21,8 +21,6 @@ export function buildProduct(fields: {
   name?: string;
   description?: string;
   targetDurationSec: number;
-  spokespersonImagePaths?: string[];
-  backgroundImagePaths?: string[];
 }): LivestreamProduct {
   productCounter += 1;
   const idBase = slugify(fields.name || `prod-${fields.order}`).slice(0, 30) || `prod-${fields.order}`;
@@ -38,10 +36,6 @@ export function buildProduct(fields: {
     name: fields.name || `Sản phẩm ${fields.order}`,
     description: fields.description || '',
     targetDurationSec: fields.targetDurationSec,
-    spokespersonImagePaths: fields.spokespersonImagePaths ?? [],
-    selectedRefImagePath: null,
-    backgroundImagePaths: fields.backgroundImagePaths ?? [],
-    selectedBackgroundImagePath: null,
     scriptStatus: 'idle',
     scriptError: null,
     segments: [],
@@ -67,6 +61,13 @@ export function createNewJob(input: {
     chaining: input.chaining,
     status: 'draft',
     products: input.products,
+    // Bộ ảnh CHUNG cả job — khởi tạo rỗng; người dùng upload/chọn ở đầu trang (JobImagePanel).
+    spokespersonImagePaths: [],
+    selectedRefImagePath: null,
+    selectedModelImagePath: null,
+    backgroundImagePaths: [],
+    selectedBackgroundImagePath: null,
+    imageR2Urls: {},
     concat: {
       status: 'idle',
       log: [],
