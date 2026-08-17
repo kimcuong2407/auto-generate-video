@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TopNav } from '@/components/TopNav';
-import { CreateJobForm } from '@/components/livestream/CreateJobForm';
 import type { LivestreamJobSummary } from '@/lib/livestream/types';
 
 function formatUpdatedAt(iso: string): string {
@@ -38,13 +37,17 @@ export default function LivestreamListPage() {
           <div>
             <div className="card-header" style={{ marginBottom: 0 }}>Danh sách job Livestream Script</div>
           </div>
+          <Link href="/shopee-crawl" className="btn btn-primary">🛍️ Tạo job từ Shopee Crawl</Link>
         </div>
 
         <div className="card">
           {jobs === null && <div style={{ color: 'var(--text-muted)' }}>Đang tải danh sách job...</div>}
 
           {jobs !== null && jobs.length === 0 && (
-            <div style={{ color: 'var(--text-muted)' }}>Chưa có job livestream nào. Tạo job mới bên dưới.</div>
+            <div style={{ color: 'var(--text-muted)' }}>
+              Chưa có job livestream nào.{' '}
+              <Link href="/shopee-crawl">Tạo job từ Shopee Crawl →</Link>
+            </div>
           )}
 
           {jobs !== null && jobs.length > 0 && (
@@ -82,8 +85,6 @@ export default function LivestreamListPage() {
             </div>
           )}
         </div>
-
-        <CreateJobForm />
       </div>
     </div>
   );

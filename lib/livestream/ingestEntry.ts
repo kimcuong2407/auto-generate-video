@@ -7,6 +7,7 @@ import { extractProductFromImage } from './productVision';
 import { splitProductBlocks } from './textIngest';
 import { MAX_PRODUCTS_PER_ENTRY, MAX_TEXT_FILE_SIZE_BYTES } from './constants';
 import { MAX_IMAGE_SIZE_BYTES } from '../constants';
+import { downloadImageUrls } from '../downloadImages';
 import type { LivestreamProduct } from './types';
 
 export const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
@@ -17,6 +18,11 @@ export interface EntryInput {
   link?: string;
   text?: string;
   fileField?: string;
+  /**
+   * URL ảnh sản phẩm remote (VD ảnh crawl Shopee) — server tải về làm kho ảnh sản phẩm
+   * (spokespersonImagePaths). Chỉ dùng ở nhánh 'manual' (luồng tạo job từ trang crawl).
+   */
+  imageUrls?: string[];
   targetDurationSec: number;
 }
 
@@ -131,6 +137,41 @@ export async function ingestEntry(
       return { products: [], warnings: [`Entry #${entryIndex + 1}: thiếu mô tả`] };
     }
     const products = await ingestTextBlocks(text, 'manual', targetDurationSec, warnings, null);
+
+    // Kho ảnh sản phẩm cho luồng crawl: tải ảnh remote (imageUrls) + ảnh File (field 'images')
+    // vào inputs/, gán vào product ĐẦU TIÊN. Luồng crawl luôn 1 sản phẩm/1 entry manual nên
+    // gán cho products[0] là đủ và đúng ngữ nghĩa; nếu text tách ra nhiều block thì ảnh vẫn thuộc
+    // sản phẩm đầu (không có cách map ảnh sang từng block).
+    if (products.length > 0) {
+      const imagePaths: string[] = [];
+      const urls = Array.isArray(entry.imageUrls) ? entry.imageUrls : [];
+      if (urls.length > 0) {
+        imagePaths.push(...(await downloadImageUrls(urls, inputsDir, imagePaths.length)));
+      }
+      const rawFiles = form.getAll('images');
+      const files = rawFiles.filter((f): f is File => f instanceof File && f.size > 0);
+      for (const file of files) {
+        const ext = path.extname(file.name).toLowerCase();
+        if (!IMAGE_EXTS.has(ext)) {
+          warnings.push(`Entry #${entryIndex + 1}: bỏ qua "${file.name}" (không phải ảnh)`);
+          continue;
+        }
+        if (file.size > MAX_IMAGE_SIZE_BYTES) {
+          warnings.push(
+            `Entry #${entryIndex + 1}: ảnh "${file.name}" vượt quá ${MAX_IMAGE_SIZE_BYTES / 1024 / 1024}MB — đã bỏ qua`
+          );
+          continue;
+        }
+        const fileName = `product-${imagePaths.length + 1}${ext}`;
+        const buffer = Buffer.from(await file.arrayBuffer());
+        await fs.writeFile(path.join(inputsDir, fileName), buffer);
+        imagePaths.push(path.join('inputs', fileName));
+      }
+      if (imagePaths.length > 0) {
+        products[0].spokespersonImagePaths = imagePaths;
+      }
+    }
+
     return { products, warnings };
   }
 

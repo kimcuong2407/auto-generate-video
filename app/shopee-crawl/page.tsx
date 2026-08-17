@@ -146,10 +146,15 @@ export default function ShopeeCrawlPage() {
       const form = new FormData();
       form.set('name', product.name.slice(0, 60) || 'Livestream Shopee');
       form.set('aspectRatio', '9:16');
+      // Kho ảnh sản phẩm: ảnh URL (crawl/dán) đưa qua entry.imageUrls; ảnh từ máy đưa qua field 'images'.
+      const imageUrls = imageItems.filter((it) => it.kind === 'url').map((it) => it.url.trim()).filter(Boolean);
+      for (const item of imageItems) {
+        if (item.kind === 'file') form.append('images', item.file);
+      }
       form.set(
         'entries',
         JSON.stringify([
-          { type: 'manual', text: shopeeToLivestreamText(product), targetDurationSec: 60 },
+          { type: 'manual', text: shopeeToLivestreamText(product), targetDurationSec: 60, imageUrls },
         ])
       );
       const res = await fetch('/api/livestream', { method: 'POST', body: form });
@@ -428,8 +433,8 @@ export default function ShopeeCrawlPage() {
               </button>
             </div>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
-              Livestream chỉ dùng mô tả sản phẩm. Video Review sẽ tải ảnh Shopee về làm ảnh sản phẩm và dùng template
-              mặc định (chỉnh lại ở Bước 1 nếu cần).
+              Cả hai đều tải danh sách ảnh phía trên về làm kho ảnh sản phẩm. Với Livestream, vào màn chi tiết chọn 1
+              ảnh làm tham chiếu rồi gen video. Video Review dùng template mặc định (chỉnh lại ở Bước 1 nếu cần).
             </span>
 
             {createError && (

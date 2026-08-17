@@ -6,20 +6,9 @@ import { createProjectDirs, listProjects, writeProject } from '@/lib/data/projec
 import { createNewProject } from '@/lib/data/projectFactory';
 import { resolveFlowProjectIdSafe } from '@/lib/googleFlow/flowJobs';
 import { MAX_IMAGE_COUNT, MAX_IMAGE_SIZE_BYTES } from '@/lib/constants';
+import { downloadImageUrls } from '@/lib/downloadImages';
 import defaultTemplate from '@/public/default-template.json';
 import type { ProductInfo, Template } from '@/lib/types';
-
-/** ext ảnh suy từ content-type khi tải ảnh remote (URL Shopee thường không có đuôi file). */
-function extFromContentType(ct: string): string {
-  const map: Record<string, string> = {
-    'image/jpeg': '.jpg',
-    'image/jpg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-    'image/gif': '.gif',
-  };
-  return map[ct.split(';')[0].trim().toLowerCase()] || '.jpg';
-}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -125,22 +114,8 @@ export async function POST(req: NextRequest) {
 
   // Tải ảnh remote (imageUrls) về đĩa, đánh số tiếp theo ảnh File đã ghi ở trên.
   // Lỗi 1 ảnh (URL hỏng/không phải ảnh/quá lớn) chỉ bỏ qua ảnh đó, không làm hỏng cả request.
-  for (let i = 0; i < imageUrls.length; i++) {
-    const url = imageUrls[i];
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      const ct = resp.headers.get('content-type') || '';
-      if (!ct.toLowerCase().startsWith('image/')) continue;
-      const buffer = Buffer.from(await resp.arrayBuffer());
-      if (buffer.length === 0 || buffer.length > MAX_IMAGE_SIZE_BYTES) continue;
-      const fileName = `product-${productImagePaths.length + 1}${extFromContentType(ct)}`;
-      await fs.writeFile(path.join(inputsDir, fileName), buffer);
-      productImagePaths.push(path.join('inputs', fileName));
-    } catch {
-      // bỏ qua ảnh tải lỗi
-    }
-  }
+  const remotePaths = await downloadImageUrls(imageUrls, inputsDir, productImagePaths.length);
+  productImagePaths.push(...remotePaths);
 
   if (productImagePaths.length === 0) {
     return NextResponse.json(

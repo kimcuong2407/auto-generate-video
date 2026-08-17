@@ -107,8 +107,8 @@ export default function HomePage() {
           <div>
             <div className="card-header" style={{ marginBottom: 0 }}>Danh sách project Video Review</div>
           </div>
-          <a href="/projects/new" target="_blank" rel="noopener noreferrer" className="btn btn-primary">
-            + Tạo project mới
+          <a href="/shopee-crawl" className="btn btn-primary">
+            🛍️ Tạo project từ Shopee Crawl
           </a>
         </div>
 
@@ -146,9 +146,7 @@ export default function HomePage() {
         {projects !== null && projects.length === 0 && (
           <div style={{ color: 'var(--text-muted)' }}>
             Chưa có project nào.{' '}
-            <a href="/projects/new" target="_blank" rel="noopener noreferrer">
-              Tạo project đầu tiên →
-            </a>
+            <a href="/shopee-crawl">Tạo project đầu tiên từ Shopee Crawl →</a>
           </div>
         )}
 
