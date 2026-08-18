@@ -1,8 +1,11 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
+import { deleteFromR2 } from '../r2/client';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
 
 export interface TriggerResult {
@@ -80,8 +83,8 @@ export async function triggerSegmentGeneration(
   if (segment.status === 'generating') {
     return { segmentId, ok: false, error: 'Đoạn đang generating' };
   }
-  if (opts.requireFailed && segment.status !== 'failed') {
-    return { segmentId, ok: false, error: 'Đoạn chưa ở trạng thái failed' };
+  if (opts.requireFailed && segment.status !== 'failed' && segment.status !== 'done') {
+    return { segmentId, ok: false, error: 'Đoạn chưa ở trạng thái failed hoặc done' };
   }
   if (!segment.veoPrompt.trim()) {
     return { segmentId, ok: false, error: 'Đoạn chưa có Veo prompt — cần sinh script trước' };
@@ -104,18 +107,17 @@ export async function triggerSegmentGeneration(
 
   try {
     // Ref (r2v) luôn ưu tiên hơn i2v chaining thuần (startPath) để giữ sản phẩm/nhân vật nhất
-    // quán xuyên suốt. r2v cho phép nhiều referenceImages nên truyền cả ảnh sản phẩm + ảnh mẫu +
-    // ảnh background đã chọn (nếu có), CỘNG THÊM khung hình cuối đoạn liền trước (nếu có) để giữ
-    // liên tục bối cảnh giữa 2 đoạn — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn không
-    // có ref nào khác. Thứ tự ref: ảnh sản phẩm → ảnh mẫu (người dẫn) → ảnh background → frame
-    // cuối đoạn trước. Ảnh mẫu là 1 ảnh duy nhất áp cho MỌI segment của sản phẩm.
+    // quán xuyên suốt. r2v cho phép nhiều referenceImages nên truyền ảnh mẫu + ảnh background đã
+    // chọn (nếu có), CỘNG THÊM khung hình cuối đoạn liền trước (nếu có) để giữ liên tục bối cảnh
+    // giữa 2 đoạn — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn không có ref nào khác.
+    // Ảnh sản phẩm (selectedRefImagePath) KHÔNG đưa vào đây — nó chỉ dùng làm reference lúc AI
+    // sinh ảnh background (xem BACKGROUND_SYSTEM_PROMPT); sản phẩm đã có sẵn trong ảnh background
+    // nên fix cứng qua đó, video chỉ đổi động tác tay/voice giữa các đoạn. Thứ tự ref: ảnh mẫu
+    // (người dẫn) → ảnh background → frame cuối đoạn trước. Ảnh mẫu là 1 ảnh duy nhất áp cho MỌI
+    // segment của sản phẩm.
     // Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc
     // file local để làm refPaths. No-op nếu file đã có / không có bản R2.
     const refPathList: string[] = [];
-    if (job.selectedRefImagePath) {
-      await ensureLocalImage(jobId, job.selectedRefImagePath, job.imageR2Urls?.[job.selectedRefImagePath]);
-      refPathList.push(resolveWithinJob(jobId, job.selectedRefImagePath));
-    }
     if (job.selectedModelImagePath) {
       await ensureLocalImage(jobId, job.selectedModelImagePath, job.imageR2Urls?.[job.selectedModelImagePath]);
       refPathList.push(resolveWithinJob(jobId, job.selectedModelImagePath));
@@ -209,6 +211,35 @@ export async function stopSegmentGeneration(jobId: string, segmentId: string): P
     f.segment.status = 'failed';
     f.segment.error = STOP_ERROR_MESSAGE;
     f.segment.jobId = null;
+    f.segment.lastUpdatedAt = new Date().toISOString();
+  });
+
+  return { segmentId, ok: true };
+}
+
+/** Xoá video đã gen của 1 đoạn (local + R2 best-effort), đưa đoạn về lại 'idle' để gen mới. */
+export async function deleteSegmentVideo(jobId: string, segmentId: string): Promise<TriggerResult> {
+  const job = await readJob(jobId);
+  const found = findSegment(job, segmentId);
+  if (!found) {
+    return { segmentId, ok: false, error: 'Đoạn không tồn tại' };
+  }
+  if (found.segment.status === 'generating') {
+    return { segmentId, ok: false, error: 'Đoạn đang generating' };
+  }
+  const { videoPath } = found.segment;
+  if (videoPath) {
+    await fs.rm(resolveWithinJob(jobId, videoPath), { force: true }).catch(() => {});
+    await deleteFromR2(`livestream/${jobId}/segments/${path.basename(videoPath)}`);
+  }
+
+  await updateJob(jobId, (j) => {
+    const f = findSegment(j, segmentId);
+    if (!f) return;
+    f.segment.status = 'idle';
+    f.segment.videoPath = null;
+    f.segment.videoUrl = null;
+    f.segment.error = null;
     f.segment.lastUpdatedAt = new Date().toISOString();
   });
 

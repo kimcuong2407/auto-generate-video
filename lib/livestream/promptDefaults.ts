@@ -87,10 +87,12 @@ b. 1 "người mẫu/người dẫn livestream" DUY NHẤT: chốt cố định 
 
 c. TƯ THẾ & BỐ CỤC CỐ ĐỊNH cho MỌI đoạn: người dẫn NGỒI TẠI CHỖ trước bàn suốt buổi live (ngồi cố
    định — TUYỆT ĐỐI KHÔNG đứng dậy, KHÔNG đi lại, KHÔNG rời khỏi ghế, KHÔNG đổi địa điểm giữa các
-   đoạn), chỉ CỬ ĐỘNG TAY và phần thân trên để cầm/giới thiệu sản phẩm. Sản phẩm LUÔN được đặt trên
-   bàn NGAY TRƯỚC MẶT người dẫn trong tầm với ở MỌI đoạn — không cất đi, không đổi vị trí sản phẩm
-   ra khỏi khung. Góc máy và khung hình giữ ổn định (máy đặt cố định quay người ngồi), chỉ có tay và
-   sản phẩm chuyển động.
+   đoạn), KHÔNG cầm/chạm/xoay/chỉ vào sản phẩm — tay để tự nhiên trên bàn hoặc trong lòng, chỉ có
+   cử động nhẹ tự nhiên như đang nói chuyện (gật đầu, hơi nghiêng người, biểu cảm khuôn mặt, tay
+   khẽ đưa lên khi nhấn nhá câu nói) mà KHÔNG chạm vào sản phẩm. Sản phẩm đã có sẵn bày trên bàn
+   NGAY TRƯỚC MẶT người dẫn (lấy từ ảnh background) — giữ nguyên vị trí, không ai chạm vào, không
+   đổi vị trí ra khỏi khung. Góc máy và khung hình giữ ổn định (máy đặt cố định quay người ngồi),
+   chỉ có người dẫn nói chuyện tự nhiên tại chỗ.
 
 Cả 3 yếu tố này PHẢI được nhắc lại nhất quán (giữ nguyên từ ngữ mô tả, không diễn đạt lại khác đi)
 trong veoPrompt của MỌI đoạn để khi ghép nối, người xem cảm giác đây là 1 buổi live liên tục do
@@ -115,24 +117,21 @@ nhưng BẮT BUỘC bao phủ đủ 7 thành phần chuyên nghiệp sau (không
 dung có mặt):
 (1) Subject — mô tả người dẫn livestream ĐÚNG theo mô tả cố định đã chốt ở Bước 1.b (giữ nguyên
     giới tính, kiểu tóc, trang phục, đặc điểm nhận diện — KHÔNG thay đổi hay viết lại khác đi giữa
-    các đoạn), ĐANG NGỒI tại bàn (tư thế ngồi cố định như đã chốt ở Bước 1.c), và/hoặc sản phẩm
-    (chất liệu, màu sắc, kích thước) đặt NGAY TRƯỚC MẶT trên bàn;
-(2) Action — hành động/cử chỉ cụ thể đang diễn ra, CHỈ là cử động tay/thân trên khi ngồi (cầm,
-    xoay, chỉ vào sản phẩm) — người dẫn NGỒI YÊN tại chỗ, KHÔNG đứng dậy/đi lại/rời ghế; với đoạn
+    các đoạn), ĐANG NGỒI tại bàn (tư thế ngồi cố định như đã chốt ở Bước 1.c), sản phẩm đã bày sẵn
+    NGAY TRƯỚC MẶT trên bàn (không cần mô tả lại chi tiết sản phẩm vì đã có trong ảnh background);
+(2) Action — CHỈ mô tả cử động tự nhiên của người đang ngồi nói chuyện: gật đầu nhẹ, hơi nghiêng
+    người, biểu cảm khuôn mặt sống động, thỉnh thoảng tay khẽ đưa lên nhấn nhá câu nói rồi đặt lại
+    — TUYỆT ĐỐI KHÔNG cầm/chạm/xoay/chỉ tay vào sản phẩm, KHÔNG đứng dậy/đi lại/rời ghế; với đoạn
     thứ 2 trở đi, câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/hành động kết thúc
     của đoạn ngay trước (xem chỉ dẫn image-to-video chaining ở trên).
     RÀNG BUỘC TAY/CHÂN (bắt buộc, áp dụng mọi đoạn có người):
-    - Mỗi người CHỈ có đúng 2 tay và 2 chân. TUYỆT ĐỐI KHÔNG mô tả người cầm/giữ/nắm cùng lúc
-      nhiều vật bằng quá 2 tay, KHÔNG để 1 vật được nhiều hơn 2 tay giữ, KHÔNG mô tả thao tác cần
-      quá nhiều tay để thực hiện.
-    - Giữ cử động tay/chân TỐI GIẢN và gần với thân người: ưu tiên tay đặt trên bàn/trên sản phẩm,
-      cầm vật đơn giản bằng 1 tay hoặc 2 tay, hạn chế tối đa tay giơ cao/vung/đan chéo/đưa qua lại
-      khỏi khung hình. KHÔNG mô tả cử chỉ phức tạp nhiều khớp (đếm ngón tay, xoè từng ngón, bắt
-      chéo ngón, động tác múa/ký hiệu tay...).
+    - Mỗi người CHỈ có đúng 2 tay và 2 chân. Giữ cử động tay TỐI GIẢN và gần với thân người, hạn
+      chế tối đa tay giơ cao/vung/đan chéo/đưa qua lại khỏi khung hình. KHÔNG mô tả cử chỉ phức tạp
+      nhiều khớp (đếm ngón tay, xoè từng ngón, bắt chéo ngón, động tác múa/ký hiệu tay...).
     - Với đoạn dùng image-to-video chaining, mô tả rõ ràng TƯ THẾ TAY TĨNH ổn định khi bắt đầu
       đoạn để Veo không tự "bịa thêm" 1 bàn tay thứ ba trong lúc tiếp nối chuyển động.
     - Trong phần Technical của veoPrompt, thêm cụm "natural hand anatomy, exactly two hands,
-      exactly two arms, no extra limbs".
+      exactly two arms, no extra limbs, hands do not touch the product".
 (3) Scene — bối cảnh quay chung đã xác định ở Bước 1.a, PHẢI nhắc lại nhất quán;
 (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách
     ánh sáng;

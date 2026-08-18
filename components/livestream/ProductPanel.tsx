@@ -94,6 +94,19 @@ export function ProductPanel({
     }
   }
 
+  async function handleDeleteVideo(segmentId: string) {
+    if (!confirm('Xoá video đã gen của đoạn này?')) return;
+    setBusySegmentId(segmentId);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/segments/${segmentId}/video`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Xoá thất bại');
+      await onRefresh();
+    } finally {
+      setBusySegmentId(null);
+    }
+  }
+
   const hasGenerating = product.segments.some((s) => s.status === 'generating');
 
   return (
@@ -229,6 +242,26 @@ export function ProductPanel({
                   >
                     ⏹ Dừng
                   </button>
+                )}
+                {segment.status === 'done' && (
+                  <>
+                    <button
+                      className="retry-btn"
+                      onClick={() => callSegmentAction(segment.id, 'retry')}
+                      disabled={busySegmentId === segment.id}
+                      title="Gen lại video cho đoạn này, ghi đè video hiện tại"
+                    >
+                      🔄 Gen lại
+                    </button>
+                    <button
+                      className="retry-btn"
+                      onClick={() => handleDeleteVideo(segment.id)}
+                      disabled={busySegmentId === segment.id}
+                      title="Xoá video đã gen, đưa đoạn về trạng thái chưa gen"
+                    >
+                      🗑 Xoá
+                    </button>
+                  </>
                 )}
               </div>
             </div>
