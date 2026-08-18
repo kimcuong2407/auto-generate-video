@@ -11,6 +11,7 @@ import { uploadImageFile } from './upload';
 import { downloadUrlTo } from './download';
 import { FlowApiError } from './errors';
 import type { FlowAccount } from './authStore';
+import type { RefImageInput } from './videoGen';
 
 export type ImageAspect = '16:9' | '9:16' | '1:1' | '3:4' | '4:3';
 
@@ -37,13 +38,14 @@ export interface GenerateImageParams {
   aspect: ImageAspect;
   model?: string;
   projectId: string;
-  refPaths?: string[];
+  refImages?: RefImageInput[];
   count?: number;
 }
 
 export interface GenerateImageResult {
   dir: string;
   paths: string[];
+  uploadedMediaIds: Record<string, string>;
 }
 
 const TMP_DIR = path.join(process.cwd(), 'data', 'tmp', 'flow-image');
@@ -55,9 +57,12 @@ const TMP_DIR = path.join(process.cwd(), 'data', 'tmp', 'flow-image');
 export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
   const imageAspectRatio = ASPECT_MAP[params.aspect] ?? ASPECT_MAP['16:9'];
   const imageInputs: Array<{ imageInputType: string; name: string }> = [];
+  const uploadedMediaIds: Record<string, string> = {};
 
-  for (const refPath of params.refPaths || []) {
-    const mediaId = await uploadImageFile(params.accessToken, params.projectId, refPath);
+  for (const ref of params.refImages || []) {
+    const mediaId =
+      ref.mediaId ?? (await uploadImageFile(params.accessToken, params.projectId, ref.path));
+    if (!ref.mediaId) uploadedMediaIds[ref.path] = mediaId;
     imageInputs.push({ imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE', name: mediaId });
   }
 
@@ -117,5 +122,5 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
     paths.push(dest);
   }
 
-  return { dir: TMP_DIR, paths };
+  return { dir: TMP_DIR, paths, uploadedMediaIds };
 }

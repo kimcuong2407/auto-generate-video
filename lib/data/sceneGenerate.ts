@@ -39,18 +39,18 @@ export async function triggerSceneGeneration(
     // Ảnh storyboard của chính scene này (Bước 3, nếu đã gen xong) làm tham chiếu duy
     // nhất khi gen video — ảnh này đã kết tinh sẵn sản phẩm + nhân vật + bối cảnh nên
     // không cần gửi thêm ảnh sản phẩm/nhân vật gốc từ Bước 1 nữa.
-    const refPaths: string[] = [];
+    const refImages: { path: string }[] = [];
     const storyboardImage = project.storyboard.images.find((img) => img.sceneId === sceneId);
     if (storyboardImage?.status === 'done' && storyboardImage.imagePath) {
-      refPaths.push(resolveWithinProject(projectId, storyboardImage.imagePath));
+      refImages.push({ path: resolveWithinProject(projectId, storyboardImage.imagePath) });
     }
 
     // Chain khung hình cuối cảnh trước → khung hình đầu cảnh này, tạo continuity thị giác.
-    let startPath: string | undefined;
+    let startImage: { path: string } | undefined;
     if (project.sceneChaining && scene.order > 1) {
       const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
       if (prevScene?.status === 'done' && prevScene.lastFramePath) {
-        startPath = resolveWithinProject(projectId, prevScene.lastFramePath);
+        startImage = { path: resolveWithinProject(projectId, prevScene.lastFramePath) };
       }
     }
 
@@ -67,15 +67,15 @@ export async function triggerSceneGeneration(
         aspect: project.aspectRatio,
         model: project.veoModel,
         flowProjectId,
-        refPaths,
-        startPath,
+        refImages,
+        startImage,
       }
     );
 
     await updateProject(projectId, (p) => {
       const s = p.script.scenes.find((x) => x.id === sceneId);
       if (!s) return;
-      applyGeneratingState(s, job_id, !!startPath);
+      applyGeneratingState(s, job_id, !!startImage);
     });
 
     return { sceneId, ok: true, jobId: job_id };

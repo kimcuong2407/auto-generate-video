@@ -128,15 +128,17 @@ function assembleJob(
     status: jobRow.status as LivestreamJobStatus,
     products,
     spokespersonImagePaths: jobRow.spokespersonImagePaths,
-    selectedRefImagePath: jobRow.selectedRefImagePath,
+    selectedRefImagePaths: jobRow.selectedRefImagePaths,
     selectedModelImagePath: jobRow.selectedModelImagePath,
     backgroundImagePaths: jobRow.backgroundImagePaths,
     selectedBackgroundImagePath: jobRow.selectedBackgroundImagePath,
     imageR2Urls: jobRow.imageR2Urls,
+    flowMediaIds: jobRow.flowMediaIds,
     concat: jobRow.concat,
     flowStatusCache: jobRow.flowStatusCache,
     flowProjectId: jobRow.flowProjectId,
     scriptSystemPromptOverride: jobRow.scriptSystemPromptOverride,
+    videoSeed: jobRow.videoSeed,
   };
 }
 
@@ -155,15 +157,17 @@ function jobToRow(job: LivestreamJob): typeof livestreamJobs.$inferInsert {
     chaining: job.chaining,
     status: job.status,
     spokespersonImagePaths: job.spokespersonImagePaths ?? [],
-    selectedRefImagePath: job.selectedRefImagePath ?? null,
+    selectedRefImagePaths: job.selectedRefImagePaths ?? [],
     selectedModelImagePath: job.selectedModelImagePath ?? null,
     backgroundImagePaths: job.backgroundImagePaths ?? [],
     selectedBackgroundImagePath: job.selectedBackgroundImagePath ?? null,
     imageR2Urls: job.imageR2Urls ?? {},
+    flowMediaIds: job.flowMediaIds ?? {},
     concat: job.concat,
     flowStatusCache: job.flowStatusCache,
     flowProjectId: job.flowProjectId ?? null,
     scriptSystemPromptOverride: job.scriptSystemPromptOverride ?? null,
+    videoSeed: job.videoSeed ?? null,
   };
 }
 
@@ -417,6 +421,21 @@ export async function ensureJobFlowId(jobId: string): Promise<string | null> {
     if (!j.flowProjectId) j.flowProjectId = flowProjectId;
   });
   return updated.flowProjectId;
+}
+
+/**
+ * Seed video cố định cho job — tạo random 1 LẦN DUY NHẤT ở lần gen video đầu tiên rồi giữ nguyên
+ * suốt vòng đời job (thay vì random mỗi đoạn), để Veo ổn định hơn giữa các đoạn liên tiếp.
+ */
+export async function ensureJobVideoSeed(jobId: string): Promise<number> {
+  const job = await readJob(jobId);
+  if (job.videoSeed != null) return job.videoSeed;
+
+  const seed = Math.floor(Math.random() * 1_000_000);
+  const { job: updated } = await updateJob(jobId, (j) => {
+    if (j.videoSeed == null) j.videoSeed = seed;
+  });
+  return updated.videoSeed as number;
 }
 
 // ------------------------------------------------------------------

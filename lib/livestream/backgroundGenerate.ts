@@ -33,23 +33,25 @@ export async function triggerBackgroundImageGeneration(
   const basePrompt = promptOverride?.trim() || BACKGROUND_SYSTEM_PROMPT;
   const prompt = `${basePrompt}\n${product.description || product.name}`;
 
-  // Reference: ảnh sản phẩm đã chọn + ảnh mẫu (nếu có) ở BỘ ẢNH CHUNG cấp job để AI tạo cảnh có cả 2.
-  // Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc file local.
-  const refPathList: string[] = [];
-  if (job.selectedRefImagePath) {
-    await ensureLocalImage(jobId, job.selectedRefImagePath, job.imageR2Urls?.[job.selectedRefImagePath]);
-    refPathList.push(resolveWithinJob(jobId, job.selectedRefImagePath));
+  // Reference: ảnh sản phẩm đã chọn (1..N) + ảnh mẫu (nếu có) ở BỘ ẢNH CHUNG cấp job để AI tạo
+  // cảnh có cả 2. Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow
+  // đọc file local. mediaId dùng cache job.flowMediaIds nếu có để tránh upload lại lên Flow.
+  const refRelPaths: string[] = [...(job.selectedRefImagePaths ?? [])];
+  if (job.selectedModelImagePath) refRelPaths.push(job.selectedModelImagePath);
+  for (const relPath of refRelPaths) {
+    await ensureLocalImage(jobId, relPath, job.imageR2Urls?.[relPath]);
   }
-  if (job.selectedModelImagePath) {
-    await ensureLocalImage(jobId, job.selectedModelImagePath, job.imageR2Urls?.[job.selectedModelImagePath]);
-    refPathList.push(resolveWithinJob(jobId, job.selectedModelImagePath));
-  }
-  const refPaths = refPathList.length > 0 ? refPathList : undefined;
+  const relPathByAbsPath = new Map<string, string>();
+  const refImages = refRelPaths.map((relPath) => {
+    const absPath = resolveWithinJob(jobId, relPath);
+    relPathByAbsPath.set(absPath, relPath);
+    return { path: absPath, mediaId: job.flowMediaIds?.[relPath] };
+  });
 
   try {
     const result = await generateStoryboardImage({
       prompt,
-      refPaths,
+      refImages: refImages.length > 0 ? refImages : undefined,
       projectId: await ensureJobFlowId(jobId),
       // Khung ảnh nền khớp tỷ lệ video livestream (khác project background luôn 16:9).
       aspect: job.aspectRatio,
@@ -71,6 +73,11 @@ export async function triggerBackgroundImageGeneration(
       j.backgroundImagePaths.push(relPath);
       if (!j.imageR2Urls) j.imageR2Urls = {};
       j.imageR2Urls[relPath] = r2Url;
+      if (!j.flowMediaIds) j.flowMediaIds = {};
+      for (const [absPath, mediaId] of Object.entries(result.uploadedMediaIds)) {
+        const rel = relPathByAbsPath.get(absPath);
+        if (rel) j.flowMediaIds[rel] = mediaId;
+      }
     });
 
     return { ok: true, imagePath: relPath };

@@ -63,11 +63,12 @@ export function createNewJob(input: {
     products: input.products,
     // Bộ ảnh CHUNG cả job — khởi tạo rỗng; người dùng upload/chọn ở đầu trang (JobImagePanel).
     spokespersonImagePaths: [],
-    selectedRefImagePath: null,
+    selectedRefImagePaths: [],
     selectedModelImagePath: null,
     backgroundImagePaths: [],
     selectedBackgroundImagePath: null,
     imageR2Urls: {},
+    flowMediaIds: {},
     concat: {
       status: 'idle',
       log: [],
@@ -86,5 +87,6 @@ export function createNewJob(input: {
     },
     flowProjectId: null,
     scriptSystemPromptOverride: null,
+    videoSeed: null,
   };
 }

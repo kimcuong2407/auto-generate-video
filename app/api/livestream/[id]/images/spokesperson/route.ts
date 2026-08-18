@@ -106,10 +106,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const { job: updatedJob } = await updateJob(id, (j) => {
     if (targetPath) {
       j.spokespersonImagePaths = (j.spokespersonImagePaths ?? []).filter((rel) => rel !== targetPath);
-      if (j.selectedRefImagePath === targetPath) j.selectedRefImagePath = null;
+      j.selectedRefImagePaths = (j.selectedRefImagePaths ?? []).filter((rel) => rel !== targetPath);
     } else {
       j.spokespersonImagePaths = [];
-      j.selectedRefImagePath = null;
+      j.selectedRefImagePaths = [];
     }
     if (j.imageR2Urls) for (const rel of removedPaths) delete j.imageR2Urls[rel];
   });

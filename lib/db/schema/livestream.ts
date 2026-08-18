@@ -55,15 +55,20 @@ export const livestreamJobs = mysqlTable('livestream_jobs', {
   ]).notNull(),
   // Kho ảnh + ảnh chọn + map URL R2: gom vào JSON cho gọn (mảng string / Record<string,string|null>).
   spokespersonImagePaths: json('spokesperson_image_paths').$type<string[]>().notNull(),
-  selectedRefImagePath: varchar('selected_ref_image_path', { length: 1024 }),
+  selectedRefImagePaths: json('selected_ref_image_paths').$type<string[]>().notNull(),
   selectedModelImagePath: varchar('selected_model_image_path', { length: 1024 }),
   backgroundImagePaths: json('background_image_paths').$type<string[]>().notNull(),
   selectedBackgroundImagePath: varchar('selected_background_image_path', { length: 1024 }),
   imageR2Urls: json('image_r2_urls').$type<Record<string, string | null>>().notNull(),
+  // Cache mediaId Flow đã upload cho từng ảnh (key=relPath) — tránh upload trùng, xem types.ts.
+  flowMediaIds: json('flow_media_ids').$type<Record<string, string>>().notNull(),
   concat: json('concat').$type<ConcatState>().notNull(),
   flowStatusCache: json('flow_status_cache').$type<FlowStatusCache>().notNull(),
   flowProjectId: varchar('flow_project_id', { length: 255 }),
   scriptSystemPromptOverride: mediumtext('script_system_prompt_override'),
+  // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
+  // ổn định hơn giữa các đoạn — xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen lần nào.
+  videoSeed: int('video_seed'),
 });
 
 export const livestreamProducts = mysqlTable(

@@ -171,38 +171,38 @@ export function JobImagePanel({
     }
   }
 
-  // Bắt chọn tay: có ảnh trong kho nhưng chưa chọn ref → cảnh báo (chặn gen ở cấp job).
+  // Bắt chọn tay: có ảnh trong kho nhưng chưa chọn ref nào → cảnh báo (chặn gen ở cấp job).
   const needsRefSelection =
-    job.spokespersonImagePaths.length > 0 && !job.selectedRefImagePath;
+    job.spokespersonImagePaths.length > 0 && job.selectedRefImagePaths.length === 0;
 
   return (
     <div className="card">
       <div className="card-header">🖼️ <span>Ảnh dùng chung cả job (áp cho mọi đoạn)</span></div>
 
       <div className="banner banner-info">
-        Bộ ảnh này áp cho <strong>mọi đoạn của mọi sản phẩm</strong> khi gen video: 1 ảnh sản phẩm
-        (ref chính, bắt buộc) + 1 ảnh mẫu/người dẫn + 1 ảnh background (tuỳ chọn). Giúp video ghép lại
+        Bộ ảnh này áp cho <strong>mọi đoạn của mọi sản phẩm</strong> khi gen video: ảnh sản phẩm
+        (1 hoặc nhiều, bắt buộc) + 1 ảnh mẫu/người dẫn + 1 ảnh background (tuỳ chọn). Giúp video ghép lại
         nhất quán như 1 buổi live liên tục.
       </div>
 
       <div className="field-group">
-        <label>Ảnh sản phẩm — bấm chọn 1 ảnh làm tham chiếu chính (bắt buộc để gen video)</label>
+        <label>Ảnh sản phẩm — bấm chọn (nhiều) ảnh làm tham chiếu (bắt buộc ít nhất 1 để gen video)</label>
         {needsRefSelection && (
           <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginBottom: 6 }}>
-            ⚠️ Hãy chọn 1 ảnh sản phẩm làm tham chiếu thì mới gen được.
+            ⚠️ Hãy chọn ít nhất 1 ảnh sản phẩm làm tham chiếu thì mới gen được.
           </div>
         )}
         {job.spokespersonImagePaths.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
             {job.spokespersonImagePaths.map((relPath) => {
-              const selected = job.selectedRefImagePath === relPath;
+              const selected = job.selectedRefImagePaths.includes(relPath);
               return (
                 <div key={relPath} style={{ position: 'relative', width: 64, height: 64 }}>
                   <img
                     src={imgSrc(relPath)}
                     alt="Ảnh sản phẩm"
                     onClick={() => !selectingRef && handleSelectRef(relPath, 'product')}
-                    title={selected ? 'Ảnh tham chiếu chính' : 'Bấm để chọn làm tham chiếu chính'}
+                    title={selected ? 'Đang là tham chiếu — bấm để bỏ chọn' : 'Bấm để thêm làm tham chiếu'}
                     style={{
                       width: 64,
                       height: 64,
@@ -423,18 +423,18 @@ export function JobImagePanel({
           <button
             className="btn"
             onClick={handleGenerateBackground}
-            disabled={generatingBg || !job.selectedRefImagePath}
+            disabled={generatingBg || job.selectedRefImagePaths.length === 0}
             title={
-              !job.selectedRefImagePath
-                ? 'Hãy chọn 1 ảnh sản phẩm làm tham chiếu trước khi gen background'
+              job.selectedRefImagePaths.length === 0
+                ? 'Hãy chọn ít nhất 1 ảnh sản phẩm làm tham chiếu trước khi gen background'
                 : 'Tạo 1 khung hình có mẫu đang dùng sản phẩm, thêm vào kho background'
             }
           >
             {generatingBg ? '⏳ Đang gen background...' : '🎨 Gen background bằng AI'}
           </button>
-          {!job.selectedRefImagePath && (
+          {job.selectedRefImagePaths.length === 0 && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
-              Cần chọn 1 ảnh sản phẩm làm tham chiếu trước.
+              Cần chọn ít nhất 1 ảnh sản phẩm làm tham chiếu trước.
             </span>
           )}
         </div>

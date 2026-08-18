@@ -4,6 +4,7 @@ import { createJobDirs, listJobs, writeJob } from '@/lib/livestream/jobStore';
 import { createNewJob } from '@/lib/livestream/jobFactory';
 import { resolveFlowProjectIdSafe } from '@/lib/googleFlow/flowJobs';
 import { ingestEntry, type EntryInput } from '@/lib/livestream/ingestEntry';
+import { uploadImageToR2 } from '@/lib/livestream/imageR2';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { INGEST_CONCURRENCY } from '@/lib/livestream/constants';
 import type { LivestreamChaining } from '@/lib/livestream/types';
@@ -72,6 +73,10 @@ export async function POST(req: NextRequest) {
   const allImagePaths = results.flatMap((r) => r.imagePaths ?? []);
   if (allImagePaths.length > 0) {
     job.spokespersonImagePaths = allImagePaths;
+    // Đẩy ngay lên R2 (best-effort) để không mất khi deploy — cùng pattern route images/spokesperson.
+    for (const rel of allImagePaths) {
+      job.imageR2Urls[rel] = await uploadImageToR2(id, rel);
+    }
   }
   // Gán sẵn flowProjectId ngay khi tạo — xem giải thích tương ứng ở app/api/projects/route.ts.
   job.flowProjectId = await resolveFlowProjectIdSafe(name);

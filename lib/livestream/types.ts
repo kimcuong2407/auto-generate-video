@@ -71,17 +71,17 @@ export interface LivestreamJob {
   products: LivestreamProduct[];
   /**
    * KHO ảnh sản phẩm CHUNG cả job (crawl/upload) — mảng đường dẫn tương đối, rỗng nếu không dùng.
-   * Người dùng chọn ĐÚNG 1 ảnh trong kho này làm ref chính qua `selectedRefImagePath`, áp cho MỌI
+   * Người dùng chọn 1 hoặc nhiều ảnh trong kho này làm ref qua `selectedRefImagePaths`, áp cho MỌI
    * segment của MỌI sản phẩm trong job (1 buổi live thường 1 bối cảnh/1 người dẫn nhất quán).
    */
   spokespersonImagePaths: string[];
   /**
-   * Đường dẫn tương đối ảnh sản phẩm ĐƯỢC CHỌN làm reference chính (bắt buộc chọn tay ở đầu trang
-   * mới gen được nếu kho ảnh không rỗng). Phải nằm trong `spokespersonImagePaths`. null = chưa chọn.
+   * Đường dẫn tương đối các ảnh sản phẩm ĐƯỢC CHỌN làm reference (bắt buộc chọn ít nhất 1 ảnh ở đầu
+   * trang mới gen được nếu kho ảnh không rỗng). Mỗi phần tử phải nằm trong `spokespersonImagePaths`.
    * Dùng làm refPaths (r2v, IMAGE_USAGE_TYPE_ASSET) — ref luôn ưu tiên hơn frame-chaining để giữ
    * sản phẩm nhất quán xuyên suốt, xem lib/livestream/segmentGenerate.ts.
    */
-  selectedRefImagePath: string | null;
+  selectedRefImagePaths: string[];
   /**
    * Đường dẫn tương đối ảnh MẪU/NGƯỜI DẪN riêng (upload tay), tuỳ chọn — 1 ảnh duy nhất áp cho
    * MỌI segment của MỌI sản phẩm, truyền kèm ảnh sản phẩm + background làm refPaths (r2v) khi gen
@@ -102,6 +102,12 @@ export interface LivestreamJob {
    * này về local (xem lib/livestream/imageR2.ts). Chỉ áp cho ảnh MỚI upload/gen — ảnh cũ giữ local.
    */
   imageR2Urls: Record<string, string | null>;
+  /**
+   * Cache mediaId Flow đã upload cho từng ảnh (key = relPath, value = mediaId) — tránh upload lại
+   * cùng 1 ảnh nhiều lần lên Flow project (gây rác data). Chỉ hợp lệ trong đúng `flowProjectId` đã
+   * upload — bị clear khi flowProjectId đổi, xem ensureJobFlowId ở jobStore.ts.
+   */
+  flowMediaIds: Record<string, string>;
   concat: ConcatState;
   flowStatusCache: FlowStatusCache;
   flowProjectId: string | null;
@@ -111,6 +117,12 @@ export interface LivestreamJob {
    * Chỉ override prompt sinh kịch bản; prompt extract/vision không cho override (chỉ read-only ở UI).
    */
   scriptSystemPromptOverride: string | null;
+  /**
+   * Seed cố định dùng chung cho MỌI lần gen video của job (thay vì random mỗi đoạn) — giúp Veo ổn
+   * định hơn giữa các đoạn (hình lẫn giọng), xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen
+   * video lần nào, sẽ được lazy-tạo ở lần gen đầu tiên rồi giữ nguyên suốt vòng đời job.
+   */
+  videoSeed: number | null;
 }
 
 export interface LivestreamJobSummary {

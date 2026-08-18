@@ -49,11 +49,16 @@ function backfillJob(job: LivestreamJob): LivestreamJob {
     }
   }
   if (!Array.isArray(job.spokespersonImagePaths)) job.spokespersonImagePaths = [];
-  if (job.selectedRefImagePath === undefined) job.selectedRefImagePath = null;
+  // JSON cũ (trước đổi sang mảng) có thể còn field số ít `selectedRefImagePath: string | null`.
+  const legacySingle = (job as unknown as { selectedRefImagePath?: string | null }).selectedRefImagePath;
+  if (!Array.isArray(job.selectedRefImagePaths)) {
+    job.selectedRefImagePaths = legacySingle ? [legacySingle] : [];
+  }
   if (job.selectedModelImagePath === undefined) job.selectedModelImagePath = null;
   if (!Array.isArray(job.backgroundImagePaths)) job.backgroundImagePaths = [];
   if (job.selectedBackgroundImagePath === undefined) job.selectedBackgroundImagePath = null;
   if (!job.imageR2Urls || typeof job.imageR2Urls !== 'object') job.imageR2Urls = {};
+  if (!job.flowMediaIds || typeof job.flowMediaIds !== 'object') job.flowMediaIds = {};
   if (job.scriptSystemPromptOverride === undefined) job.scriptSystemPromptOverride = null;
   return job;
 }
@@ -134,15 +139,17 @@ async function importJob(jobId: string): Promise<{ products: number; segments: n
       chaining: job.chaining,
       status: job.status,
       spokespersonImagePaths: job.spokespersonImagePaths ?? [],
-      selectedRefImagePath: job.selectedRefImagePath ?? null,
+      selectedRefImagePaths: job.selectedRefImagePaths ?? [],
       selectedModelImagePath: job.selectedModelImagePath ?? null,
       backgroundImagePaths: job.backgroundImagePaths ?? [],
       selectedBackgroundImagePath: job.selectedBackgroundImagePath ?? null,
       imageR2Urls: job.imageR2Urls ?? {},
+      flowMediaIds: job.flowMediaIds ?? {},
       concat: job.concat,
       flowStatusCache: job.flowStatusCache,
       flowProjectId: job.flowProjectId ?? null,
       scriptSystemPromptOverride: job.scriptSystemPromptOverride ?? null,
+      videoSeed: job.videoSeed ?? null,
     });
 
     for (const product of job.products) {

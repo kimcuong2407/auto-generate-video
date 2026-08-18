@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Chọn ảnh tham chiếu CHUNG cả job:
- * - kind='product': chọn 1 ảnh trong kho spokespersonImagePaths làm ref chính (bắt buộc, path != null).
+ * - kind='product': TOGGLE 1 ảnh trong kho spokespersonImagePaths vào/ra selectedRefImagePaths
+ *   (nhiều ảnh sản phẩm có thể được chọn cùng lúc, bắt buộc path != null).
  * - kind='background': chọn 1 ảnh trong kho backgroundImagePaths (tuỳ chọn, path=null để bỏ chọn).
  * Ảnh đã chọn được dùng làm refPaths (r2v) khi gen video — xem lib/livestream/segmentGenerate.ts.
  */
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const job = await readJob(id);
 
-  // product: bắt buộc chọn 1 ảnh hợp lệ. background: cho phép null (bỏ chọn).
+  // product: bắt buộc chọn 1 ảnh hợp lệ (toggle). background: cho phép null (bỏ chọn).
   if (kind === 'product') {
     if (!targetPath || !(job.spokespersonImagePaths ?? []).includes(targetPath)) {
       return NextResponse.json({ error: 'Ảnh không tồn tại trong kho ảnh sản phẩm' }, { status: 400 });
@@ -36,7 +37,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { job: updatedJob } = await updateJob(id, (j) => {
     if (kind === 'product') {
-      j.selectedRefImagePath = targetPath;
+      const current = j.selectedRefImagePaths ?? [];
+      j.selectedRefImagePaths = current.includes(targetPath!)
+        ? current.filter((p) => p !== targetPath)
+        : [...current, targetPath!];
     } else {
       j.selectedBackgroundImagePath = targetPath;
     }

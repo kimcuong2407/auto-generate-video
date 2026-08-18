@@ -139,7 +139,7 @@ export default function LivestreamDetailPage() {
 
   const hasGeneratingSegment = job.products.some((p) => p.segments.some((s) => s.status === 'generating'));
   // Có ảnh sản phẩm trong kho CHUNG cả job nhưng chưa chọn ảnh tham chiếu → chặn "Gen tất cả".
-  const jobNeedsRef = job.spokespersonImagePaths.length > 0 && !job.selectedRefImagePath;
+  const jobNeedsRef = job.spokespersonImagePaths.length > 0 && job.selectedRefImagePaths.length === 0;
 
   return (
     <div style={{ display: 'flex', width: '100%' }}>

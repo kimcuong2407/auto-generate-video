@@ -59,7 +59,7 @@ export async function triggerStoryboardGeneration(
     const result = await generateStoryboardImage({
       prompt: image.prompt,
       model: project.storyboard.model,
-      refPaths: referenceImagePaths,
+      refImages: referenceImagePaths.map((path) => ({ path })),
       projectId: await ensureProjectFlowId(projectId),
       // Storyboard luôn là ảnh lưới 4x2 (xem SYSTEM_PROMPT trong storyboardPromptGenerate.ts)
       // — cần khung ngang để bố cục lưới hợp lý, không phụ thuộc aspectRatio video của project

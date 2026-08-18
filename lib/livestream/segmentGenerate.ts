@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { readJob, updateJob, ensureJobFlowId } from './jobStore';
+import { readJob, updateJob, ensureJobFlowId, ensureJobVideoSeed } from './jobStore';
 import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
@@ -91,8 +91,8 @@ export async function triggerSegmentGeneration(
   }
   // Bắt chọn tay: nếu job có ảnh trong kho chung nhưng chưa chọn ảnh ref → chặn gen (tránh gen
   // nhầm/không nhất quán). Job không có ảnh nào vẫn cho gen t2v như cũ.
-  if ((job.spokespersonImagePaths?.length ?? 0) > 0 && !job.selectedRefImagePath) {
-    return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn 1 ảnh ở phần cấu hình ảnh đầu trang' };
+  if ((job.spokespersonImagePaths?.length ?? 0) > 0 && (job.selectedRefImagePaths?.length ?? 0) === 0) {
+    return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn ít nhất 1 ảnh ở phần cấu hình ảnh đầu trang' };
   }
   // Bắt tuần tự: khi có chaining, không cho gen đoạn nếu đoạn liền trước (theo chế độ chaining)
   // chưa xong — tránh gen lệch thứ tự (frame cuối làm ref chưa có, hoặc 2 đoạn chạy chồng nhau)
@@ -107,25 +107,34 @@ export async function triggerSegmentGeneration(
 
   try {
     // Ref (r2v) luôn ưu tiên hơn i2v chaining thuần (startPath) để giữ sản phẩm/nhân vật nhất
-    // quán xuyên suốt. r2v cho phép nhiều referenceImages nên truyền ảnh mẫu + ảnh background đã
-    // chọn (nếu có), CỘNG THÊM khung hình cuối đoạn liền trước (nếu có) để giữ liên tục bối cảnh
-    // giữa 2 đoạn — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn không có ref nào khác.
-    // Ảnh sản phẩm (selectedRefImagePath) KHÔNG đưa vào đây — nó chỉ dùng làm reference lúc AI
-    // sinh ảnh background (xem BACKGROUND_SYSTEM_PROMPT); sản phẩm đã có sẵn trong ảnh background
-    // nên fix cứng qua đó, video chỉ đổi động tác tay/voice giữa các đoạn. Thứ tự ref: ảnh mẫu
-    // (người dẫn) → ảnh background → frame cuối đoạn trước. Ảnh mẫu là 1 ảnh duy nhất áp cho MỌI
-    // segment của sản phẩm.
+    // quán xuyên suốt. r2v cho phép nhiều referenceImages nên truyền TOÀN BỘ ảnh sản phẩm đã chọn
+    // + ảnh mẫu + ảnh background (nếu có), CỘNG THÊM khung hình cuối đoạn liền trước (nếu có) để
+    // giữ liên tục bối cảnh giữa 2 đoạn — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn
+    // không có ref nào khác. Thứ tự ref: ảnh sản phẩm (1..N) → ảnh mẫu (người dẫn) → ảnh background
+    // → frame cuối đoạn trước.
     // Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc
     // file local để làm refPaths. No-op nếu file đã có / không có bản R2.
     const refPathList: string[] = [];
+    for (const relPath of job.selectedRefImagePaths ?? []) {
+      await ensureLocalImage(jobId, relPath, job.imageR2Urls?.[relPath]);
+      refPathList.push(relPath);
+    }
     if (job.selectedModelImagePath) {
       await ensureLocalImage(jobId, job.selectedModelImagePath, job.imageR2Urls?.[job.selectedModelImagePath]);
-      refPathList.push(resolveWithinJob(jobId, job.selectedModelImagePath));
+      refPathList.push(job.selectedModelImagePath);
     }
     if (job.selectedBackgroundImagePath) {
       await ensureLocalImage(jobId, job.selectedBackgroundImagePath, job.imageR2Urls?.[job.selectedBackgroundImagePath]);
-      refPathList.push(resolveWithinJob(jobId, job.selectedBackgroundImagePath));
+      refPathList.push(job.selectedBackgroundImagePath);
     }
+    // refImages dùng mediaId đã cache (job.flowMediaIds) nếu có — tránh upload lại lên Flow.
+    // relPathByAbsPath dùng để map ngược uploadedMediaIds (keyed theo abs path) → relPath khi lưu cache.
+    const relPathByAbsPath = new Map<string, string>();
+    const refImages: { path: string; mediaId?: string }[] = refPathList.map((relPath) => {
+      const absPath = resolveWithinJob(jobId, relPath);
+      relPathByAbsPath.set(absPath, relPath);
+      return { path: absPath, mediaId: job.flowMediaIds?.[relPath] };
+    });
 
     const prevSegment = findPreviousSegment(job, found.product, segment);
     const prevLastFramePath =
@@ -133,19 +142,21 @@ export async function triggerSegmentGeneration(
         ? resolveWithinJob(jobId, prevSegment.lastFramePath)
         : undefined;
 
-    let startPath: string | undefined;
+    let startImage: { path: string } | undefined;
     if (prevLastFramePath) {
-      if (refPathList.length > 0) {
-        refPathList.push(prevLastFramePath);
+      if (refImages.length > 0) {
+        // Frame cuối đoạn trước không có relPath cố định trong kho ảnh (mỗi đoạn 1 frame khác
+        // nhau) nên không cache mediaId cho ảnh này — luôn upload mới.
+        refImages.push({ path: prevLastFramePath });
       } else {
-        startPath = prevLastFramePath;
+        startImage = { path: prevLastFramePath };
       }
     }
-    const refPaths = refPathList.length > 0 ? refPathList : undefined;
 
     const flowProjectId = await ensureJobFlowId(jobId);
+    const seed = await ensureJobVideoSeed(jobId);
 
-    const { job_id } = await generateSceneVideo(
+    const { job_id, uploadedMediaIds } = await generateSceneVideo(
       {
         veoPrompt: segment.veoPrompt,
         voiceoverVi: segment.voiceoverVi,
@@ -155,8 +166,9 @@ export async function triggerSegmentGeneration(
         aspect: job.aspectRatio,
         model: job.veoModel,
         flowProjectId,
-        startPath,
-        refPaths,
+        startImage,
+        refImages: refImages.length > 0 ? refImages : undefined,
+        seed,
       }
     );
 
@@ -173,6 +185,11 @@ export async function triggerSegmentGeneration(
       f.segment.videoUrl = null;
       f.segment.attempts += 1;
       f.segment.lastUpdatedAt = new Date().toISOString();
+      if (!j.flowMediaIds) j.flowMediaIds = {};
+      for (const [absPath, mediaId] of Object.entries(uploadedMediaIds)) {
+        const relPath = relPathByAbsPath.get(absPath);
+        if (relPath) j.flowMediaIds[relPath] = mediaId;
+      }
     });
 
     return { segmentId, ok: true, jobId: job_id };

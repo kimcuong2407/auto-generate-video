@@ -12,6 +12,7 @@ import { resolveActiveAccount, resolveAccessToken } from './recaptcha';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
 import { generateVideo, pollVideoStatus } from './videoGen';
+import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
 import { FlowApiError } from './errors';
 import type { FlowAccount } from './authStore';
@@ -40,10 +41,6 @@ export async function getFlowStatus(): Promise<FlowStatusResult> {
       projects_error: (err as Error).message,
     };
   }
-}
-
-export interface GenerateVideoResult {
-  job_id: string;
 }
 
 /**
@@ -111,16 +108,17 @@ export async function generateSceneVideo(
     aspect: '16:9' | '9:16';
     model: VeoModel;
     flowProjectId?: string | null;
-    refPaths?: string[];
-    startPath?: string;
-    endPath?: string;
+    refImages?: RefImageInput[];
+    startImage?: RefImageInput;
+    endImage?: RefImageInput;
+    seed?: number;
   }
 ): Promise<GenerateVideoResult> {
   const account = await resolveActiveAccount();
   const accessToken = await resolveAccessToken(account);
 
-  const refPaths = opts.refPaths && opts.refPaths.length > 0 ? opts.refPaths : undefined;
-  const duration = resolveAllowedDuration(input.duration, opts.model, !!refPaths);
+  const refImages = opts.refImages && opts.refImages.length > 0 ? opts.refImages : undefined;
+  const duration = resolveAllowedDuration(input.duration, opts.model, !!refImages);
   let prompt = ensureVietnameseVoiceInstruction(input.veoPrompt, input.voiceoverVi);
   prompt = ensureNoSubtitlesInstruction(prompt);
   prompt = appendNegativePrompt(prompt, input.negativePrompt || '');
@@ -137,9 +135,10 @@ export async function generateSceneVideo(
     model: opts.model,
     projectId: opts.flowProjectId,
     duration,
-    refPaths,
-    startPath: opts.startPath,
-    endPath: opts.endPath,
+    refImages,
+    startImage: opts.startImage,
+    endImage: opts.endImage,
+    seed: opts.seed,
   });
 }
 
@@ -205,6 +204,7 @@ export interface GenerateStoryboardImageResult {
   job_id: string;
   dir: string;
   paths: string[];
+  uploadedMediaIds: Record<string, string>;
 }
 
 /** Sinh ảnh storyboard (đồng bộ) qua batchGenerateImages. */
@@ -212,7 +212,7 @@ export async function generateStoryboardImage(params: {
   prompt: string;
   aspect: '9:16' | '16:9';
   model?: string;
-  refPaths?: string[];
+  refImages?: RefImageInput[];
   projectId?: string | null;
   timeoutMs?: number;
 }): Promise<GenerateStoryboardImageResult> {
@@ -230,11 +230,11 @@ export async function generateStoryboardImage(params: {
     aspect: params.aspect,
     model: params.model,
     projectId: params.projectId,
-    refPaths: params.refPaths && params.refPaths.length > 0 ? params.refPaths : undefined,
+    refImages: params.refImages && params.refImages.length > 0 ? params.refImages : undefined,
     count: 1,
   });
 
-  return { job_id: '', dir: result.dir, paths: result.paths };
+  return { job_id: '', dir: result.dir, paths: result.paths, uploadedMediaIds: result.uploadedMediaIds };
 }
 
 /**

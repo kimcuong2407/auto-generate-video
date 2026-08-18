@@ -81,6 +81,12 @@ export function resolveVideoModelKey(
   return `veo_3_1_${modeInfix}_${base}${durationSuffix(duration)}${suffix}${useFl ? '_fl' : ''}`;
 }
 
+/** 1 ảnh reference kèm mediaId Flow đã biết (cache) — bỏ trống nếu chưa từng upload. */
+export interface RefImageInput {
+  path: string;
+  mediaId?: string;
+}
+
 export interface GenerateVideoParams {
   account: FlowAccount;
   accessToken: string;
@@ -89,13 +95,30 @@ export interface GenerateVideoParams {
   model: VeoModel;
   projectId: string;
   duration: number;
-  refPaths?: string[];
-  startPath?: string;
-  endPath?: string;
+  refImages?: RefImageInput[];
+  startImage?: RefImageInput;
+  endImage?: RefImageInput;
+  /** Seed cố định (VD dùng chung cả job) — nếu bỏ trống, random như trước. */
+  seed?: number;
 }
 
 export interface GenerateVideoResult {
   job_id: string;
+  /** mediaId của các ảnh vừa upload MỚI (chưa có trong cache) — caller lưu lại để tái dùng lần sau. */
+  uploadedMediaIds: Record<string, string>;
+}
+
+/** Trả mediaId có sẵn nếu đã cache, ngược lại upload rồi ghi nhận vào `uploaded`. */
+async function resolveMediaId(
+  accessToken: string,
+  projectId: string,
+  ref: RefImageInput,
+  uploaded: Record<string, string>
+): Promise<string> {
+  if (ref.mediaId) return ref.mediaId;
+  const mediaId = await uploadImageFile(accessToken, projectId, ref.path);
+  uploaded[ref.path] = mediaId;
+  return mediaId;
 }
 
 interface VideoWorkflowResponse {
@@ -140,11 +163,12 @@ function extractMediaId(data: VideoWorkflowResponse): string {
 export async function generateVideo(params: GenerateVideoParams): Promise<GenerateVideoResult> {
   const aspectRatio = VIDEO_ASPECT_MAP[params.aspect] ?? VIDEO_ASPECT_MAP['16:9'];
   const textInput = { structuredPrompt: { parts: [{ text: params.prompt }] } };
-  const seed = Math.floor(Math.random() * 1_000_000);
+  const seed = params.seed ?? Math.floor(Math.random() * 1_000_000);
 
-  const hasRef = params.refPaths && params.refPaths.length > 0;
-  const hasStart = !!params.startPath;
-  const hasEnd = !!params.endPath;
+  const hasRef = params.refImages && params.refImages.length > 0;
+  const hasStart = !!params.startImage;
+  const hasEnd = !!params.endImage;
+  const uploadedMediaIds: Record<string, string> = {};
 
   let endpoint: string;
   let mode: VideoMode;
@@ -155,16 +179,16 @@ export async function generateVideo(params: GenerateVideoParams): Promise<Genera
     endpoint = '/v1/video:batchAsyncGenerateVideoReferenceImages';
     mode = 'r2v';
     const referenceImages = [];
-    for (const refPath of params.refPaths!) {
-      const mediaId = await uploadImageFile(params.accessToken, params.projectId, refPath);
+    for (const ref of params.refImages!) {
+      const mediaId = await resolveMediaId(params.accessToken, params.projectId, ref, uploadedMediaIds);
       referenceImages.push({ mediaId, imageUsageType: 'IMAGE_USAGE_TYPE_ASSET' });
     }
     request = { ...common, referenceImages };
   } else if (hasStart && hasEnd) {
     endpoint = '/v1/video:batchAsyncGenerateVideoStartAndEndImage';
     mode = 'i2v_se';
-    const startMediaId = await uploadImageFile(params.accessToken, params.projectId, params.startPath!);
-    const endMediaId = await uploadImageFile(params.accessToken, params.projectId, params.endPath!);
+    const startMediaId = await resolveMediaId(params.accessToken, params.projectId, params.startImage!, uploadedMediaIds);
+    const endMediaId = await resolveMediaId(params.accessToken, params.projectId, params.endImage!, uploadedMediaIds);
     request = {
       ...common,
       startImage: { mediaId: startMediaId, cropCoordinates: { top: 0, left: 0, bottom: 1, right: 1 } },
@@ -173,7 +197,7 @@ export async function generateVideo(params: GenerateVideoParams): Promise<Genera
   } else if (hasStart) {
     endpoint = '/v1/video:batchAsyncGenerateVideoStartImage';
     mode = 'i2v_s';
-    const startMediaId = await uploadImageFile(params.accessToken, params.projectId, params.startPath!);
+    const startMediaId = await resolveMediaId(params.accessToken, params.projectId, params.startImage!, uploadedMediaIds);
     request = {
       ...common,
       startImage: { mediaId: startMediaId, cropCoordinates: { top: 0, left: 0, bottom: 1, right: 1 } },
@@ -198,7 +222,7 @@ export async function generateVideo(params: GenerateVideoParams): Promise<Genera
     timeoutMs: 60_000,
   });
   const data = await readJson<VideoWorkflowResponse>(res);
-  return { job_id: extractMediaId(data) };
+  return { job_id: extractMediaId(data), uploadedMediaIds };
 }
 
 export type VideoPollState = 'pending' | 'running' | 'done' | 'error';
