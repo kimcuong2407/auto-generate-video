@@ -261,6 +261,9 @@ export async function pollVideoStatus(
     throw new FlowApiError('batchCheckAsyncVideoGenerationStatus không trả về trạng thái');
   }
   const mapped = STATUS_MAP[raw] ?? 'pending';
+  if (mapped === 'error') {
+    console.error(`[flow] mediaId=${mediaId} FAILED, raw response:`, JSON.stringify(data));
+  }
   return {
     status: mapped,
     phase: raw,
