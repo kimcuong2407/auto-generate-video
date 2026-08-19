@@ -16,7 +16,7 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { getDb } from '../db/client';
 import * as schema from '../db/schema';
@@ -267,9 +267,12 @@ async function persistJob(tx: Tx, job: LivestreamJob, existingDbId: number | nul
 
   // Dấu thời gian dùng cho created_at/updated_at cấp product/segment — đã ở dạng SQL DATETIME.
   const nowStamp = isoToSql(nowIso())!;
-  for (const product of job.products) {
-    let productRowId = productRowIdByKey.get(product.id);
-    const productValues = {
+
+  // Batch upsert TOÀN BỘ products trong 1 câu (thay vì loop INSERT/UPDATE tuần tự từng cái —
+  // với DB remote (~56ms RTT/query), N product = N+ round-trip khiến transaction giữ
+  // FOR UPDATE lock quá lâu và dễ rớt kết nối giữa chừng, xem sự cố EPIPE/"Failed query: rollback").
+  if (job.products.length > 0) {
+    const productValuesList = job.products.map((product) => ({
       jobId: dbId,
       productKey: product.id,
       order: product.order,
@@ -284,68 +287,75 @@ async function persistJob(tx: Tx, job: LivestreamJob, existingDbId: number | nul
       targetDurationSec: product.targetDurationSec,
       scriptStatus: product.scriptStatus,
       scriptError: product.scriptError ?? null,
+      createdAt: nowStamp,
       updatedAt: nowStamp,
-    };
-
-    if (productRowId === undefined) {
-      // Product mới: INSERT (createdAt = now) rồi lấy lại rowId.
-      await tx
-        .insert(livestreamProducts)
-        .values({ ...productValues, createdAt: nowStamp });
-      const inserted = await tx
-        .select({ rowId: livestreamProducts.rowId })
-        .from(livestreamProducts)
-        .where(
-          and(
-            eq(livestreamProducts.jobId, dbId),
-            eq(livestreamProducts.productKey, product.id)
-          )
-        )
-        .limit(1);
-      productRowId = inserted[0]?.rowId;
-      if (productRowId === undefined) {
-        throw new Error(`Không lấy được rowId sau khi chèn product ${product.id}`);
-      }
-    } else {
-      await tx
-        .update(livestreamProducts)
-        .set(productValues)
-        .where(eq(livestreamProducts.rowId, productRowId));
-    }
-
-    await persistSegments(tx, dbId, productRowId, product.segments, nowStamp);
+    }));
+    await tx
+      .insert(livestreamProducts)
+      .values(productValuesList)
+      .onDuplicateKeyUpdate({
+        set: {
+          order: sql`values(${livestreamProducts.order})`,
+          sourceType: sql`values(${livestreamProducts.sourceType})`,
+          sourceLink: sql`values(${livestreamProducts.sourceLink})`,
+          sourceFilePath: sql`values(${livestreamProducts.sourceFilePath})`,
+          rawText: sql`values(${livestreamProducts.rawText})`,
+          ingestStatus: sql`values(${livestreamProducts.ingestStatus})`,
+          ingestError: sql`values(${livestreamProducts.ingestError})`,
+          name: sql`values(${livestreamProducts.name})`,
+          description: sql`values(${livestreamProducts.description})`,
+          targetDurationSec: sql`values(${livestreamProducts.targetDurationSec})`,
+          scriptStatus: sql`values(${livestreamProducts.scriptStatus})`,
+          scriptError: sql`values(${livestreamProducts.scriptError})`,
+          updatedAt: sql`values(${livestreamProducts.updatedAt})`,
+        },
+      });
   }
+
+  // Đọc lại rowId của mọi product (kể cả vừa insert) trong 1 câu duy nhất.
+  const productRows = await tx
+    .select({ rowId: livestreamProducts.rowId, productKey: livestreamProducts.productKey })
+    .from(livestreamProducts)
+    .where(eq(livestreamProducts.jobId, dbId));
+  const productRowIdByKeyAfter = new Map(productRows.map((p) => [p.productKey, p.rowId]));
+
+  await persistSegments(tx, dbId, job.products, productRowIdByKeyAfter, nowStamp);
 
   return dbId;
 }
 
-/** Diff segments của 1 product: INSERT/UPDATE/DELETE theo segmentKey. */
+/** Batch upsert TOÀN BỘ segments của TOÀN BỘ product (1 câu) + xoá segment không còn tồn tại. */
 async function persistSegments(
   tx: Tx,
   dbJobId: number,
-  productRowId: number,
-  segments: LivestreamSegment[],
+  products: LivestreamJob['products'],
+  productRowIdByKey: Map<string, number>,
   nowStamp: string
 ): Promise<void> {
+  const productRowIds = products.map((p) => productRowIdByKey.get(p.id)!);
+
   const existing = await tx
     .select({
       rowId: livestreamSegments.rowId,
       segmentKey: livestreamSegments.segmentKey,
+      productRowId: livestreamSegments.productRowId,
     })
     .from(livestreamSegments)
-    .where(eq(livestreamSegments.productRowId, productRowId));
-  const rowIdByKey = new Map(existing.map((s) => [s.segmentKey, s.rowId]));
-  const keepKeys = new Set(segments.map((s) => s.id));
+    .where(inArray(livestreamSegments.productRowId, productRowIds));
 
+  const keepKeys = new Set(
+    products.flatMap((p) => p.segments.map((s) => `${productRowIdByKey.get(p.id)}:${s.id}`))
+  );
   const removedRowIds = existing
-    .filter((s) => !keepKeys.has(s.segmentKey))
+    .filter((s) => !keepKeys.has(`${s.productRowId}:${s.segmentKey}`))
     .map((s) => s.rowId);
   if (removedRowIds.length > 0) {
     await tx.delete(livestreamSegments).where(inArray(livestreamSegments.rowId, removedRowIds));
   }
 
-  for (const seg of segments) {
-    const values = {
+  const allSegmentValues = products.flatMap((product) => {
+    const productRowId = productRowIdByKey.get(product.id)!;
+    return product.segments.map((seg) => ({
       productRowId,
       jobId: dbJobId,
       segmentKey: seg.id,
@@ -361,15 +371,32 @@ async function persistSegments(
       error: seg.error ?? null,
       attempts: seg.attempts,
       lastUpdatedAt: isoToSql(seg.lastUpdatedAt),
+      createdAt: nowStamp,
       updatedAt: nowStamp,
-    };
-    const rowId = rowIdByKey.get(seg.id);
-    if (rowId === undefined) {
-      await tx.insert(livestreamSegments).values({ ...values, createdAt: nowStamp });
-    } else {
-      await tx.update(livestreamSegments).set(values).where(eq(livestreamSegments.rowId, rowId));
-    }
-  }
+    }));
+  });
+  if (allSegmentValues.length === 0) return;
+
+  await tx
+    .insert(livestreamSegments)
+    .values(allSegmentValues)
+    .onDuplicateKeyUpdate({
+      set: {
+        order: sql`values(${livestreamSegments.order})`,
+        voiceoverVi: sql`values(${livestreamSegments.voiceoverVi})`,
+        veoPrompt: sql`values(${livestreamSegments.veoPrompt})`,
+        duration: sql`values(${livestreamSegments.duration})`,
+        status: sql`values(${livestreamSegments.status})`,
+        flowJobId: sql`values(${livestreamSegments.flowJobId})`,
+        videoPath: sql`values(${livestreamSegments.videoPath})`,
+        videoUrl: sql`values(${livestreamSegments.videoUrl})`,
+        lastFramePath: sql`values(${livestreamSegments.lastFramePath})`,
+        error: sql`values(${livestreamSegments.error})`,
+        attempts: sql`values(${livestreamSegments.attempts})`,
+        lastUpdatedAt: sql`values(${livestreamSegments.lastUpdatedAt})`,
+        updatedAt: sql`values(${livestreamSegments.updatedAt})`,
+      },
+    });
 }
 
 /** Ghi job MỚI (transaction). Giữ chữ ký cũ — PK bigint tự sinh bên trong, không lộ ra ngoài. */
