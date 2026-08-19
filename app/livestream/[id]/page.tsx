@@ -198,6 +198,7 @@ export default function LivestreamDetailPage() {
             <ProductPanel
               key={product.id}
               jobId={jobId}
+              job={job}
               product={product}
               onRefresh={refresh}
               onGenerateScript={(productId) => handleGenerateScript(productId)}

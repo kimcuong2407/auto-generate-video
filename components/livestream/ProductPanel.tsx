@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { LivestreamProduct, LivestreamSegment } from '@/lib/livestream/types';
+import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from '@/lib/livestream/types';
 
 function segmentStatusClass(status: LivestreamSegment['status']): string {
   if (status === 'done') return 'status-ready';
@@ -12,12 +12,14 @@ function segmentStatusClass(status: LivestreamSegment['status']): string {
 
 export function ProductPanel({
   jobId,
+  job,
   product,
   onRefresh,
   onGenerateScript,
   scriptBusy,
 }: {
   jobId: string;
+  job: LivestreamJob;
   product: LivestreamProduct;
   onRefresh: () => Promise<void>;
   onGenerateScript: (productId: string) => void;
@@ -27,6 +29,11 @@ export function ProductPanel({
   const [manualDescription, setManualDescription] = useState(product.description);
   const [savingManual, setSavingManual] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  // Ảnh tham chiếu + prompt đã gửi lên veoflow cho 1 đoạn — xem nút "👁 Chi tiết" bên dưới.
+  const [detailsSegmentId, setDetailsSegmentId] = useState<string | null>(null);
+  // Ưu tiên URL R2 (bền vững qua deploy) khi hiển thị, giống JobImagePanel.
+  const imgSrc = (relPath: string) =>
+    job.imageR2Urls?.[relPath] ?? `/api/livestream/${jobId}/media/${relPath}`;
 
   async function handleScreenshotUpload(file: File) {
     setUploadingScreenshot(true);
@@ -216,6 +223,13 @@ export function ProductPanel({
               </div>
               <span className={`status ${segmentStatusClass(segment.status)}`}>{segment.status}</span>
               <div className="actions">
+                <button
+                  className="retry-btn"
+                  onClick={() => setDetailsSegmentId(segment.id)}
+                  title="Xem ảnh tham chiếu + prompt đã gửi lên veoflow"
+                >
+                  👁 Chi tiết
+                </button>
                 {segment.status === 'idle' && (
                   <button
                     className="retry-btn"
@@ -280,6 +294,62 @@ export function ProductPanel({
           ))}
         </div>
       )}
+      {detailsSegmentId && (() => {
+        const segment = product.segments.find((s) => s.id === detailsSegmentId);
+        if (!segment) return null;
+        const refPaths = [
+          ...(job.selectedRefImagePaths ?? []),
+          ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
+          ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
+        ];
+        return (
+          <div className="media-modal-overlay" onClick={() => setDetailsSegmentId(null)}>
+            <div
+              className="media-modal-content"
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: 20,
+                width: 560,
+                maxWidth: '90vw',
+                textAlign: 'left',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button className="media-modal-close" onClick={() => setDetailsSegmentId(null)} title="Đóng">
+                ✕
+              </button>
+              <h4 style={{ marginTop: 0 }}>Chi tiết đoạn #{segment.order}</h4>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                {refPaths.length === 0 && <span style={{ opacity: 0.6 }}>Chưa chọn ảnh tham chiếu cho job này</span>}
+                {refPaths.map((p) => (
+                  <img
+                    key={p}
+                    src={imgSrc(p)}
+                    alt={p}
+                    style={{ width: 110, height: 110, objectFit: 'cover', borderRadius: 8 }}
+                  />
+                ))}
+              </div>
+              <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>Prompt gửi Veoflow:</div>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 13,
+                  background: 'var(--bg)',
+                  padding: 10,
+                  borderRadius: 8,
+                  maxHeight: '40vh',
+                  overflowY: 'auto',
+                }}
+              >
+                {segment.veoPrompt || '(chưa có prompt — cần gen kịch bản trước)'}
+              </pre>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
