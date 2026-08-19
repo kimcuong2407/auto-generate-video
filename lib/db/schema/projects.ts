@@ -13,7 +13,6 @@ import {
   text,
   mediumtext,
   datetime,
-  json,
   mysqlEnum,
   index,
   uniqueIndex,
@@ -27,6 +26,7 @@ import type {
   FlowStatusCache,
   VeoModel,
 } from '../../types';
+import { mariaJson } from './mariaJson';
 
 const VEO_MODELS = [
   'veo_3_1_quality',
@@ -51,12 +51,12 @@ export const projects = mysqlTable('projects', {
   flowProjectId: varchar('flow_project_id', { length: 255 }),
   scriptAngleId: varchar('script_angle_id', { length: 255 }),
   // Cấu hình đầu vào + trạng thái tổng hợp → JSON.
-  template: json('template').$type<Template>().notNull(),
-  product: json('product').$type<ProductInfo>().notNull(),
-  inputs: json('inputs').$type<ProjectInputs>().notNull(),
-  music: json('music').$type<MusicConfig>().notNull(),
-  concat: json('concat').$type<ConcatState>().notNull(),
-  flowStatusCache: json('flow_status_cache').$type<FlowStatusCache>().notNull(),
+  template: mariaJson('template').$type<Template>().notNull(),
+  product: mariaJson('product').$type<ProductInfo>().notNull(),
+  inputs: mariaJson('inputs').$type<ProjectInputs>().notNull(),
+  music: mariaJson('music').$type<MusicConfig>().notNull(),
+  concat: mariaJson('concat').$type<ConcatState>().notNull(),
+  flowStatusCache: mariaJson('flow_status_cache').$type<FlowStatusCache>().notNull(),
   // Storyboard meta (model + 2 cờ dùng ref) — ảnh tách bảng storyboard_images.
   storyboardModel: varchar('storyboard_model', { length: 128 }).notNull(),
   storyboardUseProductReference: boolean('storyboard_use_product_reference').notNull(),

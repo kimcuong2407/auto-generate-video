@@ -17,7 +17,6 @@ import {
   text,
   mediumtext,
   datetime,
-  json,
   mysqlEnum,
   index,
   uniqueIndex,
@@ -27,6 +26,7 @@ import type {
   FlowStatusCache,
   VeoModel,
 } from '../../types';
+import { mariaJson } from './mariaJson';
 
 const VEO_MODELS = [
   'veo_3_1_quality',
@@ -59,16 +59,16 @@ export const livestreamJobs = mysqlTable(
     'failed',
   ]).notNull(),
   // Kho ảnh + ảnh chọn + map URL R2: gom vào JSON cho gọn (mảng string / Record<string,string|null>).
-  spokespersonImagePaths: json('spokesperson_image_paths').$type<string[]>().notNull(),
-  selectedRefImagePaths: json('selected_ref_image_paths').$type<string[]>().notNull(),
+  spokespersonImagePaths: mariaJson('spokesperson_image_paths').$type<string[]>().notNull(),
+  selectedRefImagePaths: mariaJson('selected_ref_image_paths').$type<string[]>().notNull(),
   selectedModelImagePath: varchar('selected_model_image_path', { length: 1024 }),
-  backgroundImagePaths: json('background_image_paths').$type<string[]>().notNull(),
+  backgroundImagePaths: mariaJson('background_image_paths').$type<string[]>().notNull(),
   selectedBackgroundImagePath: varchar('selected_background_image_path', { length: 1024 }),
-  imageR2Urls: json('image_r2_urls').$type<Record<string, string | null>>().notNull(),
+  imageR2Urls: mariaJson('image_r2_urls').$type<Record<string, string | null>>().notNull(),
   // Cache mediaId Flow đã upload cho từng ảnh (key=relPath) — tránh upload trùng, xem types.ts.
-  flowMediaIds: json('flow_media_ids').$type<Record<string, string>>().notNull(),
-  concat: json('concat').$type<ConcatState>().notNull(),
-  flowStatusCache: json('flow_status_cache').$type<FlowStatusCache>().notNull(),
+  flowMediaIds: mariaJson('flow_media_ids').$type<Record<string, string>>().notNull(),
+  concat: mariaJson('concat').$type<ConcatState>().notNull(),
+  flowStatusCache: mariaJson('flow_status_cache').$type<FlowStatusCache>().notNull(),
   flowProjectId: varchar('flow_project_id', { length: 255 }),
   scriptSystemPromptOverride: mediumtext('script_system_prompt_override'),
   // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
