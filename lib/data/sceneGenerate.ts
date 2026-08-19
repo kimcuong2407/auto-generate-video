@@ -56,7 +56,7 @@ export async function triggerSceneGeneration(
 
     const flowProjectId = await ensureProjectFlowId(projectId);
 
-    const { job_id } = await generateSceneVideo(
+    const { job_id, flowProjectId: usedFlowProjectId } = await generateSceneVideo(
       {
         veoPrompt: scene.veoPrompt,
         voiceoverVi: scene.voiceoverVi,
@@ -67,6 +67,7 @@ export async function triggerSceneGeneration(
         aspect: project.aspectRatio,
         model: project.veoModel,
         flowProjectId,
+        flowProjectTitle: project.name,
         refImages,
         startImage,
       }
@@ -76,6 +77,8 @@ export async function triggerSceneGeneration(
       const s = p.script.scenes.find((x) => x.id === sceneId);
       if (!s) return;
       applyGeneratingState(s, job_id, !!startImage);
+      // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
+      if (usedFlowProjectId !== flowProjectId) p.flowProjectId = usedFlowProjectId;
     });
 
     return { sceneId, ok: true, jobId: job_id };

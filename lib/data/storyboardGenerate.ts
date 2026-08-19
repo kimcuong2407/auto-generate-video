@@ -56,11 +56,13 @@ export async function triggerStoryboardGeneration(
       );
     }
 
+    const flowProjectId = await ensureProjectFlowId(projectId);
     const result = await generateStoryboardImage({
       prompt: image.prompt,
       model: project.storyboard.model,
       refImages: referenceImagePaths.map((path) => ({ path })),
-      projectId: await ensureProjectFlowId(projectId),
+      projectId: flowProjectId,
+      projectTitle: project.name,
       // Storyboard luôn là ảnh lưới 4x2 (xem SYSTEM_PROMPT trong storyboardPromptGenerate.ts)
       // — cần khung ngang để bố cục lưới hợp lý, không phụ thuộc aspectRatio video của project
       // (thường là 9:16 dọc, ép lưới ngang vào đó khiến model bỏ qua chỉ dẫn grid).
@@ -83,6 +85,8 @@ export async function triggerStoryboardGeneration(
       // không còn 'generating'), không ghi đè trạng thái đã dừng bằng kết quả trễ.
       if (!img || img.status !== 'generating') return;
       applyDoneState(img, relativeImagePath);
+      // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
+      if (result.flowProjectId !== flowProjectId) p.flowProjectId = result.flowProjectId;
     });
 
     return { sceneId, ok: true, imagePath: relativeImagePath };

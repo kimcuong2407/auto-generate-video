@@ -38,10 +38,12 @@ export async function triggerBackgroundGeneration(
   });
 
   try {
+    const flowProjectId = await ensureProjectFlowId(projectId);
     const result = await generateStoryboardImage({
       prompt: image.prompt,
       model: project.storyboard.model,
-      projectId: await ensureProjectFlowId(projectId),
+      projectId: flowProjectId,
+      projectTitle: project.name,
       // Cùng lý do với storyboardGenerate.ts: ảnh background luôn khung ngang 16:9,
       // không phụ thuộc aspectRatio video của project.
       aspect: '16:9',
@@ -61,6 +63,8 @@ export async function triggerBackgroundGeneration(
       const img = p.storyboard.backgrounds.find((x) => x.sceneId === sceneId);
       if (!img || img.status !== 'generating') return;
       applyDoneState(img, relativeImagePath);
+      // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
+      if (result.flowProjectId !== flowProjectId) p.flowProjectId = result.flowProjectId;
     });
 
     return { sceneId, ok: true, imagePath: relativeImagePath };

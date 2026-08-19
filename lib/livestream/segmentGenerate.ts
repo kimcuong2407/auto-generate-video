@@ -156,7 +156,7 @@ export async function triggerSegmentGeneration(
     const flowProjectId = await ensureJobFlowId(jobId);
     const seed = await ensureJobVideoSeed(jobId);
 
-    const { job_id, uploadedMediaIds } = await generateSceneVideo(
+    const { job_id, uploadedMediaIds, flowProjectId: usedFlowProjectId } = await generateSceneVideo(
       {
         veoPrompt: segment.veoPrompt,
         voiceoverVi: segment.voiceoverVi,
@@ -166,6 +166,7 @@ export async function triggerSegmentGeneration(
         aspect: job.aspectRatio,
         model: job.veoModel,
         flowProjectId,
+        flowProjectTitle: job.name,
         startImage,
         refImages: refImages.length > 0 ? refImages : undefined,
         seed,
@@ -185,6 +186,9 @@ export async function triggerSegmentGeneration(
       f.segment.videoUrl = null;
       f.segment.attempts += 1;
       f.segment.lastUpdatedAt = new Date().toISOString();
+      // Project cũ bị Google 404 (entity not found) → generateSceneVideo đã tự tạo project mới,
+      // lưu lại để các đoạn sau dùng luôn, tránh phải retry 404 lại từ đầu.
+      if (usedFlowProjectId !== flowProjectId) j.flowProjectId = usedFlowProjectId;
       if (!j.flowMediaIds) j.flowMediaIds = {};
       for (const [absPath, mediaId] of Object.entries(uploadedMediaIds)) {
         const relPath = relPathByAbsPath.get(absPath);

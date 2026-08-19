@@ -49,10 +49,12 @@ export async function triggerBackgroundImageGeneration(
   });
 
   try {
+    const flowProjectId = await ensureJobFlowId(jobId);
     const result = await generateStoryboardImage({
       prompt,
       refImages: refImages.length > 0 ? refImages : undefined,
-      projectId: await ensureJobFlowId(jobId),
+      projectId: flowProjectId,
+      projectTitle: job.name,
       // Khung ảnh nền khớp tỷ lệ video livestream (khác project background luôn 16:9).
       aspect: job.aspectRatio,
     });
@@ -71,6 +73,8 @@ export async function triggerBackgroundImageGeneration(
     await updateJob(jobId, (j) => {
       if (!Array.isArray(j.backgroundImagePaths)) j.backgroundImagePaths = [];
       j.backgroundImagePaths.push(relPath);
+      // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
+      if (result.flowProjectId !== flowProjectId) j.flowProjectId = result.flowProjectId;
       if (!j.imageR2Urls) j.imageR2Urls = {};
       j.imageR2Urls[relPath] = r2Url;
       if (!j.flowMediaIds) j.flowMediaIds = {};
