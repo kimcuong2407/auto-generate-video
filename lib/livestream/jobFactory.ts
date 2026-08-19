@@ -43,7 +43,7 @@ export function buildProduct(fields: {
 }
 
 export function createNewJob(input: {
-  id: string;
+  slug: string;
   name: string;
   aspectRatio: '9:16' | '16:9';
   veoModel: VeoModel;
@@ -52,7 +52,8 @@ export function createNewJob(input: {
 }): LivestreamJob {
   const now = new Date().toISOString();
   return {
-    id: input.id,
+    id: input.slug,
+    slug: input.slug,
     name: input.name,
     createdAt: now,
     updatedAt: now,

@@ -60,7 +60,10 @@ export type LivestreamJobStatus =
   | 'failed';
 
 export interface LivestreamJob {
+  /** Định danh public (URL, route param) — luôn bằng `slug`. PK bigint thật chỉ dùng nội bộ DB layer. */
   id: string;
+  /** Slug dùng làm tên thư mục filesystem (data/livestream/{slug}/) và R2 object key. */
+  slug: string;
   name: string;
   createdAt: string;
   updatedAt: string;

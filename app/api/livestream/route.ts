@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateJobId, jobInputsDir } from '@/lib/livestream/paths';
+import { generateJobSlug, jobInputsDir } from '@/lib/livestream/paths';
 import { createJobDirs, listJobs, writeJob } from '@/lib/livestream/jobStore';
 import { createNewJob } from '@/lib/livestream/jobFactory';
 import { resolveFlowProjectIdSafe } from '@/lib/googleFlow/flowJobs';
@@ -47,9 +47,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const id = generateJobId(name);
-  await createJobDirs(id);
-  const inputsDir = jobInputsDir(id);
+  const slug = generateJobSlug(name);
+  await createJobDirs(slug);
+  const inputsDir = jobInputsDir(slug);
 
   const results = await runWithConcurrency(entries, INGEST_CONCURRENCY, (entry, index) =>
     ingestEntry(entry, form, inputsDir, index)
@@ -68,19 +68,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const job = createNewJob({ id, name, aspectRatio, veoModel, chaining, products });
+  const job = createNewJob({ slug, name, aspectRatio, veoModel, chaining, products });
   // Gom ảnh sản phẩm crawl/upload từ mọi entry vào BỘ ẢNH CHUNG cấp job (không gắn theo product).
   const allImagePaths = results.flatMap((r) => r.imagePaths ?? []);
   if (allImagePaths.length > 0) {
     job.spokespersonImagePaths = allImagePaths;
     // Đẩy ngay lên R2 (best-effort) để không mất khi deploy — cùng pattern route images/spokesperson.
     for (const rel of allImagePaths) {
-      job.imageR2Urls[rel] = await uploadImageToR2(id, rel);
+      job.imageR2Urls[rel] = await uploadImageToR2(slug, rel);
     }
   }
   // Gán sẵn flowProjectId ngay khi tạo — xem giải thích tương ứng ở app/api/projects/route.ts.
   job.flowProjectId = await resolveFlowProjectIdSafe(name);
   await writeJob(job);
 
-  return NextResponse.json({ id, job, warnings }, { status: 201 });
+  return NextResponse.json({ id: slug, job, warnings }, { status: 201 });
 }

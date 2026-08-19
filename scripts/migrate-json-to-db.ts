@@ -124,13 +124,21 @@ async function importJob(jobId: string): Promise<{ products: number; segments: n
   let segmentCount = 0;
 
   await db.transaction(async (tx) => {
-    // Idempotent: xóa sạch row cũ của job này.
-    await tx.delete(livestreamSegments).where(eq(livestreamSegments.jobId, job.id));
-    await tx.delete(livestreamProducts).where(eq(livestreamProducts.jobId, job.id));
-    await tx.delete(livestreamJobs).where(eq(livestreamJobs.id, job.id));
+    // Idempotent: xóa sạch row cũ của job này (tra theo slug — PK giờ là bigint autoincrement).
+    const existing = await tx
+      .select({ id: livestreamJobs.id })
+      .from(livestreamJobs)
+      .where(eq(livestreamJobs.slug, job.id))
+      .limit(1);
+    const existingDbId = existing[0]?.id;
+    if (existingDbId !== undefined) {
+      await tx.delete(livestreamSegments).where(eq(livestreamSegments.jobId, existingDbId));
+      await tx.delete(livestreamProducts).where(eq(livestreamProducts.jobId, existingDbId));
+      await tx.delete(livestreamJobs).where(eq(livestreamJobs.id, existingDbId));
+    }
 
-    await tx.insert(livestreamJobs).values({
-      id: job.id,
+    const [insertResult] = await tx.insert(livestreamJobs).values({
+      slug: job.id,
       name: job.name,
       createdAt: jobCreated,
       updatedAt: jobUpdated,
@@ -151,11 +159,12 @@ async function importJob(jobId: string): Promise<{ products: number; segments: n
       scriptSystemPromptOverride: job.scriptSystemPromptOverride ?? null,
       videoSeed: job.videoSeed ?? null,
     });
+    const dbJobId = Number((insertResult as unknown as { insertId: number }).insertId);
 
     for (const product of job.products) {
       // Timestamp product/segment (JSON cũ không có) = job.createdAt.
       await tx.insert(livestreamProducts).values({
-        jobId: job.id,
+        jobId: dbJobId,
         productKey: product.id,
         order: product.order,
         sourceType: product.sourceType,
@@ -177,7 +186,7 @@ async function importJob(jobId: string): Promise<{ products: number; segments: n
         .from(livestreamProducts)
         .where(
           and(
-            eq(livestreamProducts.jobId, job.id),
+            eq(livestreamProducts.jobId, dbJobId),
             eq(livestreamProducts.productKey, product.id)
           )
         )
@@ -191,7 +200,7 @@ async function importJob(jobId: string): Promise<{ products: number; segments: n
       for (const seg of product.segments) {
         await tx.insert(livestreamSegments).values({
           productRowId: rowId,
-          jobId: job.id,
+          jobId: dbJobId,
           segmentKey: seg.id,
           order: seg.order,
           voiceoverVi: seg.voiceoverVi,

@@ -118,7 +118,8 @@ function assembleJob(
     });
 
   return {
-    id: jobRow.id,
+    id: jobRow.slug,
+    slug: jobRow.slug,
     name: jobRow.name,
     createdAt: sqlToIso(jobRow.createdAt) ?? jobRow.createdAt,
     updatedAt: sqlToIso(jobRow.updatedAt) ?? jobRow.updatedAt,
@@ -146,9 +147,9 @@ function assembleJob(
 // Tách: object LivestreamJob → giá trị cột (dùng khi INSERT/UPDATE).
 // ------------------------------------------------------------------
 
-function jobToRow(job: LivestreamJob): typeof livestreamJobs.$inferInsert {
+function jobToRow(job: LivestreamJob): Omit<typeof livestreamJobs.$inferInsert, 'id'> {
   return {
-    id: job.id,
+    slug: job.slug,
     name: job.name,
     createdAt: isoToSql(job.createdAt) ?? job.createdAt,
     updatedAt: isoToSql(job.updatedAt) ?? job.updatedAt,
@@ -182,7 +183,7 @@ export async function readJob(jobId: string): Promise<LivestreamJob> {
   const jobRows = await db
     .select()
     .from(livestreamJobs)
-    .where(eq(livestreamJobs.id, jobId))
+    .where(eq(livestreamJobs.slug, jobId))
     .limit(1);
   const jobRow = jobRows[0];
   if (!jobRow) {
@@ -191,11 +192,11 @@ export async function readJob(jobId: string): Promise<LivestreamJob> {
   const productRows = await db
     .select()
     .from(livestreamProducts)
-    .where(eq(livestreamProducts.jobId, jobId));
+    .where(eq(livestreamProducts.jobId, jobRow.id));
   const segmentRows = await db
     .select()
     .from(livestreamSegments)
-    .where(eq(livestreamSegments.jobId, jobId));
+    .where(eq(livestreamSegments.jobId, jobRow.id));
   return assembleJob(jobRow, productRows, segmentRows);
 }
 
@@ -210,7 +211,7 @@ export async function jobExists(jobId: string): Promise<boolean> {
   const rows = await db
     .select({ id: livestreamJobs.id })
     .from(livestreamJobs)
-    .where(eq(livestreamJobs.id, jobId))
+    .where(eq(livestreamJobs.slug, jobId))
     .limit(1);
   return rows.length > 0;
 }
@@ -220,18 +221,25 @@ export async function jobExists(jobId: string): Promise<boolean> {
 // ------------------------------------------------------------------
 
 /**
- * Ghi toàn bộ job vào DB trong 1 transaction: upsert job, rồi diff products/segments để
- * INSERT/UPDATE/DELETE. updatedAt cấp job luôn được đặt = now (giữ ngữ nghĩa writeJobRaw cũ).
+ * Ghi toàn bộ job vào DB trong 1 transaction, rồi diff products/segments để INSERT/UPDATE/DELETE.
+ * updatedAt cấp job luôn được đặt = now (giữ ngữ nghĩa writeJobRaw cũ).
+ *
+ * existingDbId = null nghĩa là job MỚI (chưa có PK bigint) → INSERT không set `id` (autoincrement),
+ * lấy insertId. existingDbId != null nghĩa là job đã tồn tại (đọc qua updateJob) → UPDATE where
+ * id = existingDbId. Trả về PK bigint thật để caller dùng tiếp cho products/segments.
  */
-async function persistJob(tx: Tx, job: LivestreamJob): Promise<void> {
+async function persistJob(tx: Tx, job: LivestreamJob, existingDbId: number | null): Promise<number> {
   job.updatedAt = nowIso();
-
-  // 1) Upsert job (INSERT ... ON DUPLICATE KEY UPDATE).
   const row = jobToRow(job);
-  await tx
-    .insert(livestreamJobs)
-    .values(row)
-    .onDuplicateKeyUpdate({ set: { ...row, id: sql`id` } });
+  let dbId: number;
+
+  if (existingDbId === null) {
+    const [result] = await tx.insert(livestreamJobs).values(row);
+    dbId = Number((result as unknown as { insertId: number }).insertId);
+  } else {
+    dbId = existingDbId;
+    await tx.update(livestreamJobs).set(row).where(eq(livestreamJobs.id, dbId));
+  }
 
   // 2) Products: đọc row hiện có (lấy rowId theo productKey) để diff.
   const existingProducts = await tx
@@ -240,7 +248,7 @@ async function persistJob(tx: Tx, job: LivestreamJob): Promise<void> {
       productKey: livestreamProducts.productKey,
     })
     .from(livestreamProducts)
-    .where(eq(livestreamProducts.jobId, job.id));
+    .where(eq(livestreamProducts.jobId, dbId));
   const productRowIdByKey = new Map(existingProducts.map((p) => [p.productKey, p.rowId]));
   const keepProductKeys = new Set(job.products.map((p) => p.id));
 
@@ -262,7 +270,7 @@ async function persistJob(tx: Tx, job: LivestreamJob): Promise<void> {
   for (const product of job.products) {
     let productRowId = productRowIdByKey.get(product.id);
     const productValues = {
-      jobId: job.id,
+      jobId: dbId,
       productKey: product.id,
       order: product.order,
       sourceType: product.sourceType,
@@ -289,7 +297,7 @@ async function persistJob(tx: Tx, job: LivestreamJob): Promise<void> {
         .from(livestreamProducts)
         .where(
           and(
-            eq(livestreamProducts.jobId, job.id),
+            eq(livestreamProducts.jobId, dbId),
             eq(livestreamProducts.productKey, product.id)
           )
         )
@@ -305,14 +313,16 @@ async function persistJob(tx: Tx, job: LivestreamJob): Promise<void> {
         .where(eq(livestreamProducts.rowId, productRowId));
     }
 
-    await persistSegments(tx, job.id, productRowId, product.segments, nowStamp);
+    await persistSegments(tx, dbId, productRowId, product.segments, nowStamp);
   }
+
+  return dbId;
 }
 
 /** Diff segments của 1 product: INSERT/UPDATE/DELETE theo segmentKey. */
 async function persistSegments(
   tx: Tx,
-  jobId: string,
+  dbJobId: number,
   productRowId: number,
   segments: LivestreamSegment[],
   nowStamp: string
@@ -337,7 +347,7 @@ async function persistSegments(
   for (const seg of segments) {
     const values = {
       productRowId,
-      jobId,
+      jobId: dbJobId,
       segmentKey: seg.id,
       order: seg.order,
       voiceoverVi: seg.voiceoverVi,
@@ -362,11 +372,11 @@ async function persistSegments(
   }
 }
 
-/** Ghi toàn bộ job (transaction). Giữ chữ ký cũ. */
+/** Ghi job MỚI (transaction). Giữ chữ ký cũ — PK bigint tự sinh bên trong, không lộ ra ngoài. */
 export async function writeJob(job: LivestreamJob): Promise<void> {
   const db = getDb();
   await db.transaction(async (tx) => {
-    await persistJob(tx, job);
+    await persistJob(tx, job, null);
   });
 }
 
@@ -386,7 +396,7 @@ export async function updateJob<T = void>(
     const lockedRows = await tx
       .select()
       .from(livestreamJobs)
-      .where(eq(livestreamJobs.id, jobId))
+      .where(eq(livestreamJobs.slug, jobId))
       .for('update')
       .limit(1);
     const jobRow = lockedRows[0];
@@ -396,15 +406,15 @@ export async function updateJob<T = void>(
     const productRows = await tx
       .select()
       .from(livestreamProducts)
-      .where(eq(livestreamProducts.jobId, jobId));
+      .where(eq(livestreamProducts.jobId, jobRow.id));
     const segmentRows = await tx
       .select()
       .from(livestreamSegments)
-      .where(eq(livestreamSegments.jobId, jobId));
+      .where(eq(livestreamSegments.jobId, jobRow.id));
     const job = assembleJob(jobRow, productRows, segmentRows);
 
     const result = await mutator(job);
-    await persistJob(tx, job);
+    await persistJob(tx, job, jobRow.id);
     return { job, result };
   });
 }
@@ -451,7 +461,7 @@ export async function listJobs(): Promise<LivestreamJobSummary[]> {
   const db = getDb();
   const rows = await db
     .select({
-      id: livestreamJobs.id,
+      id: livestreamJobs.slug,
       name: livestreamJobs.name,
       updatedAt: livestreamJobs.updatedAt,
       status: livestreamJobs.status,
@@ -461,6 +471,7 @@ export async function listJobs(): Promise<LivestreamJobSummary[]> {
     .leftJoin(livestreamProducts, eq(livestreamProducts.jobId, livestreamJobs.id))
     .groupBy(
       livestreamJobs.id,
+      livestreamJobs.slug,
       livestreamJobs.name,
       livestreamJobs.updatedAt,
       livestreamJobs.status
@@ -482,14 +493,21 @@ export async function deleteJob(jobId: string): Promise<void> {
   assertValidJobId(jobId);
   const db = getDb();
   await db.transaction(async (tx) => {
-    await tx.delete(livestreamSegments).where(eq(livestreamSegments.jobId, jobId));
-    await tx.delete(livestreamProducts).where(eq(livestreamProducts.jobId, jobId));
-    await tx.delete(livestreamJobs).where(eq(livestreamJobs.id, jobId));
+    const rows = await tx
+      .select({ id: livestreamJobs.id })
+      .from(livestreamJobs)
+      .where(eq(livestreamJobs.slug, jobId))
+      .limit(1);
+    const dbId = rows[0]?.id;
+    if (dbId === undefined) return; // job không tồn tại — no-op, giữ ngữ nghĩa idempotent cũ
+    await tx.delete(livestreamSegments).where(eq(livestreamSegments.jobId, dbId));
+    await tx.delete(livestreamProducts).where(eq(livestreamProducts.jobId, dbId));
+    await tx.delete(livestreamJobs).where(eq(livestreamJobs.id, dbId));
   });
 }
 
-export async function createJobDirs(jobId: string): Promise<void> {
-  const dir = jobDir(jobId);
+export async function createJobDirs(slug: string): Promise<void> {
+  const dir = jobDir(slug);
   await fs.mkdir(path.join(dir, 'inputs'), { recursive: true });
   await fs.mkdir(path.join(dir, 'outputs', 'segments'), { recursive: true });
   await fs.mkdir(path.join(dir, 'outputs', 'frames'), { recursive: true });

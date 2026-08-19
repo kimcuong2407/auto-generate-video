@@ -13,8 +13,8 @@ import { resolveWithinJob, jobInputsDir } from './paths';
 import { uploadFileToR2, deleteFromR2 } from '../r2/client';
 
 /** Key object trên R2 cho 1 ảnh — relPath đã có tiền tố 'inputs/'. */
-export function r2KeyForImage(jobId: string, relPath: string): string {
-  return `livestream/${jobId}/${relPath}`;
+export function r2KeyForImage(slug: string, relPath: string): string {
+  return `livestream/${slug}/${relPath}`;
 }
 
 /** Suy content-type từ đuôi file ảnh; mặc định image/jpeg. */
@@ -36,17 +36,17 @@ export function contentTypeForImage(relPath: string): string {
  * Upload 1 ảnh local (theo relPath) lên R2. Trả về URL public hoặc null (R2 tắt / lỗi / file thiếu).
  * Caller lưu URL vào job.imageR2Urls[relPath].
  */
-export async function uploadImageToR2(jobId: string, relPath: string): Promise<string | null> {
+export async function uploadImageToR2(slug: string, relPath: string): Promise<string | null> {
   return uploadFileToR2(
-    resolveWithinJob(jobId, relPath),
-    r2KeyForImage(jobId, relPath),
+    resolveWithinJob(slug, relPath),
+    r2KeyForImage(slug, relPath),
     contentTypeForImage(relPath)
   );
 }
 
 /** Xoá object ảnh trên R2 — best-effort, nuốt lỗi. Caller tự xoá key khỏi job.imageR2Urls. */
-export async function deleteImageFromR2(jobId: string, relPath: string): Promise<void> {
-  await deleteFromR2(r2KeyForImage(jobId, relPath));
+export async function deleteImageFromR2(slug: string, relPath: string): Promise<void> {
+  await deleteFromR2(r2KeyForImage(slug, relPath));
 }
 
 /**
@@ -55,11 +55,11 @@ export async function deleteImageFromR2(jobId: string, relPath: string): Promise
  * được nuốt + log; call-site tự báo lỗi gen nếu ảnh thực sự thiếu.
  */
 export async function ensureLocalImage(
-  jobId: string,
+  slug: string,
   relPath: string,
   r2Url: string | null | undefined
 ): Promise<void> {
-  const absPath = resolveWithinJob(jobId, relPath);
+  const absPath = resolveWithinJob(slug, relPath);
   try {
     await fs.access(absPath);
     return; // đã có local
@@ -71,7 +71,7 @@ export async function ensureLocalImage(
     const res = await fetch(r2Url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buffer = Buffer.from(await res.arrayBuffer());
-    await fs.mkdir(jobInputsDir(jobId), { recursive: true });
+    await fs.mkdir(jobInputsDir(slug), { recursive: true });
     await fs.writeFile(absPath, buffer);
   } catch (err) {
     console.error(`[imageR2] tải lại ảnh ${relPath} từ R2 thất bại:`, err);

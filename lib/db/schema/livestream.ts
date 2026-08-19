@@ -13,6 +13,7 @@ import {
   mysqlTable,
   varchar,
   int,
+  bigint,
   text,
   mediumtext,
   datetime,
@@ -37,9 +38,13 @@ const VEO_MODELS = [
 
 const ASPECT_RATIOS = ['9:16', '16:9'] as const;
 
-export const livestreamJobs = mysqlTable('livestream_jobs', {
-  id: varchar('id', { length: 128 }).primaryKey(),
-  name: varchar('name', { length: 512 }).notNull(),
+export const livestreamJobs = mysqlTable(
+  'livestream_jobs',
+  {
+    id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+    // Slug public (dùng làm tên thư mục filesystem + R2 object key) — giữ nguyên định danh cũ.
+    slug: varchar('slug', { length: 191 }).notNull(),
+    name: varchar('name', { length: 512 }).notNull(),
   createdAt: datetime('created_at', { fsp: 3, mode: 'string' }).notNull(),
   updatedAt: datetime('updated_at', { fsp: 3, mode: 'string' }).notNull(),
   aspectRatio: mysqlEnum('aspect_ratio', ASPECT_RATIOS).notNull(),
@@ -69,14 +74,18 @@ export const livestreamJobs = mysqlTable('livestream_jobs', {
   // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
   // ổn định hơn giữa các đoạn — xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen lần nào.
   videoSeed: int('video_seed'),
-});
+  },
+  (t) => ({
+    slugUnique: uniqueIndex('uq_jobs_slug').on(t.slug),
+  })
+);
 
 export const livestreamProducts = mysqlTable(
   'livestream_products',
   {
     // Surrogate PK autoincrement; productKey giữ id gốc dạng slug (chỉ unique trong job).
     rowId: int('row_id').autoincrement().primaryKey(),
-    jobId: varchar('job_id', { length: 128 }).notNull(),
+    jobId: bigint('job_id', { mode: 'number', unsigned: true }).notNull(),
     productKey: varchar('product_key', { length: 191 }).notNull(),
     order: int('order').notNull(),
     sourceType: mysqlEnum('source_type', ['link', 'file_text', 'file_image', 'manual']).notNull(),
@@ -111,7 +120,7 @@ export const livestreamSegments = mysqlTable(
     rowId: int('row_id').autoincrement().primaryKey(),
     productRowId: int('product_row_id').notNull(),
     // Denormalize job_id vì `order` là thứ tự tuyệt đối TOÀN JOB (dùng khi concat xuyên product).
-    jobId: varchar('job_id', { length: 128 }).notNull(),
+    jobId: bigint('job_id', { mode: 'number', unsigned: true }).notNull(),
     segmentKey: varchar('segment_key', { length: 191 }).notNull(),
     order: int('order').notNull(),
     voiceoverVi: mediumtext('voiceover_vi').notNull(),
