@@ -107,25 +107,25 @@ export async function triggerSegmentGeneration(
 
   try {
     // Ref (r2v) luôn ưu tiên hơn i2v chaining thuần (startPath) để giữ sản phẩm/nhân vật nhất
-    // quán xuyên suốt. r2v cho phép nhiều referenceImages nên truyền TOÀN BỘ ảnh sản phẩm đã chọn
-    // + ảnh mẫu + ảnh background (nếu có), CỘNG THÊM khung hình cuối đoạn liền trước (nếu có) để
-    // giữ liên tục bối cảnh giữa 2 đoạn — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn
-    // không có ref nào khác. Thứ tự ref: ảnh sản phẩm (1..N) → ảnh mẫu (người dẫn) → ảnh background
-    // → frame cuối đoạn trước.
+    // quán xuyên suốt — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn không có ref nào
+    // khác. Veo reference-to-video chỉ nhận TỐI ĐA 3 ảnh reference (vượt → Flow trả
+    // INVALID_ARGUMENT), nên ưu tiên: ảnh sản phẩm (1..N) → ảnh mẫu (người dẫn) → ảnh background,
+    // cắt bớt tới khi đủ 3 — chừa 1 chỗ cho frame cuối đoạn liền trước nếu có (chaining).
     // Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc
     // file local để làm refPaths. No-op nếu file đã có / không có bản R2.
+    const MAX_REF_IMAGES = 3;
+    const hasPrevFrame =
+      findPreviousSegment(job, found.product, segment)?.status === 'done' &&
+      !!findPreviousSegment(job, found.product, segment)?.lastFramePath;
+    const refCandidates = [
+      ...(job.selectedRefImagePaths ?? []),
+      ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
+      ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
+    ].slice(0, hasPrevFrame ? MAX_REF_IMAGES - 1 : MAX_REF_IMAGES);
     const refPathList: string[] = [];
-    for (const relPath of job.selectedRefImagePaths ?? []) {
+    for (const relPath of refCandidates) {
       await ensureLocalImage(jobId, relPath, job.imageR2Urls?.[relPath]);
       refPathList.push(relPath);
-    }
-    if (job.selectedModelImagePath) {
-      await ensureLocalImage(jobId, job.selectedModelImagePath, job.imageR2Urls?.[job.selectedModelImagePath]);
-      refPathList.push(job.selectedModelImagePath);
-    }
-    if (job.selectedBackgroundImagePath) {
-      await ensureLocalImage(jobId, job.selectedBackgroundImagePath, job.imageR2Urls?.[job.selectedBackgroundImagePath]);
-      refPathList.push(job.selectedBackgroundImagePath);
     }
     // refImages dùng mediaId đã cache (job.flowMediaIds) nếu có — tránh upload lại lên Flow.
     // relPathByAbsPath dùng để map ngược uploadedMediaIds (keyed theo abs path) → relPath khi lưu cache.
