@@ -7,6 +7,7 @@ import {
   LIVESTREAM_SYSTEM_PROMPT,
   EXTRACT_SYSTEM_PROMPT,
   VISION_SYSTEM_PROMPT,
+  PRODUCT_VISUAL_SYSTEM_PROMPT,
 } from '@/lib/livestream/promptDefaults';
 
 const readonlyTextareaStyle: React.CSSProperties = {
@@ -99,9 +100,19 @@ export function PromptSettingsPanel({
         <textarea readOnly rows={10} value={VISION_SYSTEM_PROMPT} style={readonlyTextareaStyle} />
       </details>
 
+      <details>
+        <summary style={summaryStyle}>3. Mô tả ngoại hình sản phẩm (từ ảnh ref) — chỉ đọc</summary>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+          Chạy tự động trước khi sinh kịch bản nếu job có ảnh ref sản phẩm đã chọn: đọc ảnh → mô tả
+          ngoại hình vật lý (kích thước, chất liệu, cầm 1 tay hay 2 tay) để script viết cảnh cầm/thao
+          tác sản phẩm chân thực hơn.
+        </div>
+        <textarea readOnly rows={10} value={PRODUCT_VISUAL_SYSTEM_PROMPT} style={readonlyTextareaStyle} />
+      </details>
+
       <details open>
         <summary style={summaryStyle}>
-          3. Sinh kịch bản (script) — có thể chỉnh{' '}
+          4. Sinh kịch bản (script) — có thể chỉnh{' '}
           <span className={`badge ${isCustom ? 'badge-running' : 'badge-pending'}`}>
             {isCustom ? 'Đã tuỳ chỉnh' : 'Đang dùng mặc định'}
           </span>

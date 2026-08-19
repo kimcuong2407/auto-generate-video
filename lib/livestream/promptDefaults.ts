@@ -38,6 +38,27 @@ Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thí
 {"name":"...","description":"..."}`;
 
 /**
+ * Prompt đọc ẢNH THẬT sản phẩm (ref đã chọn, khác ảnh chụp màn hình trang bán ở
+ * VISION_SYSTEM_PROMPT) → mô tả ngoại hình vật lý ngắn gọn. Dùng làm input bổ sung cho
+ * LIVESTREAM_SYSTEM_PROMPT (ghép qua buildLivestreamUserPrompt) để veoPrompt mô tả đúng kích
+ * thước/chất liệu/cách cầm 1 tay-2 tay thay vì đoán chung chung — xem lib/livestream/productVision.ts.
+ */
+export const PRODUCT_VISUAL_SYSTEM_PROMPT = `Bạn là trợ lý mô tả ngoại hình vật lý của sản phẩm từ ảnh chụp thật (không phải ảnh chụp màn hình website).
+
+Nhiệm vụ: nhìn kỹ ảnh, mô tả NGẮN GỌN (3-5 câu) các đặc điểm vật lý giúp người viết kịch bản hình
+dung đúng cách một người cầm/thao tác sản phẩm này trên tay một cách chân thực:
+- Hình dạng & kích thước ước lượng (cm) — nếu ảnh có tay người hoặc vật quen thuộc làm mốc, dùng để
+  ước lượng, không thì suy đoán hợp lý theo loại sản phẩm.
+- Sản phẩm cầm bằng 1 tay hay cần 2 tay (dựa theo kích thước/trọng lượng ước lượng).
+- Chất liệu, bề mặt (bóng/mờ/trong suốt/vải/kim loại...) và màu sắc chủ đạo.
+- Vị trí cầm tự nhiên (tay nắm ở đâu: thân, quai, nắp, cạnh...).
+
+CHỈ mô tả những gì nhìn thấy/suy luận hợp lý từ ảnh, KHÔNG bịa chi tiết trang trí không có thật.
+Không nhắc tới chữ/logo/nhãn hiệu trên sản phẩm.
+
+Trả về DUY NHẤT đoạn mô tả (plain text, tiếng Việt), KHÔNG kèm JSON, markdown, hay giải thích thêm.`;
+
+/**
  * Prompt gen ẢNH BACKGROUND (1 khung hình livestream hoàn chỉnh) qua AI tạo ảnh (Google Flow).
  * Ảnh sản phẩm + ảnh mẫu (nếu có) được truyền làm reference; prompt này mô tả yêu cầu tạo 1 cảnh
  * CÓ người mẫu đang cầm/dùng sản phẩm trong bối cảnh live thực tế (KHÔNG phải phông nền trống) để
@@ -140,6 +161,9 @@ dung có mặt):
       đoạn để Veo không tự "bịa thêm" 1 bàn tay thứ ba trong lúc tiếp nối chuyển động.
     - Trong phần Technical của veoPrompt, thêm cụm "natural hand anatomy, exactly two hands,
       exactly two arms, no extra limbs".
+    - Nếu user prompt có kèm mục "Mô tả ngoại hình sản phẩm" (đọc từ ảnh thật), PHẢI dựa vào đó để
+      quyết định cầm bằng 1 tay hay 2 tay và mô tả đúng kích thước/chất liệu khi tay chạm/cầm sản
+      phẩm — không tự đoán chung chung khác với mô tả này.
 (3) Scene — bối cảnh quay chung đã xác định ở Bước 1.a, PHẢI nhắc lại nhất quán;
 (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách
     ánh sáng;
