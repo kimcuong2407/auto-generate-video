@@ -7,6 +7,9 @@ import { extractJson } from '@/lib/ai/jsonExtract';
 import { buildLivestreamUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
 import { computeSegmentDurations, sanitizeSegments } from '@/lib/livestream/segmentSanitize';
 import { recomputeSegmentOrder } from '@/lib/livestream/reorder';
+import { describeProductAppearance } from '@/lib/livestream/productVision';
+import { ensureLocalImage } from '@/lib/livestream/imageR2';
+import { resolveWithinJob } from '@/lib/livestream/paths';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,6 +63,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Prompt override không đổi trong 1 lần chạy — resolve 1 lần từ job đã đọc ở đầu route.
       const systemPrompt = resolveScriptSystemPrompt(job);
 
+      // Mô tả ngoại hình vật lý sản phẩm (đọc ảnh ref thật) — tính 1 lần cho cả job vì
+      // selectedRefImagePaths dùng chung cho mọi sản phẩm. Best-effort: thiếu AI_VISION_MODEL,
+      // chưa chọn ảnh ref, hay lỗi mạng đều bỏ qua, KHÔNG chặn sinh script như trước đây.
+      let visualDescription: string | undefined;
+      const refPath = job.selectedRefImagePaths[0];
+      if (refPath) {
+        try {
+          await ensureLocalImage(job.id, refPath, job.imageR2Urls?.[refPath]);
+          visualDescription = await describeProductAppearance(resolveWithinJob(job.id, refPath));
+        } catch {
+          // bỏ qua — script vẫn sinh bình thường không có mô tả ngoại hình bổ sung.
+        }
+      }
+
       for (const product of targets) {
         send({ type: 'product_start', productId: product.id, name: product.name });
         await updateJob(id, (j) => {
@@ -69,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         try {
           const durations = computeSegmentDurations(product.targetDurationSec);
-          const userPrompt = buildLivestreamUserPrompt(product.description, durations);
+          const userPrompt = buildLivestreamUserPrompt(product.description, durations, visualDescription);
 
           const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
             if (e.type === 'start' || e.type === 'retry') {

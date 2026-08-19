@@ -17,8 +17,15 @@ export function resolveScriptSystemPrompt(
   return override && override.trim() ? override : LIVESTREAM_SYSTEM_PROMPT;
 }
 
-export function buildLivestreamUserPrompt(description: string, durations: number[]): string {
-  return `Mô tả sản phẩm:\n${description}\n\nViết đúng ${durations.length} đoạn liên tiếp, thời lượng lần lượt (giây): ${durations.join(
+export function buildLivestreamUserPrompt(
+  description: string,
+  durations: number[],
+  visualDescription?: string
+): string {
+  const visualBlock = visualDescription
+    ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
+    : '';
+  return `Mô tả sản phẩm:\n${description}${visualBlock}\n\nViết đúng ${durations.length} đoạn liên tiếp, thời lượng lần lượt (giây): ${durations.join(
     ', '
   )}.\n\nTrả về đúng ${durations.length} phần tử trong "segments", đúng thứ tự tương ứng với thời lượng đã cho.`;
 }
