@@ -23,9 +23,83 @@ export interface SyncResult {
   justDoneSegmentIds: string[];
 }
 
+export interface ManualSyncResult {
+  ok: boolean;
+  status?: LivestreamSegment['status'];
+  error?: string;
+}
+
 function isTimedOut(segment: LivestreamSegment): boolean {
   const startedAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
   return Date.now() - startedAt > FLOW_JOB_TIMEOUT_MS;
+}
+
+/**
+ * Poll 1 segment (đã có jobId) bằng mediaId cũ và ghi kết quả vào chính object `segment`
+ * (mutate — caller phải gọi bên trong updateJob). Dùng chung cho:
+ * - syncGeneratingSegments: loop tự động mọi đoạn đang 'generating'.
+ * - route /segments/[segmentId]/sync: đồng bộ thủ công 1 đoạn 'failed' (vd sau khi bấm Dừng)
+ *   để lấy lại video nếu Flow đã render xong ngầm — case này không áp timeout-check vì người
+ *   dùng chủ động bấm, luôn muốn biết kết quả poll thật.
+ */
+export async function syncOneSegment(
+  jobId: string,
+  segment: LivestreamSegment,
+  flowProjectId: string,
+  opts: { checkTimeout: boolean }
+): Promise<{ becameDone: boolean }> {
+  try {
+    const jobStatus = await pollJobStatus(segment.jobId as string, flowProjectId);
+    if (jobStatus.status === 'done') {
+      // Ưu tiên kết quả poll: đã SUCCESSFUL thì set 'done' bất kể quá hạn hay chưa.
+      // Nếu copy/download lỗi → GIỮ 'generating' + ghi error để lần poll sau tải lại
+      // (video vẫn còn trên Flow), KHÔNG ép 'failed' làm mất video đã xong.
+      if (jobStatus.video_path) {
+        const destFileName = `${segment.order.toString().padStart(3, '0')}_${segment.id}.mp4`;
+        const destPath = path.join(jobSegmentsDir(jobId), destFileName);
+        await fs.copyFile(jobStatus.video_path, destPath);
+        segment.videoPath = path.join('outputs', 'segments', destFileName);
+        // Upload lên R2 để preview/tải online không phụ thuộc route stream local — vẫn giữ
+        // file local vì bước concat cần ffmpeg đọc trực tiếp (file local sẽ được xoá SAU
+        // khi concat xong, xem runLivestreamConcat). No-op nếu R2 chưa cấu hình.
+        segment.videoUrl = await uploadFileToR2(
+          destPath,
+          `livestream/${jobId}/segments/${destFileName}`,
+          'video/mp4'
+        );
+      }
+      segment.status = 'done';
+      segment.error = null;
+      segment.lastUpdatedAt = new Date().toISOString();
+      return { becameDone: true };
+    }
+    if (jobStatus.status === 'error' || jobStatus.status === 'cancelled') {
+      segment.status = 'failed';
+      segment.error = jobStatus.error || `Job ${jobStatus.status}`;
+      segment.lastUpdatedAt = new Date().toISOString();
+      return { becameDone: false };
+    }
+    // pending/running
+    segment.status = 'generating';
+    if (opts.checkTimeout && isTimedOut(segment)) {
+      segment.status = 'failed';
+      segment.error = 'Timeout: chờ job quá lâu';
+      segment.lastUpdatedAt = new Date().toISOString();
+    }
+    // chưa quá hạn (hoặc không check timeout) → giữ 'generating', chờ lần poll sau
+    return { becameDone: false };
+  } catch (err) {
+    // Poll (hoặc download khi done) lỗi tạm thời: ghi error để chẩn đoán. Chỉ ép
+    // 'failed' nếu đã quá hạn — chưa quá thì giữ 'generating' để lần sau thử lại,
+    // không kẹt vô hạn cũng không giết oan.
+    segment.error = `Poll lỗi tạm thời: ${(err as Error).message}`;
+    if (opts.checkTimeout && isTimedOut(segment)) {
+      segment.status = 'failed';
+      segment.error = 'Timeout: chờ job quá lâu';
+      segment.lastUpdatedAt = new Date().toISOString();
+    }
+    return { becameDone: false };
+  }
 }
 
 /**
@@ -35,69 +109,54 @@ function isTimedOut(segment: LivestreamSegment): boolean {
  */
 export async function syncGeneratingSegments(jobId: string): Promise<SyncResult> {
   const justDoneSegmentIds: string[] = [];
-
   await updateJob(jobId, async (job) => {
     if (!job.flowProjectId) return;
     const generatingSegments = job.products.flatMap((p) =>
       p.segments.filter((s) => s.status === 'generating' && s.jobId)
     );
-
     await Promise.all(
       generatingSegments.map(async (segment) => {
-        try {
-          const jobStatus = await pollJobStatus(segment.jobId as string, job.flowProjectId as string);
-
-          if (jobStatus.status === 'done') {
-            // Ưu tiên kết quả poll: đã SUCCESSFUL thì set 'done' bất kể quá hạn hay chưa.
-            // Nếu copy/download lỗi → GIỮ 'generating' + ghi error để lần poll sau tải lại
-            // (video vẫn còn trên Flow), KHÔNG ép 'failed' làm mất video đã xong.
-            if (jobStatus.video_path) {
-              const destFileName = `${segment.order.toString().padStart(3, '0')}_${segment.id}.mp4`;
-              const destPath = path.join(jobSegmentsDir(jobId), destFileName);
-              await fs.copyFile(jobStatus.video_path, destPath);
-              segment.videoPath = path.join('outputs', 'segments', destFileName);
-              // Upload lên R2 để preview/tải online không phụ thuộc route stream local — vẫn giữ
-              // file local vì bước concat cần ffmpeg đọc trực tiếp (file local sẽ được xoá SAU
-              // khi concat xong, xem runLivestreamConcat). No-op nếu R2 chưa cấu hình.
-              segment.videoUrl = await uploadFileToR2(
-                destPath,
-                `livestream/${jobId}/segments/${destFileName}`,
-                'video/mp4'
-              );
-            }
-            segment.status = 'done';
-            segment.error = null;
-            segment.lastUpdatedAt = new Date().toISOString();
-            justDoneSegmentIds.push(segment.id);
-          } else if (jobStatus.status === 'error' || jobStatus.status === 'cancelled') {
-            segment.status = 'failed';
-            segment.error = jobStatus.error || `Job ${jobStatus.status}`;
-            segment.lastUpdatedAt = new Date().toISOString();
-          } else {
-            // pending/running → chỉ khi Flow chưa xong mới xét timeout.
-            if (isTimedOut(segment)) {
-              segment.status = 'failed';
-              segment.error = 'Timeout: chờ job quá lâu';
-              segment.lastUpdatedAt = new Date().toISOString();
-            }
-            // chưa quá hạn → giữ 'generating', chờ lần poll sau
-          }
-        } catch (err) {
-          // Poll (hoặc download khi done) lỗi tạm thời: ghi error để chẩn đoán. Chỉ ép
-          // 'failed' nếu đã quá hạn — chưa quá thì giữ 'generating' để lần sau thử lại,
-          // không kẹt vô hạn cũng không giết oan.
-          segment.error = `Poll lỗi tạm thời: ${(err as Error).message}`;
-          if (isTimedOut(segment)) {
-            segment.status = 'failed';
-            segment.error = 'Timeout: chờ job quá lâu';
-            segment.lastUpdatedAt = new Date().toISOString();
-          }
-        }
+        const { becameDone } = await syncOneSegment(jobId, segment, job.flowProjectId as string, {
+          checkTimeout: true,
+        });
+        if (becameDone) justDoneSegmentIds.push(segment.id);
       })
     );
   });
-
   return { justDoneSegmentIds };
+}
+
+/**
+ * Đồng bộ thủ công 1 đoạn theo yêu cầu người dùng (nút "🔄 Đồng bộ lại") — dùng khi đoạn đã bị
+ * "Dừng" (status 'failed') nhưng job Flow thật vẫn có thể đang chạy ngầm hoặc đã ra video, xem
+ * STOP_ERROR_MESSAGE ở segmentGenerate.ts. Không giới hạn theo status 'generating' như
+ * syncGeneratingSegments — chỉ cần còn `jobId` (mediaId Flow) là poll lại được.
+ */
+export async function syncSegmentManually(jobId: string, segmentId: string): Promise<ManualSyncResult> {
+  const job = await readJob(jobId);
+  const segment = job.products.flatMap((p) => p.segments).find((s) => s.id === segmentId);
+  if (!segment) {
+    return { ok: false, error: 'Đoạn không tồn tại' };
+  }
+  if (!segment.jobId) {
+    return { ok: false, error: 'Đoạn chưa từng generate — không có gì để đồng bộ' };
+  }
+  if (segment.status === 'done') {
+    return { ok: true, status: 'done' };
+  }
+  if (!job.flowProjectId) {
+    return { ok: false, error: 'Job chưa có flowProjectId' };
+  }
+
+  let resultStatus: LivestreamSegment['status'] = segment.status;
+  await updateJob(jobId, async (j) => {
+    const s = j.products.flatMap((p) => p.segments).find((x) => x.id === segmentId);
+    if (!s || !s.jobId) return;
+    await syncOneSegment(jobId, s, j.flowProjectId as string, { checkTimeout: false });
+    resultStatus = s.status;
+  });
+
+  return { ok: true, status: resultStatus };
 }
 
 /**

@@ -82,7 +82,7 @@ export function ProductPanel({
     onGenerateScript(product.id);
   }
 
-  async function callSegmentAction(segmentId: string, action: 'generate' | 'retry' | 'stop') {
+  async function callSegmentAction(segmentId: string, action: 'generate' | 'retry' | 'stop' | 'sync') {
     setBusySegmentId(segmentId);
     try {
       const res = await fetch(`/api/livestream/${jobId}/segments/${segmentId}/${action}`, { method: 'POST' });
@@ -226,13 +226,25 @@ export function ProductPanel({
                   </button>
                 )}
                 {segment.status === 'failed' && (
-                  <button
-                    className="retry-btn"
-                    onClick={() => callSegmentAction(segment.id, 'retry')}
-                    disabled={busySegmentId === segment.id}
-                  >
-                    ↺ Retry
-                  </button>
+                  <>
+                    <button
+                      className="retry-btn"
+                      onClick={() => callSegmentAction(segment.id, 'retry')}
+                      disabled={busySegmentId === segment.id}
+                    >
+                      ↺ Retry
+                    </button>
+                    {segment.jobId && (
+                      <button
+                        className="retry-btn"
+                        onClick={() => callSegmentAction(segment.id, 'sync')}
+                        disabled={busySegmentId === segment.id}
+                        title="Kiểm tra lại job trên Google Flow — hữu ích nếu đoạn này từng bị Dừng nhưng Flow vẫn chạy ngầm và có thể đã ra video"
+                      >
+                        🔄 Đồng bộ lại
+                      </button>
+                    )}
+                  </>
                 )}
                 {segment.status === 'generating' && (
                   <button

@@ -206,11 +206,14 @@ export async function triggerSegmentGeneration(
   }
 }
 
-const STOP_ERROR_MESSAGE = 'Đã dừng theo yêu cầu người dùng';
+const STOP_ERROR_MESSAGE =
+  'Đã dừng theo dõi — job Flow vẫn có thể đang chạy ngầm, bấm "Đồng bộ lại" để kiểm tra kết quả';
 
 /**
  * Dừng theo dõi 1 đoạn đang generating — KHÔNG hủy được job thật bên Google Flow (bộ MCP
- * tool Orino Flow không có tool hủy job), chỉ đánh dấu về "failed" để retry ngay.
+ * tool Orino Flow không có tool hủy job), chỉ đánh dấu về "failed" để retry ngay. GIỮ NGUYÊN
+ * `jobId` (không xoá) — Flow vẫn chạy ngầm và có thể ra video, nút "Đồng bộ lại" cần jobId này
+ * để poll lại và lấy kết quả (xem app/api/livestream/[id]/segments/[segmentId]/sync/route.ts).
  */
 export async function stopSegmentGeneration(jobId: string, segmentId: string): Promise<TriggerResult> {
   const job = await readJob(jobId);
@@ -227,7 +230,6 @@ export async function stopSegmentGeneration(jobId: string, segmentId: string): P
     if (!f || f.segment.status !== 'generating') return;
     f.segment.status = 'failed';
     f.segment.error = STOP_ERROR_MESSAGE;
-    f.segment.jobId = null;
     f.segment.lastUpdatedAt = new Date().toISOString();
   });
 
@@ -272,7 +274,6 @@ export async function stopAllSegmentGeneration(jobId: string): Promise<string[]>
         if (segment.status !== 'generating') continue;
         segment.status = 'failed';
         segment.error = STOP_ERROR_MESSAGE;
-        segment.jobId = null;
         segment.lastUpdatedAt = new Date().toISOString();
         stopped.push(segment.id);
       }
