@@ -32,3 +32,5 @@ next-env.d.ts
 # claude code runtime state
 .claude/scheduled_tasks.lock
 .vscode/sftp.json
+.mcp.json
+dbutils-config.yaml
