@@ -50,7 +50,10 @@ export default function LivestreamListPage() {
           <div>
             <div className="card-header" style={{ marginBottom: 0 }}>Danh sách job Livestream Script</div>
           </div>
-          <Link href="/shopee-crawl" className="btn btn-primary">🛍️ Tạo job từ Shopee Crawl</Link>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link href="/livestream/merge" className="btn btn-ghost">🔗 Gộp nhiều job thành 1 video</Link>
+            <Link href="/shopee-crawl" className="btn btn-primary">🛍️ Tạo job từ Shopee Crawl</Link>
+          </div>
         </div>
 
         <div className="card">

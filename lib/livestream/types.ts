@@ -1,4 +1,4 @@
-import type { ConcatState, FlowStatusCache, VeoModel } from '../types';
+import type { ConcatState, ConcatStatus, FlowStatusCache, VeoModel } from '../types';
 
 export type IngestStatus = 'pending' | 'fetched' | 'needs_manual' | 'ready' | 'failed';
 export type SegmentStatus = 'idle' | 'generating' | 'done' | 'failed';
@@ -134,4 +134,26 @@ export interface LivestreamJobSummary {
   updatedAt: string;
   status: LivestreamJobStatus;
   productCount: number;
+  /** Cần để lọc job cùng tỉ lệ khi chọn ghép nhiều job — xem lib/livestream/mergeConcat.ts. */
+  aspectRatio: '9:16' | '16:9';
+}
+
+/** Gộp nhiều job (mỗi job đã tự "Ghép video" xong) thành 1 video livestream liên tục cuối cùng. */
+export interface LivestreamMerge {
+  id: string;
+  slug: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Slug các job, đúng thứ tự sẽ nối video — xem lib/livestream/mergeConcat.ts. */
+  jobSlugs: string[];
+  concat: ConcatState;
+}
+
+export interface LivestreamMergeSummary {
+  id: string;
+  name: string;
+  updatedAt: string;
+  status: ConcatStatus;
+  jobCount: number;
 }
