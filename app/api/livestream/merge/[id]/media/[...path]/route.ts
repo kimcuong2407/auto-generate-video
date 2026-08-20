@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jobExists } from '@/lib/livestream/jobStore';
-import { resolveWithinJob } from '@/lib/livestream/paths';
+import { mergeExists } from '@/lib/livestream/mergeStore';
+import { resolveWithinMerge } from '@/lib/livestream/paths';
 import { streamFileResponse } from '@/lib/streamFile';
 
 export const runtime = 'nodejs';
@@ -11,13 +11,13 @@ export async function GET(
   { params }: { params: { id: string; path: string[] } }
 ) {
   const { id, path: pathSegments } = params;
-  if (!(await jobExists(id))) {
-    return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
+  if (!(await mergeExists(id))) {
+    return NextResponse.json({ error: 'Merge không tồn tại' }, { status: 404 });
   }
 
   let absPath: string;
   try {
-    absPath = resolveWithinJob(id, pathSegments.join('/'));
+    absPath = resolveWithinMerge(id, pathSegments.join('/'));
   } catch {
     return NextResponse.json({ error: 'Đường dẫn không hợp lệ' }, { status: 403 });
   }

@@ -7,6 +7,8 @@ import { createNewProject } from '@/lib/data/projectFactory';
 import { resolveFlowProjectIdSafe } from '@/lib/googleFlow/flowJobs';
 import { MAX_IMAGE_COUNT, MAX_IMAGE_SIZE_BYTES } from '@/lib/constants';
 import { downloadImageUrls } from '@/lib/downloadImages';
+import { uploadFileToR2 } from '@/lib/r2/client';
+import { mimeFor } from '@/lib/googleFlow/upload';
 import defaultTemplate from '@/public/default-template.json';
 import type { ProductInfo, Template } from '@/lib/types';
 
@@ -124,25 +126,49 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Upload thêm lên R2 để bền/không phụ thuộc VPS — vẫn giữ file local (dùng làm ref khi gen storyboard).
+  const productImageUrls = await Promise.all(
+    productImagePaths.map((relPath) => {
+      const fileName = path.basename(relPath);
+      return uploadFileToR2(
+        path.join(inputsDir, fileName),
+        `projects/${id}/inputs/${fileName}`,
+        mimeFor(fileName)
+      );
+    })
+  );
+
   const templateRelPath = path.join('inputs', 'template.json');
   await fs.writeFile(path.join(inputsDir, 'template.json'), JSON.stringify(template, null, 2), 'utf-8');
 
   let backgroundRelPath: string | null = null;
+  let backgroundUrl: string | null = null;
   if (backgroundFile) {
     const ext = path.extname(backgroundFile.name) || '.jpg';
     const fileName = `background${ext}`;
     const buffer = Buffer.from(await backgroundFile.arrayBuffer());
     await fs.writeFile(path.join(inputsDir, fileName), buffer);
     backgroundRelPath = path.join('inputs', fileName);
+    backgroundUrl = await uploadFileToR2(
+      path.join(inputsDir, fileName),
+      `projects/${id}/inputs/${fileName}`,
+      mimeFor(fileName)
+    );
   }
 
   let spokespersonRelPath: string | null = null;
+  let spokespersonImageUrl: string | null = null;
   if (spokespersonFile) {
     const ext = path.extname(spokespersonFile.name) || '.jpg';
     const fileName = `spokesperson${ext}`;
     const buffer = Buffer.from(await spokespersonFile.arrayBuffer());
     await fs.writeFile(path.join(inputsDir, fileName), buffer);
     spokespersonRelPath = path.join('inputs', fileName);
+    spokespersonImageUrl = await uploadFileToR2(
+      path.join(inputsDir, fileName),
+      `projects/${id}/inputs/${fileName}`,
+      mimeFor(fileName)
+    );
   }
 
   const project = createNewProject({
@@ -152,9 +178,12 @@ export async function POST(req: NextRequest) {
     product,
     aspectRatio,
     productImages: productImagePaths,
+    productImageUrls,
     templatePath: templateRelPath,
     backgroundPath: backgroundRelPath,
+    backgroundUrl,
     spokespersonImagePath: spokespersonRelPath,
+    spokespersonImageUrl,
   });
 
   // Gán sẵn flowProjectId ngay khi tạo (gom mọi ảnh + video sau này của project vào chung 1

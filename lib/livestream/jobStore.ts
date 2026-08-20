@@ -492,6 +492,7 @@ export async function listJobs(): Promise<LivestreamJobSummary[]> {
       name: livestreamJobs.name,
       updatedAt: livestreamJobs.updatedAt,
       status: livestreamJobs.status,
+      aspectRatio: livestreamJobs.aspectRatio,
       productCount: sql<number>`count(${livestreamProducts.rowId})`,
     })
     .from(livestreamJobs)
@@ -501,13 +502,15 @@ export async function listJobs(): Promise<LivestreamJobSummary[]> {
       livestreamJobs.slug,
       livestreamJobs.name,
       livestreamJobs.updatedAt,
-      livestreamJobs.status
+      livestreamJobs.status,
+      livestreamJobs.aspectRatio
     );
   const summaries: LivestreamJobSummary[] = rows.map((r) => ({
     id: r.id,
     name: r.name,
     updatedAt: sqlToIso(r.updatedAt) ?? r.updatedAt,
     status: r.status as LivestreamJobStatus,
+    aspectRatio: r.aspectRatio as '9:16' | '16:9',
     // count() trả string qua mysql2 ở một số cấu hình → ép số cho chắc.
     productCount: Number(r.productCount),
   }));

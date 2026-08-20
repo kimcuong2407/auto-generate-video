@@ -61,6 +61,8 @@ export const projects = mysqlTable('projects', {
   storyboardModel: varchar('storyboard_model', { length: 128 }).notNull(),
   storyboardUseProductReference: boolean('storyboard_use_product_reference').notNull(),
   storyboardUseSpokespersonReference: boolean('storyboard_use_spokesperson_reference').notNull(),
+  // Ảnh sản phẩm DUY NHẤT được chọn làm ref (trong inputs.productImages) — null = dùng ảnh đầu tiên.
+  storyboardProductImagePath: varchar('storyboard_product_image_path', { length: 1024 }),
   // Script meta (totalDuration + aspectRatio) — scenes tách bảng scenes.
   scriptTotalDuration: int('script_total_duration').notNull(),
   scriptAspectRatio: mysqlEnum('script_aspect_ratio', ASPECT_RATIOS).notNull(),
@@ -111,6 +113,7 @@ export const storyboardImages = mysqlTable(
     order: int('order').notNull(),
     prompt: mediumtext('prompt').notNull(),
     imagePath: varchar('image_path', { length: 1024 }),
+    imageUrl: varchar('image_url', { length: 2048 }),
     status: mysqlEnum('status', ['idle', 'generating', 'done', 'failed']).notNull(),
     error: text('error'),
     attempts: int('attempts').notNull().default(0),

@@ -5,7 +5,7 @@ import type { LivestreamJob } from './types';
 import { jobOutputsDir, jobTmpDir, resolveWithinJob } from './paths';
 import { run } from '../ffmpeg/run';
 
-function aspectDimensions(aspectRatio: '9:16' | '16:9'): { width: number; height: number } {
+export function aspectDimensions(aspectRatio: '9:16' | '16:9'): { width: number; height: number } {
   return aspectRatio === '9:16' ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
 }
 

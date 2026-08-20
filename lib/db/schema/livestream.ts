@@ -144,4 +144,21 @@ export const livestreamSegments = mysqlTable(
   })
 );
 
+/** Gộp nhiều job (đã ghép video xong) thành 1 video liên tục — chỉ là list slug + 1 ConcatState. */
+export const livestreamMerges = mysqlTable(
+  'livestream_merges',
+  {
+    id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+    slug: varchar('slug', { length: 191 }).notNull(),
+    name: varchar('name', { length: 512 }).notNull(),
+    createdAt: datetime('created_at', { fsp: 3, mode: 'string' }).notNull(),
+    updatedAt: datetime('updated_at', { fsp: 3, mode: 'string' }).notNull(),
+    jobSlugs: mariaJson('job_slugs').$type<string[]>().notNull(),
+    concat: mariaJson('concat').$type<ConcatState>().notNull(),
+  },
+  (t) => ({
+    slugUnique: uniqueIndex('uq_merges_slug').on(t.slug),
+  })
+);
+
 export type VeoModelType = VeoModel;

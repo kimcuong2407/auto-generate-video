@@ -15,7 +15,7 @@ const MIME_BY_EXT: Record<string, string> = {
   '.gif': 'image/gif',
 };
 
-function mimeFor(filePath: string): string {
+export function mimeFor(filePath: string): string {
   return MIME_BY_EXT[path.extname(filePath).toLowerCase()] || 'image/png';
 }
 

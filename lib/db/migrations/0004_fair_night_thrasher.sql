@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `storyboard_product_image_path` varchar(1024);

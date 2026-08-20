@@ -11,6 +11,7 @@ import type { VeoModel } from '../types';
 import { resolveActiveAccount, resolveAccessToken } from './recaptcha';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
+import { generateOmniImage } from '../omniroute/imageGen';
 import { generateVideo, pollVideoStatus } from './videoGen';
 import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
@@ -102,18 +103,33 @@ export interface VideoGenInput {
   duration: number;
 }
 
+/**
+ * 404 từ Flow API trên các endpoint theo projectId luôn nghĩa là project (entity) đã bị Google
+ * xoá/hết hạn — không resource nào khác 404 được ở các endpoint này.
+ */
+function isEntityNotFound(err: unknown): boolean {
+  return err instanceof FlowApiError && err.code === 404;
+}
+
+/** Bỏ mediaId cache khi thử lại trên project mới — ảnh đã upload thuộc project cũ không còn hợp lệ. */
+function dropCachedMediaId(ref?: RefImageInput): RefImageInput | undefined {
+  return ref ? { path: ref.path } : undefined;
+}
+
 export async function generateSceneVideo(
   input: VideoGenInput,
   opts: {
     aspect: '16:9' | '9:16';
     model: VeoModel;
     flowProjectId?: string | null;
+    /** Tên dùng tạo lại Flow project nếu project hiện tại bị 404 (entity not found). */
+    flowProjectTitle?: string;
     refImages?: RefImageInput[];
     startImage?: RefImageInput;
     endImage?: RefImageInput;
     seed?: number;
   }
-): Promise<GenerateVideoResult> {
+): Promise<GenerateVideoResult & { flowProjectId: string }> {
   const account = await resolveActiveAccount();
   const accessToken = await resolveAccessToken(account);
 
@@ -127,19 +143,30 @@ export async function generateSceneVideo(
     throw new FlowApiError('Chưa có flowProjectId — cần tạo Flow project trước khi gen video');
   }
 
-  return generateVideo({
-    account,
-    accessToken,
-    prompt,
-    aspect: opts.aspect,
-    model: opts.model,
-    projectId: opts.flowProjectId,
-    duration,
-    refImages,
-    startImage: opts.startImage,
-    endImage: opts.endImage,
-    seed: opts.seed,
-  });
+  const run = (projectId: string, freshUploads: boolean) =>
+    generateVideo({
+      account,
+      accessToken,
+      prompt,
+      aspect: opts.aspect,
+      model: opts.model,
+      projectId,
+      duration,
+      refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
+      startImage: freshUploads ? dropCachedMediaId(opts.startImage) : opts.startImage,
+      endImage: freshUploads ? dropCachedMediaId(opts.endImage) : opts.endImage,
+      seed: opts.seed,
+    });
+
+  try {
+    const result = await run(opts.flowProjectId, false);
+    return { ...result, flowProjectId: opts.flowProjectId };
+  } catch (err) {
+    if (!isEntityNotFound(err) || !opts.flowProjectTitle) throw err;
+    const { id: newProjectId } = await createProject(account.cookie, opts.flowProjectTitle);
+    const result = await run(newProjectId, true);
+    return { ...result, flowProjectId: newProjectId };
+  }
 }
 
 export type FlowJobState = 'pending' | 'running' | 'done' | 'error' | 'cancelled';
@@ -214,8 +241,29 @@ export async function generateStoryboardImage(params: {
   model?: string;
   refImages?: RefImageInput[];
   projectId?: string | null;
+  /** Tên dùng tạo lại Flow project nếu project hiện tại bị 404 (entity not found). */
+  projectTitle?: string;
   timeoutMs?: number;
-}): Promise<GenerateStoryboardImageResult> {
+}): Promise<GenerateStoryboardImageResult & { flowProjectId: string }> {
+  // Model OmniRoute (vd "chatgpt-web/gpt-5.5", chứa "/") → rẽ sang provider khác, không đụng
+  // Google Flow (không cần flowProjectId/account thật). Model Google Flow (flow-image,
+  // HARBOR_SEAL, GEM_PIX_2, NARWHAL) không chứa "/" nên rơi xuống nhánh cũ như trước.
+  if (params.model?.includes('/')) {
+    const paths = await generateOmniImage({
+      prompt: params.prompt,
+      model: params.model,
+      refImagePaths: (params.refImages || []).map((r) => r.path),
+      timeoutMs: params.timeoutMs,
+    });
+    return {
+      job_id: '',
+      dir: path.dirname(paths[0]),
+      paths,
+      uploadedMediaIds: {},
+      flowProjectId: params.projectId || '',
+    };
+  }
+
   const account = await resolveActiveAccount();
   const accessToken = await resolveAccessToken(account);
 
@@ -223,18 +271,32 @@ export async function generateStoryboardImage(params: {
     throw new FlowApiError('Chưa có flowProjectId — cần tạo Flow project trước khi gen ảnh');
   }
 
-  const result = await generateImage({
-    account,
-    accessToken,
-    prompt: params.prompt,
-    aspect: params.aspect,
-    model: params.model,
-    projectId: params.projectId,
-    refImages: params.refImages && params.refImages.length > 0 ? params.refImages : undefined,
-    count: 1,
-  });
+  const refImages = params.refImages && params.refImages.length > 0 ? params.refImages : undefined;
+  const run = (projectId: string, freshUploads: boolean) =>
+    generateImage({
+      account,
+      accessToken,
+      prompt: params.prompt,
+      aspect: params.aspect,
+      model: params.model,
+      projectId,
+      refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
+      count: 1,
+    });
 
-  return { job_id: '', dir: result.dir, paths: result.paths, uploadedMediaIds: result.uploadedMediaIds };
+  let result;
+  let flowProjectId: string;
+  try {
+    result = await run(params.projectId, false);
+    flowProjectId = params.projectId;
+  } catch (err) {
+    if (!isEntityNotFound(err) || !params.projectTitle) throw err;
+    const { id: newProjectId } = await createProject(account.cookie, params.projectTitle);
+    result = await run(newProjectId, true);
+    flowProjectId = newProjectId;
+  }
+
+  return { job_id: '', dir: result.dir, paths: result.paths, uploadedMediaIds: result.uploadedMediaIds, flowProjectId };
 }
 
 /**

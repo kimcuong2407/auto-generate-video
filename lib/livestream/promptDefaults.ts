@@ -65,12 +65,18 @@ Trả về DUY NHẤT đoạn mô tả (plain text, tiếng Việt), KHÔNG kèm
  * người dùng có thể chọn làm ref chính khi gen video. Mô tả sản phẩm (product.description) sẽ được
  * ghép vào cuối prompt này lúc gọi.
  */
-export const BACKGROUND_SYSTEM_PROMPT = `Generate a single realistic livestream frame composed like a real Vietnamese e-commerce live-selling session (Shopee Live style), inside a believable real-world setting.
+export const BACKGROUND_SYSTEM_PROMPT = `Generate a single realistic livestream frame — the presenter MUST be seated inside a proper Vietnamese TikTok Shop / Shopee Live home live-selling room (this exact fixed room every time), NEVER outdoors, NEVER an empty room, NEVER a bare studio backdrop with no livestream gear.
+
+Canonical room setup — a small (~6-8m²) home live-selling corner, keep it IDENTICAL every time this prompt runs (same backdrop, same lighting, same furniture) so different generated frames look like the same physical room:
+- Backdrop: a plain, tidy fabric curtain or flat-painted wall in a light neutral tone (white/cream/beige), about 1-1.2m behind the presenter for depth separation. Optionally a slim shelf against it holding a few neatly stacked branded product boxes — never cluttered or messy.
+- Lighting: soft, even daylight-balanced light (like a ring light or softbox just off-camera) hitting the presenter's face and the tabletop products from the front at a gentle angle on both sides, bright enough to show product detail without harsh shadows or glare — natural room light, not a flawless studio look.
+- Livestream gear cue: a phone-and-tripod rig or ring-light stand may be glimpsed at the very edge of the frame, signaling this is shot as a real phone livestream, not a professional film set.
+- Table: a low table/desk directly in front of the presenter, covered with a simple mat or cloth, at a height that keeps the products within easy reach of both hands.
 
 Composition (frame this exactly like a real seller streaming from their phone):
-- A host/presenter SITS at a table (seated, stationary — never standing or walking), positioned OFF-CENTER toward one side of the frame (not dead center), shown from roughly the waist up, actively interacting with the product below — holding, showing, or gesturing toward it with the hands like a live seller talking to viewers.
+- A host/presenter SITS at the table (seated, stationary — never standing or walking), positioned OFF-CENTER toward one side of the frame (not dead center), shown from roughly the waist up, actively interacting with the product below — holding, showing, or gesturing toward it with the hands like a live seller talking to viewers.
+- If a reference model/person image is provided, the presenter's face, hairstyle, and outfit MUST match that reference exactly — keep the same person, do not invent a different one.
 - The products are laid out on the table IN FRONT of the presenter, within easy reach: several items arranged side by side (bottles, jars, tubs, boxes as appropriate), with the main product clearly the most visible and recognizable. The products stay in front of the presenter at all times.
-- Setting: a bright, believable home corner or small studio — light-colored walls, maybe a shelf or light decor behind — a real live-selling space, never an empty or plain backdrop.
 - Vertical portrait framing (phone-shot orientation). Keep the presenter and products within the central band of the frame, leaving comfortable empty margin at the very top and very bottom of the frame.
 
 Requirements:

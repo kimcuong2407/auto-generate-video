@@ -116,6 +116,7 @@ function buildEmptyStoryboardImage(s: TemplateScene, order: number): StoryboardI
     order,
     prompt: seedStoryboardPrompt(s),
     imagePath: null,
+    imageUrl: null,
     status: 'idle',
     error: null,
     attempts: 0,
@@ -135,6 +136,7 @@ function buildEmptyBackgroundImage(s: TemplateScene, order: number): StoryboardI
     order,
     prompt: '',
     imagePath: null,
+    imageUrl: null,
     status: 'idle',
     error: null,
     attempts: 0,
@@ -214,6 +216,7 @@ function buildEmptyStoryboardImageFromScene(s: Scene, order: number): Storyboard
     order,
     prompt: seedStoryboardPromptFromScene(s),
     imagePath: null,
+    imageUrl: null,
     status: 'idle',
     error: null,
     attempts: 0,
@@ -246,6 +249,7 @@ function buildEmptyBackgroundImageFromScene(s: Scene, order: number): Storyboard
     order,
     prompt: '',
     imagePath: null,
+    imageUrl: null,
     status: 'idle',
     error: null,
     attempts: 0,
@@ -274,9 +278,12 @@ export function createNewProject(params: {
   product: ProductInfo;
   aspectRatio: '9:16' | '16:9';
   productImages: string[];
+  productImageUrls: (string | null)[];
   templatePath: string;
   backgroundPath: string | null;
+  backgroundUrl: string | null;
   spokespersonImagePath: string | null;
+  spokespersonImageUrl: string | null;
 }): Project {
   const now = new Date().toISOString();
   const scenes = buildScenesFromTemplate(params.template);
@@ -297,13 +304,17 @@ export function createNewProject(params: {
     product: params.product,
     inputs: {
       productImages: params.productImages,
+      productImageUrls: params.productImageUrls,
       templatePath: params.templatePath,
       backgroundPath: params.backgroundPath,
+      backgroundUrl: params.backgroundUrl,
       spokespersonImagePath: params.spokespersonImagePath,
+      spokespersonImageUrl: params.spokespersonImageUrl,
     },
     storyboard: {
       model: DEFAULT_STORYBOARD_MODEL,
       useProductReference: true,
+      productReferenceImagePath: null,
       useSpokespersonReference: true,
       images: buildStoryboardFromTemplate(params.template),
       backgrounds: buildBackgroundsFromTemplate(params.template),

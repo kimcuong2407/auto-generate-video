@@ -60,3 +60,32 @@ export function resolveWithinJob(slug: string, relPath: string): string {
   }
   return resolved;
 }
+
+// ------------------------------------------------------------------
+// Merge (gộp nhiều job thành 1 video) — thư mục riêng, không đụng namespace job.
+// ------------------------------------------------------------------
+
+export function mergeDir(slug: string): string {
+  assertValidJobId(slug); // slug merge dùng chung regex với job — đủ tổng quát.
+  return path.join(LIVESTREAM_DATA_ROOT, '_merges', slug);
+}
+
+export function mergeOutputsDir(slug: string): string {
+  return path.join(mergeDir(slug), 'outputs');
+}
+
+export function mergeTmpDir(slug: string): string {
+  return path.join(mergeOutputsDir(slug), 'tmp');
+}
+
+/** Resolve đường dẫn tương đối bên trong merge dir, chặn path traversal (mirror resolveWithinJob). */
+export function resolveWithinMerge(slug: string, relPath: string): string {
+  const base = mergeDir(slug);
+  const normalized = path.normalize(relPath).replace(/^([.]{2}[/\\])+/, '');
+  const resolved = path.resolve(base, normalized);
+  const baseWithSep = base.endsWith(path.sep) ? base : base + path.sep;
+  if (!resolved.startsWith(baseWithSep) && resolved !== base) {
+    throw new Error('Đường dẫn không hợp lệ (path traversal bị chặn)');
+  }
+  return resolved;
+}
