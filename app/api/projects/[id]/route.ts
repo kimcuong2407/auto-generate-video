@@ -9,6 +9,8 @@ import {
 } from '@/lib/data/projectFactory';
 import { projectInputsDir } from '@/lib/paths';
 import { MAX_IMAGE_COUNT, MAX_IMAGE_SIZE_BYTES } from '@/lib/constants';
+import { uploadFileToR2 } from '@/lib/r2/client';
+import { mimeFor } from '@/lib/googleFlow/upload';
 import type { ProductInfo, Template } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -163,6 +165,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Ghi file ảnh mới (I/O ngoài transaction updateProject, giống route tạo mới).
   let productImagePaths: string[] | undefined;
+  let productImageUrls: (string | null)[] | undefined;
   if (images.length > 0) {
     // Xoá ảnh sản phẩm cũ trước khi ghi ảnh mới để tránh rác file không còn tham chiếu.
     for (const oldPath of current.inputs.productImages) {
@@ -177,34 +180,59 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       await fs.writeFile(path.join(inputsDir, fileName), buffer);
       productImagePaths.push(path.join('inputs', fileName));
     }
+    // Upload thêm lên R2 để bền/không phụ thuộc VPS — vẫn giữ file local (dùng làm ref khi gen storyboard).
+    productImageUrls = await Promise.all(
+      productImagePaths.map((relPath) => {
+        const fileName = path.basename(relPath);
+        return uploadFileToR2(
+          path.join(inputsDir, fileName),
+          `projects/${id}/inputs/${fileName}`,
+          mimeFor(fileName)
+        );
+      })
+    );
   }
 
   let backgroundRelPath: string | null | undefined;
+  let backgroundUrl: string | null | undefined;
   if (backgroundFile) {
     const ext = path.extname(backgroundFile.name) || '.jpg';
     const fileName = `background${ext}`;
     const buffer = Buffer.from(await backgroundFile.arrayBuffer());
     await fs.writeFile(path.join(inputsDir, fileName), buffer);
     backgroundRelPath = path.join('inputs', fileName);
+    backgroundUrl = await uploadFileToR2(
+      path.join(inputsDir, fileName),
+      `projects/${id}/inputs/${fileName}`,
+      mimeFor(fileName)
+    );
   } else if (removeBackground) {
     if (current.inputs.backgroundPath) {
       await fs.unlink(path.join(inputsDir, path.basename(current.inputs.backgroundPath))).catch(() => {});
     }
     backgroundRelPath = null;
+    backgroundUrl = null;
   }
 
   let spokespersonRelPath: string | null | undefined;
+  let spokespersonImageUrl: string | null | undefined;
   if (spokespersonFile) {
     const ext = path.extname(spokespersonFile.name) || '.jpg';
     const fileName = `spokesperson${ext}`;
     const buffer = Buffer.from(await spokespersonFile.arrayBuffer());
     await fs.writeFile(path.join(inputsDir, fileName), buffer);
     spokespersonRelPath = path.join('inputs', fileName);
+    spokespersonImageUrl = await uploadFileToR2(
+      path.join(inputsDir, fileName),
+      `projects/${id}/inputs/${fileName}`,
+      mimeFor(fileName)
+    );
   } else if (removeSpokespersonImage) {
     if (current.inputs.spokespersonImagePath) {
       await fs.unlink(path.join(inputsDir, path.basename(current.inputs.spokespersonImagePath))).catch(() => {});
     }
     spokespersonRelPath = null;
+    spokespersonImageUrl = null;
   }
 
   const { project } = await updateProject(id, (p) => {
@@ -226,8 +254,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ).images;
     }
     if (productImagePaths !== undefined) p.inputs.productImages = productImagePaths;
+    if (productImageUrls !== undefined) p.inputs.productImageUrls = productImageUrls;
     if (backgroundRelPath !== undefined) p.inputs.backgroundPath = backgroundRelPath;
+    if (backgroundUrl !== undefined) p.inputs.backgroundUrl = backgroundUrl;
     if (spokespersonRelPath !== undefined) p.inputs.spokespersonImagePath = spokespersonRelPath;
+    if (spokespersonImageUrl !== undefined) p.inputs.spokespersonImageUrl = spokespersonImageUrl;
   });
 
   return NextResponse.json({ project, removedScenes: removedWithData });

@@ -1,0 +1,1 @@
+ALTER TABLE `storyboard_images` ADD `image_url` varchar(2048);

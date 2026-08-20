@@ -13,12 +13,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body = (await req.json().catch(() => ({}))) as {
     model?: string;
     useProductReference?: boolean;
+    productReferenceImagePath?: string | null;
     useSpokespersonReference?: boolean;
   };
 
   const { project } = await updateProject(id, (p) => {
     if (body.model !== undefined && body.model.trim()) p.storyboard.model = body.model.trim();
     if (body.useProductReference !== undefined) p.storyboard.useProductReference = body.useProductReference;
+    if (body.productReferenceImagePath !== undefined)
+      p.storyboard.productReferenceImagePath = body.productReferenceImagePath;
     if (body.useSpokespersonReference !== undefined)
       p.storyboard.useSpokespersonReference = body.useSpokespersonReference;
   });

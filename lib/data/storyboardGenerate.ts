@@ -4,6 +4,7 @@ import { readProject, updateProject, ensureProjectFlowId } from './projectStore'
 import { projectInputsDir, projectStoryboardDir } from '../paths';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
+import { uploadFileToR2 } from '../r2/client';
 import type { StoryboardImage } from '../types';
 
 export interface TriggerStoryboardResult {
@@ -46,9 +47,12 @@ export async function triggerStoryboardGeneration(
   try {
     const referenceImagePaths: string[] = [];
     if (project.storyboard.useProductReference) {
-      referenceImagePaths.push(
-        ...project.inputs.productImages.map((p) => path.join(projectInputsDir(projectId), path.basename(p)))
-      );
+      // Chỉ gửi ĐÚNG 1 ảnh sản phẩm làm ref (ảnh đã chọn, hoặc ảnh đầu tiên nếu chưa chọn) —
+      // không gửi cả danh sách, tránh Flow nhầm lẫn nhiều ảnh sản phẩm khác góc/khác biến thể.
+      const chosen = project.storyboard.productReferenceImagePath || project.inputs.productImages[0];
+      if (chosen) {
+        referenceImagePaths.push(path.join(projectInputsDir(projectId), path.basename(chosen)));
+      }
     }
     if (project.storyboard.useSpokespersonReference && project.inputs.spokespersonImagePath) {
       referenceImagePaths.push(
@@ -76,15 +80,23 @@ export async function triggerStoryboardGeneration(
     const storyboardDir = projectStoryboardDir(projectId);
     await fs.mkdir(storyboardDir, { recursive: true });
     const fileName = `${sceneId}.png`;
-    await fs.copyFile(generatedPath, path.join(storyboardDir, fileName));
+    const destAbsPath = path.join(storyboardDir, fileName);
+    await fs.copyFile(generatedPath, destAbsPath);
     const relativeImagePath = path.join('outputs', 'storyboard', fileName);
+    // Upload thêm lên R2 để bền/không phụ thuộc route local — vẫn giữ file local vì
+    // sceneGenerate.ts đọc trực tiếp storyboardImage.imagePath làm ref khi gen video scene.
+    const imageUrl = await uploadFileToR2(
+      destAbsPath,
+      `projects/${projectId}/storyboard/${fileName}`,
+      'image/png'
+    );
 
     await updateProject(projectId, (p) => {
       const img = p.storyboard.images.find((x) => x.sceneId === sceneId);
       // Guard: nếu người dùng đã bấm Dừng trong lúc chờ flow_generate_image (status
       // không còn 'generating'), không ghi đè trạng thái đã dừng bằng kết quả trễ.
       if (!img || img.status !== 'generating') return;
-      applyDoneState(img, relativeImagePath);
+      applyDoneState(img, relativeImagePath, imageUrl);
       // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
       if (result.flowProjectId !== flowProjectId) p.flowProjectId = result.flowProjectId;
     });
@@ -154,9 +166,14 @@ export async function stopAllStoryboardGeneration(projectId: string): Promise<st
   return stopped;
 }
 
-export function applyDoneState(image: StoryboardImage, relativeImagePath: string): void {
+export function applyDoneState(
+  image: StoryboardImage,
+  relativeImagePath: string,
+  imageUrl: string | null = null
+): void {
   image.status = 'done';
   image.imagePath = relativeImagePath;
+  image.imageUrl = imageUrl;
   image.error = null;
   image.attempts += 1;
   image.lastUpdatedAt = new Date().toISOString();

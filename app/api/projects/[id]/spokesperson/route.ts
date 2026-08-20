@@ -4,6 +4,8 @@ import path from 'node:path';
 import { projectExists, updateProject } from '@/lib/data/projectStore';
 import { projectInputsDir } from '@/lib/paths';
 import { MAX_IMAGE_SIZE_BYTES } from '@/lib/constants';
+import { uploadFileToR2 } from '@/lib/r2/client';
+import { mimeFor } from '@/lib/googleFlow/upload';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,9 +39,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const buffer = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(path.join(inputsDir, fileName), buffer);
   const relPath = path.join('inputs', fileName);
+  // Upload thêm lên R2 để bền/không phụ thuộc VPS — vẫn giữ file local (dùng làm ref khi gen storyboard).
+  const imageUrl = await uploadFileToR2(
+    path.join(inputsDir, fileName),
+    `projects/${id}/inputs/${fileName}`,
+    mimeFor(fileName)
+  );
 
   const { project } = await updateProject(id, (p) => {
     p.inputs.spokespersonImagePath = relPath;
+    p.inputs.spokespersonImageUrl = imageUrl;
   });
 
   return NextResponse.json({ project });
@@ -53,6 +62,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   const { project } = await updateProject(id, (p) => {
     p.inputs.spokespersonImagePath = null;
+    p.inputs.spokespersonImageUrl = null;
   });
 
   return NextResponse.json({ project });

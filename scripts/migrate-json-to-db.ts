@@ -75,16 +75,25 @@ function backfillProject(project: Project): Project {
     if (scene.videoUrl === undefined) scene.videoUrl = null;
   }
   if (project.concat && project.concat.outputUrl === undefined) project.concat.outputUrl = null;
+  if (project.inputs) {
+    if (project.inputs.productImageUrls === undefined) {
+      project.inputs.productImageUrls = project.inputs.productImages.map(() => null);
+    }
+    if (project.inputs.backgroundUrl === undefined) project.inputs.backgroundUrl = null;
+    if (project.inputs.spokespersonImageUrl === undefined) project.inputs.spokespersonImageUrl = null;
+  }
   if (!project.storyboard) {
     project.storyboard = {
       model: DEFAULT_STORYBOARD_MODEL,
       useProductReference: true,
+      productReferenceImagePath: null,
       useSpokespersonReference: true,
       images: (project.template?.scenes || []).map((s, i) => ({
         sceneId: s.id,
         order: i + 1,
         prompt: '',
         imagePath: null,
+        imageUrl: null,
         status: 'idle' as const,
         error: null,
         attempts: 0,
@@ -102,11 +111,15 @@ function backfillProject(project: Project): Project {
       order: img.order,
       prompt: '',
       imagePath: null,
+      imageUrl: null,
       status: 'idle' as const,
       error: null,
       attempts: 0,
       lastUpdatedAt: null,
     }));
+  }
+  for (const img of [...project.storyboard.images, ...project.storyboard.backgrounds]) {
+    if (img.imageUrl === undefined) img.imageUrl = null;
   }
   return project;
 }

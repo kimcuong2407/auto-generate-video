@@ -11,6 +11,7 @@ import type { VeoModel } from '../types';
 import { resolveActiveAccount, resolveAccessToken } from './recaptcha';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
+import { generateOmniImage } from '../omniroute/imageGen';
 import { generateVideo, pollVideoStatus } from './videoGen';
 import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
@@ -244,6 +245,25 @@ export async function generateStoryboardImage(params: {
   projectTitle?: string;
   timeoutMs?: number;
 }): Promise<GenerateStoryboardImageResult & { flowProjectId: string }> {
+  // Model OmniRoute (vd "chatgpt-web/gpt-5.5", chứa "/") → rẽ sang provider khác, không đụng
+  // Google Flow (không cần flowProjectId/account thật). Model Google Flow (flow-image,
+  // HARBOR_SEAL, GEM_PIX_2, NARWHAL) không chứa "/" nên rơi xuống nhánh cũ như trước.
+  if (params.model?.includes('/')) {
+    const paths = await generateOmniImage({
+      prompt: params.prompt,
+      model: params.model,
+      refImagePaths: (params.refImages || []).map((r) => r.path),
+      timeoutMs: params.timeoutMs,
+    });
+    return {
+      job_id: '',
+      dir: path.dirname(paths[0]),
+      paths,
+      uploadedMediaIds: {},
+      flowProjectId: params.projectId || '',
+    };
+  }
+
   const account = await resolveActiveAccount();
   const accessToken = await resolveAccessToken(account);
 

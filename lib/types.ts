@@ -92,6 +92,8 @@ export interface StoryboardImage {
   prompt: string;
   /** Đường dẫn tương đối trong project dir, vd "outputs/storyboard/hook.png". Null nếu chưa gen. */
   imagePath: string | null;
+  /** URL public trên Cloudflare R2 sau khi upload thành công. Null nếu chưa upload hoặc R2 chưa cấu hình — khi đó dùng route xem local qua imagePath. */
+  imageUrl: string | null;
   status: StoryboardStatus;
   error: string | null;
   attempts: number;
@@ -103,6 +105,12 @@ export interface StoryboardState {
   model: string;
   /** Có gửi ảnh sản phẩm làm ảnh tham chiếu (img2img/edit) khi gen storyboard hay không. */
   useProductReference: boolean;
+  /**
+   * Đường dẫn (khớp 1 phần tử trong inputs.productImages) của ẢNH SẢN PHẨM DUY NHẤT được chọn
+   * làm ref khi useProductReference = true — thay vì gửi tất cả ảnh sản phẩm. Null = chưa chọn,
+   * fallback về ảnh đầu tiên trong inputs.productImages.
+   */
+  productReferenceImagePath: string | null;
   /** Có gửi ảnh nhân vật/người mẫu (inputs.spokespersonImagePath, Bước 1) làm ảnh tham chiếu khi gen storyboard hay không. */
   useSpokespersonReference: boolean;
   images: StoryboardImage[];
@@ -116,8 +124,12 @@ export interface StoryboardState {
 
 export interface ProjectInputs {
   productImages: string[];
+  /** URL public R2 song song với productImages (cùng index). Null ở vị trí nào = ảnh đó chưa upload/R2 chưa cấu hình. */
+  productImageUrls: (string | null)[];
   templatePath: string;
   backgroundPath: string | null;
+  /** URL public R2 của backgroundPath. Null nếu chưa upload/R2 chưa cấu hình. */
+  backgroundUrl: string | null;
   /**
    * Ảnh người mẫu/người dẫn (spokesperson), null nếu không dùng người mẫu. Không dùng
    * trực tiếp khi gen video (Bước 4) — chỉ dùng làm ảnh tham chiếu khi gen storyboard
@@ -125,6 +137,8 @@ export interface ProjectInputs {
    * xuyên suốt trong ảnh storyboard mà Bước 4 dùng làm ref.
    */
   spokespersonImagePath: string | null;
+  /** URL public R2 của spokespersonImagePath. Null nếu chưa upload/R2 chưa cấu hình. */
+  spokespersonImageUrl: string | null;
 }
 
 export interface MusicConfig {

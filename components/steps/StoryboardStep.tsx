@@ -82,6 +82,9 @@ export function StoryboardStep({
   const [savingSettings, setSavingSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ src: string; alt: string } | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<{ sceneId: string; kind: 'storyboard' | 'background' } | null>(
+    null
+  );
   const [promptBusySceneId, setPromptBusySceneId] = useState<string | null>(null);
   const [promptBusyAll, setPromptBusyAll] = useState(false);
   const [promptBusyBackgroundSceneId, setPromptBusyBackgroundSceneId] = useState<string | null>(null);
@@ -143,7 +146,9 @@ export function StoryboardStep({
   }
 
   async function handleUpdateSettings(patch: {
+    model?: string;
     useProductReference?: boolean;
+    productReferenceImagePath?: string | null;
     useSpokespersonReference?: boolean;
   }) {
     setSavingSettings(true);
@@ -400,14 +405,57 @@ export function StoryboardStep({
 
       {project.inputs.productImages.length > 0 && (
         <div className="field-group">
-          <label>Ảnh sản phẩm tham chiếu</label>
+          <label>
+            Ảnh sản phẩm tham chiếu
+            {project.inputs.productImages.length > 1 && ' — chọn đúng 1 ảnh để gửi làm ref, bấm ảnh để xem to'}
+          </label>
           <div className="image-preview-grid">
-            {project.inputs.productImages.map((p) => (
-              <img key={p} className="image-preview-thumb" src={`/api/projects/${project.id}/media/${p}`} alt="Ảnh sản phẩm" />
-            ))}
+            {project.inputs.productImages.map((p) => {
+              const selected =
+                (project.storyboard.productReferenceImagePath || project.inputs.productImages[0]) === p;
+              const src = `/api/projects/${project.id}/media/${p}`;
+              return (
+                <div key={p} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <img
+                    className="image-preview-thumb"
+                    src={src}
+                    alt="Ảnh sản phẩm"
+                    onClick={() => setModal({ src, alt: 'Ảnh sản phẩm' })}
+                    style={{
+                      cursor: 'zoom-in',
+                      outline: selected && project.inputs.productImages.length > 1 ? '2px solid var(--accent)' : undefined,
+                    }}
+                  />
+                  {project.inputs.productImages.length > 1 && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="productReferenceImage"
+                        checked={selected}
+                        disabled={savingSettings}
+                        onChange={() => handleUpdateSettings({ productReferenceImagePath: p })}
+                      />
+                      Dùng làm ref
+                    </label>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
+
+      <div className="field-group">
+        <label>Provider gen ảnh</label>
+        <select
+          value={project.storyboard.model}
+          disabled={savingSettings}
+          onChange={(e) => handleUpdateSettings({ model: e.target.value })}
+        >
+          <option value="flow-image">Google Flow (mặc định)</option>
+          <option value="chatgpt-web/gpt-5.5">OmniRoute — ChatGPT Web (gpt-5.5)</option>
+        </select>
+      </div>
 
       <div className="field-group">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -424,12 +472,19 @@ export function StoryboardStep({
       {project.inputs.spokespersonImagePath && (
         <>
           <div className="field-group">
-            <label>Ảnh nhân vật tham chiếu (Bước 1)</label>
+            <label>Ảnh nhân vật tham chiếu (Bước 1) — bấm ảnh để xem to</label>
             <div className="image-preview-grid">
               <img
                 className="image-preview-thumb"
                 src={`/api/projects/${project.id}/media/${project.inputs.spokespersonImagePath}`}
                 alt="Ảnh nhân vật"
+                style={{ cursor: 'zoom-in' }}
+                onClick={() =>
+                  setModal({
+                    src: `/api/projects/${project.id}/media/${project.inputs.spokespersonImagePath}`,
+                    alt: 'Ảnh nhân vật',
+                  })
+                }
               />
             </div>
           </div>
@@ -507,7 +562,7 @@ export function StoryboardStep({
               ) : (
                 <button
                   className="retry-btn"
-                  onClick={() => handleGenerate(image.sceneId)}
+                  onClick={() => setPreviewTarget({ sceneId: image.sceneId, kind: 'storyboard' })}
                   disabled={busySceneId === image.sceneId || busyAll}
                 >
                   {image.status === 'failed' ? '🔄 Retry' : '▶ Gen'}
@@ -575,7 +630,7 @@ export function StoryboardStep({
                   ) : (
                     <button
                       className="retry-btn"
-                      onClick={() => handleGenerateBackground(background.sceneId)}
+                      onClick={() => setPreviewTarget({ sceneId: background.sceneId, kind: 'background' })}
                       disabled={busyBackgroundSceneId === background.sceneId || busyBackgroundAll}
                     >
                       {background.status === 'failed' ? '🔄 Retry' : '▶ Gen'}
@@ -592,6 +647,109 @@ export function StoryboardStep({
 
       {error && <div className="banner">{error}</div>}
 
+      {previewTarget &&
+        (() => {
+          const isBackground = previewTarget.kind === 'background';
+          const promptText = (isBackground ? backgroundPrompts : prompts)[previewTarget.sceneId] ?? '';
+          const refPaths: string[] = [];
+          if (!isBackground) {
+            if (project.storyboard.useProductReference) {
+              const chosen = project.storyboard.productReferenceImagePath || project.inputs.productImages[0];
+              if (chosen) refPaths.push(chosen);
+            }
+            if (project.storyboard.useSpokespersonReference && project.inputs.spokespersonImagePath) {
+              refPaths.push(project.inputs.spokespersonImagePath);
+            }
+          }
+          const isOmniRouteModel = project.storyboard.model.includes('/');
+          const busy = isBackground
+            ? busyBackgroundSceneId === previewTarget.sceneId
+            : busySceneId === previewTarget.sceneId;
+
+          return (
+            <div className="media-modal-overlay" onClick={() => setPreviewTarget(null)}>
+              <div className="media-modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="card" style={{ width: 480, maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto' }}>
+                  <div className="card-header">
+                    👁️ Preview trước khi gen {isBackground ? 'background' : 'storyboard'}
+                  </div>
+
+                  <div className="field-group">
+                    <label>Prompt sẽ gửi</label>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        whiteSpace: 'pre-wrap',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: 10,
+                        maxHeight: 180,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {promptText || '(chưa có prompt)'}
+                    </div>
+                  </div>
+
+                  <div className="field-group">
+                    <label>Provider / model</label>
+                    <div style={{ fontSize: 12 }}>{project.storyboard.model}</div>
+                  </div>
+
+                  <div className="field-group">
+                    <label>Ảnh tham chiếu sẽ gửi kèm ({refPaths.length})</label>
+                    {refPaths.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        Không gửi ảnh nào — chỉ dùng prompt text.
+                      </div>
+                    ) : (
+                      <div className="image-preview-grid">
+                        {refPaths.map((p) => {
+                          const src = `/api/projects/${project.id}/media/${p}`;
+                          return (
+                            <img
+                              key={p}
+                              className="image-preview-thumb"
+                              src={src}
+                              alt="Ảnh tham chiếu"
+                              style={{ cursor: 'zoom-in' }}
+                              onClick={() => setModal({ src, alt: 'Ảnh tham chiếu' })}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                    {refPaths.length > 1 && isOmniRouteModel && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                        ℹ️ Provider OmniRoute chỉ nhận 1 ảnh tham chiếu — chỉ ảnh đầu tiên ở trên được gửi kèm.
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                    <button className="btn" onClick={() => setPreviewTarget(null)}>
+                      Huỷ
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={busy}
+                      onClick={() => {
+                        const target = previewTarget;
+                        setPreviewTarget(null);
+                        if (isBackground) handleGenerateBackground(target.sceneId);
+                        else handleGenerate(target.sceneId);
+                      }}
+                    >
+                      ✅ Xác nhận Generate
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* Render sau cùng để modal zoom luôn nổi trên preview khi bấm ảnh từ trong đó. */}
       {modal && <MediaModal kind="image" src={modal.src} alt={modal.alt} onClose={() => setModal(null)} />}
     </div>
   );

@@ -5,6 +5,7 @@ import { applyDoneState, STOP_ERROR_MESSAGE } from './storyboardGenerate';
 import { projectBackgroundsDir } from '../paths';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
+import { uploadFileToR2 } from '../r2/client';
 import type { TriggerStoryboardResult } from './storyboardGenerate';
 
 /**
@@ -56,13 +57,20 @@ export async function triggerBackgroundGeneration(
     const backgroundsDir = projectBackgroundsDir(projectId);
     await fs.mkdir(backgroundsDir, { recursive: true });
     const fileName = `${sceneId}.png`;
-    await fs.copyFile(generatedPath, path.join(backgroundsDir, fileName));
+    const destAbsPath = path.join(backgroundsDir, fileName);
+    await fs.copyFile(generatedPath, destAbsPath);
     const relativeImagePath = path.join('outputs', 'backgrounds', fileName);
+    // Upload thêm lên R2 để bền/không phụ thuộc route local — vẫn giữ file local (xem/tải Bước 3).
+    const imageUrl = await uploadFileToR2(
+      destAbsPath,
+      `projects/${projectId}/backgrounds/${fileName}`,
+      'image/png'
+    );
 
     await updateProject(projectId, (p) => {
       const img = p.storyboard.backgrounds.find((x) => x.sceneId === sceneId);
       if (!img || img.status !== 'generating') return;
-      applyDoneState(img, relativeImagePath);
+      applyDoneState(img, relativeImagePath, imageUrl);
       // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
       if (result.flowProjectId !== flowProjectId) p.flowProjectId = result.flowProjectId;
     });
