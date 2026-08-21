@@ -35,12 +35,14 @@ export function GenerateStep({
   onGoStep: (step: number) => void;
   onRefresh: () => Promise<void>;
 }) {
-  const [openPrompt, setOpenPrompt] = useState<string | null>(null);
   const [busySceneId, setBusySceneId] = useState<string | null>(null);
   const [busyAll, setBusyAll] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [videoModalPath, setVideoModalPath] = useState<string | null>(null);
   const [copiedSceneId, setCopiedSceneId] = useState<string | null>(null);
+  // Ảnh tham chiếu + prompt đã/sẽ gửi lên veoflow cho 1 scene — xem nút "👁 Chi tiết".
+  const [detailsSceneId, setDetailsSceneId] = useState<string | null>(null);
+  const mediaSrc = (path: string) => `/api/projects/${project.id}/media/${path}`;
 
   async function handleCopyLink(sceneId: string, url: string) {
     try {
@@ -261,8 +263,12 @@ export function GenerateStep({
                     ▶ Gen
                   </button>
                 )}
-                <button className="retry-btn" onClick={() => setOpenPrompt(openPrompt === scene.id ? null : scene.id)}>
-                  📋 Prompt
+                <button
+                  className="retry-btn"
+                  onClick={() => setDetailsSceneId(scene.id)}
+                  title="Xem ảnh tham chiếu + prompt gửi lên Veo Flow"
+                >
+                  👁 Chi tiết
                 </button>
                 {scene.status === 'done' && scene.videoPath && (
                   <button
@@ -301,11 +307,6 @@ export function GenerateStep({
                 </a>
               </div>
             )}
-            {openPrompt === scene.id && (
-              <div className="script-line" style={{ fontSize: 11 }}>
-                {scene.veoPrompt || '(chưa có prompt — quay lại Bước 2 để nhập)'}
-              </div>
-            )}
           </div>
           );
         })}
@@ -314,6 +315,97 @@ export function GenerateStep({
       {videoModalPath && (
         <MediaModal kind="video" src={videoModalPath} onClose={() => setVideoModalPath(null)} />
       )}
+
+      {detailsSceneId && (() => {
+        const scene = project.script.scenes.find((s) => s.id === detailsSceneId);
+        if (!scene) return null;
+        const storyboardImage = storyboardById.get(scene.id);
+        const refImage = storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage : null;
+        const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
+        const startImagePath =
+          project.sceneChaining && prevScene?.status === 'done' && prevScene.lastFramePath
+            ? prevScene.lastFramePath
+            : null;
+        return (
+          <div className="media-modal-overlay" onClick={() => setDetailsSceneId(null)}>
+            <div
+              className="media-modal-content"
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: 20,
+                width: 560,
+                maxWidth: '90vw',
+                textAlign: 'left',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button className="media-modal-close" onClick={() => setDetailsSceneId(null)} title="Đóng">
+                ✕
+              </button>
+              <h4 style={{ marginTop: 0 }}>Chi tiết {scene.label}</h4>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                {!refImage && !startImagePath && (
+                  <span style={{ opacity: 0.6 }}>Không có ảnh tham chiếu — gen chỉ bằng text prompt</span>
+                )}
+                {refImage && (
+                  <div>
+                    <img
+                      src={refImage.imageUrl || mediaSrc(refImage.imagePath as string)}
+                      alt="Ảnh tham chiếu (storyboard)"
+                      style={{ width: 110, height: 110, objectFit: 'cover', borderRadius: 8 }}
+                    />
+                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4, textAlign: 'center' }}>Ref ảnh</div>
+                  </div>
+                )}
+                {startImagePath && (
+                  <div>
+                    <img
+                      src={mediaSrc(startImagePath)}
+                      alt="Khung hình đầu (nối từ cảnh trước)"
+                      style={{ width: 110, height: 110, objectFit: 'cover', borderRadius: 8 }}
+                    />
+                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4, textAlign: 'center' }}>Start frame</div>
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>Prompt gửi Veo Flow:</div>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 13,
+                  background: 'var(--bg)',
+                  padding: 10,
+                  borderRadius: 8,
+                  maxHeight: '30vh',
+                  overflowY: 'auto',
+                }}
+              >
+                {scene.veoPrompt || '(chưa có prompt — quay lại Bước 2 để nhập)'}
+              </pre>
+              {scene.negativePrompt && (
+                <>
+                  <div style={{ fontSize: 13, opacity: 0.8, margin: '10px 0 4px' }}>Negative prompt:</div>
+                  <pre
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      fontSize: 13,
+                      background: 'var(--bg)',
+                      padding: 10,
+                      borderRadius: 8,
+                      maxHeight: '20vh',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {scene.negativePrompt}
+                  </pre>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
