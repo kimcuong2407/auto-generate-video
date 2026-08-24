@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Project, StoryboardImage, StoryboardStatus } from '@/lib/types';
 import { MediaModal } from '@/components/MediaModal';
+import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
 
 function statusClass(s: StoryboardStatus): string {
   return (
@@ -147,6 +148,7 @@ export function StoryboardStep({
 
   async function handleUpdateSettings(patch: {
     model?: string;
+    backgroundModel?: string;
     useProductReference?: boolean;
     productReferenceImagePath?: string | null;
     useSpokespersonReference?: boolean;
@@ -446,14 +448,32 @@ export function StoryboardStep({
       )}
 
       <div className="field-group">
-        <label>Provider gen ảnh</label>
+        <label>Provider gen ảnh storyboard</label>
         <select
           value={project.storyboard.model}
           disabled={savingSettings}
           onChange={(e) => handleUpdateSettings({ model: e.target.value })}
         >
-          <option value="flow-image">Google Flow (mặc định)</option>
-          <option value="chatgpt-web/gpt-5.5">OmniRoute — ChatGPT Web (gpt-5.5)</option>
+          {IMAGE_MODEL_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field-group">
+        <label>Provider gen ảnh background</label>
+        <select
+          value={project.storyboard.backgroundModel}
+          disabled={savingSettings}
+          onChange={(e) => handleUpdateSettings({ backgroundModel: e.target.value })}
+        >
+          {IMAGE_MODEL_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
         </select>
       </div>
 

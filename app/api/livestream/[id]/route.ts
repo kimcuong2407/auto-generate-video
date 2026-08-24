@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs/promises';
-import { jobExists, readJob, deleteJob } from '@/lib/livestream/jobStore';
+import { jobExists, readJob, updateJob, deleteJob } from '@/lib/livestream/jobStore';
 import { jobDir } from '@/lib/livestream/paths';
 
 export const runtime = 'nodejs';
@@ -11,6 +11,23 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
   const job = await readJob(params.id);
+  return NextResponse.json({ job });
+}
+
+/** Cập nhật cài đặt cấp job — hiện chỉ có `backgroundModel` (provider gen ảnh background AI). */
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const { id } = params;
+  if (!(await jobExists(id))) {
+    return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as { backgroundModel?: string };
+
+  const { job } = await updateJob(id, (j) => {
+    if (body.backgroundModel !== undefined && body.backgroundModel.trim())
+      j.backgroundModel = body.backgroundModel.trim();
+  });
+
   return NextResponse.json({ job });
 }
 

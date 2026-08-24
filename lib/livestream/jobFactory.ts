@@ -7,6 +7,7 @@ import type {
   ProductSourceType,
 } from './types';
 import type { VeoModel } from '../types';
+import { DEFAULT_STORYBOARD_MODEL } from '../constants';
 
 let productCounter = 0;
 
@@ -68,6 +69,7 @@ export function createNewJob(input: {
     selectedModelImagePath: null,
     backgroundImagePaths: [],
     selectedBackgroundImagePath: null,
+    backgroundModel: DEFAULT_STORYBOARD_MODEL,
     imageR2Urls: {},
     flowMediaIds: {},
     concat: {

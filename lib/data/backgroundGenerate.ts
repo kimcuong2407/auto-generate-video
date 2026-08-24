@@ -42,7 +42,7 @@ export async function triggerBackgroundGeneration(
     const flowProjectId = await ensureProjectFlowId(projectId);
     const result = await generateStoryboardImage({
       prompt: image.prompt,
-      model: project.storyboard.model,
+      model: project.storyboard.backgroundModel,
       projectId: flowProjectId,
       projectTitle: project.name,
       // Cùng lý do với storyboardGenerate.ts: ảnh background luôn khung ngang 16:9,

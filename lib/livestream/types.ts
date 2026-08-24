@@ -98,6 +98,8 @@ export interface LivestreamJob {
    * Nếu có, truyền kèm ảnh sản phẩm làm ref khi gen (r2v cho phép nhiều referenceImages).
    */
   selectedBackgroundImagePath: string | null;
+  /** Model ảnh dùng khi gen background bằng AI (xem lib/livestream/backgroundGenerate.ts) — 'chatgpt-web/gpt-5.5' (OmniRoute) hoặc 'flow-image' (Google Flow/Veo). */
+  backgroundModel: string;
   /**
    * URL R2 (bản sao bền vững) của các ảnh input — key = relPath đang có trong 5 field ảnh trên
    * (vd 'inputs/spokesperson-...jpg'), value = URL public R2 hoặc null (chỉ có local / R2 tắt).

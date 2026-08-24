@@ -313,6 +313,7 @@ export function createNewProject(params: {
     },
     storyboard: {
       model: DEFAULT_STORYBOARD_MODEL,
+      backgroundModel: DEFAULT_STORYBOARD_MODEL,
       useProductReference: true,
       productReferenceImagePath: null,
       useSpokespersonReference: true,

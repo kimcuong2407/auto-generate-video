@@ -101,8 +101,10 @@ export interface StoryboardImage {
 }
 
 export interface StoryboardState {
-  /** Model ảnh Orino Flow (flow_generate_image), mặc định 'flow-image'. */
+  /** Model ảnh dùng khi gen storyboard — 'chatgpt-web/gpt-5.5' (OmniRoute) hoặc 'flow-image' (Google Flow/Veo). */
   model: string;
+  /** Model ảnh dùng khi gen background (Bước 3) — tách riêng khỏi `model` để chọn provider độc lập. */
+  backgroundModel: string;
   /** Có gửi ảnh sản phẩm làm ảnh tham chiếu (img2img/edit) khi gen storyboard hay không. */
   useProductReference: boolean;
   /**

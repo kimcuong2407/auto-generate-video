@@ -12,6 +12,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const body = (await req.json().catch(() => ({}))) as {
     model?: string;
+    backgroundModel?: string;
     useProductReference?: boolean;
     productReferenceImagePath?: string | null;
     useSpokespersonReference?: boolean;
@@ -19,6 +20,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { project } = await updateProject(id, (p) => {
     if (body.model !== undefined && body.model.trim()) p.storyboard.model = body.model.trim();
+    if (body.backgroundModel !== undefined && body.backgroundModel.trim())
+      p.storyboard.backgroundModel = body.backgroundModel.trim();
     if (body.useProductReference !== undefined) p.storyboard.useProductReference = body.useProductReference;
     if (body.productReferenceImagePath !== undefined)
       p.storyboard.productReferenceImagePath = body.productReferenceImagePath;

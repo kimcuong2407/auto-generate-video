@@ -123,6 +123,7 @@ function assembleProject(
     inputs: row.inputs,
     storyboard: {
       model: row.storyboardModel,
+      backgroundModel: row.storyboardBackgroundModel,
       useProductReference: row.storyboardUseProductReference,
       productReferenceImagePath: row.storyboardProductImagePath ?? null,
       useSpokespersonReference: row.storyboardUseSpokespersonReference,
@@ -165,6 +166,7 @@ function projectToRow(project: Project): typeof projects.$inferInsert {
     concat: project.concat as ConcatState,
     flowStatusCache: project.flowStatusCache as FlowStatusCache,
     storyboardModel: project.storyboard.model,
+    storyboardBackgroundModel: project.storyboard.backgroundModel,
     storyboardUseProductReference: project.storyboard.useProductReference,
     storyboardProductImagePath: project.storyboard.productReferenceImagePath ?? null,
     storyboardUseSpokespersonReference: project.storyboard.useSpokespersonReference,
