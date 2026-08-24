@@ -52,6 +52,7 @@ export async function triggerBackgroundImageGeneration(
     const flowProjectId = await ensureJobFlowId(jobId);
     const result = await generateStoryboardImage({
       prompt,
+      model: job.backgroundModel,
       refImages: refImages.length > 0 ? refImages : undefined,
       projectId: flowProjectId,
       projectTitle: job.name,

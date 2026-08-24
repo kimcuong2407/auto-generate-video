@@ -59,6 +59,10 @@ export const projects = mysqlTable('projects', {
   flowStatusCache: mariaJson('flow_status_cache').$type<FlowStatusCache>().notNull(),
   // Storyboard meta (model + 2 cờ dùng ref) — ảnh tách bảng storyboard_images.
   storyboardModel: varchar('storyboard_model', { length: 128 }).notNull(),
+  // Model ảnh riêng cho gen background (tách khỏi storyboardModel) — default cho ALTER TABLE trên bảng đã có data.
+  storyboardBackgroundModel: varchar('storyboard_background_model', { length: 128 })
+    .notNull()
+    .default('chatgpt-web/gpt-5.5'),
   storyboardUseProductReference: boolean('storyboard_use_product_reference').notNull(),
   storyboardUseSpokespersonReference: boolean('storyboard_use_spokesperson_reference').notNull(),
   // Ảnh sản phẩm DUY NHẤT được chọn làm ref (trong inputs.productImages) — null = dùng ảnh đầu tiên.

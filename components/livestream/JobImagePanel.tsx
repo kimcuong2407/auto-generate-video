@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { LivestreamJob } from '@/lib/livestream/types';
 import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
+import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
 
 /**
  * Khu cấu hình BỘ ẢNH CHUNG cả job (đặt cạnh panel System prompt đầu trang): ảnh sản phẩm (kho +
@@ -27,6 +28,23 @@ export function JobImagePanel({
   const [generatingBg, setGeneratingBg] = useState(false);
   const [bgPromptDraft, setBgPromptDraft] = useState(BACKGROUND_SYSTEM_PROMPT);
   const [selectingRef, setSelectingRef] = useState(false);
+  const [savingBgModel, setSavingBgModel] = useState(false);
+
+  async function handleUpdateBackgroundModel(model: string) {
+    setSavingBgModel(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backgroundModel: model }),
+      });
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Cập nhật provider thất bại');
+      await onRefresh();
+    } finally {
+      setSavingBgModel(false);
+    }
+  }
 
   async function handleSpokespersonUpload(files: File[]) {
     if (files.length === 0) return;
@@ -418,6 +436,21 @@ export function JobImagePanel({
           style={{ fontSize: 12 }}
         />
         {uploadingBackground && <span style={{ fontSize: 12 }}>⏳ Đang xử lý...</span>}
+
+        <div style={{ marginTop: 10 }} className="field-group">
+          <label>Provider gen ảnh background</label>
+          <select
+            value={job.backgroundModel}
+            disabled={savingBgModel}
+            onChange={(e) => handleUpdateBackgroundModel(e.target.value)}
+          >
+            {IMAGE_MODEL_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div style={{ marginTop: 10 }}>
           <button

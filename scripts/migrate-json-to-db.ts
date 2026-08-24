@@ -85,6 +85,7 @@ function backfillProject(project: Project): Project {
   if (!project.storyboard) {
     project.storyboard = {
       model: DEFAULT_STORYBOARD_MODEL,
+      backgroundModel: DEFAULT_STORYBOARD_MODEL,
       useProductReference: true,
       productReferenceImagePath: null,
       useSpokespersonReference: true,
@@ -104,6 +105,9 @@ function backfillProject(project: Project): Project {
   }
   if (project.storyboard.useSpokespersonReference === undefined) {
     project.storyboard.useSpokespersonReference = true;
+  }
+  if (project.storyboard.backgroundModel === undefined) {
+    project.storyboard.backgroundModel = DEFAULT_STORYBOARD_MODEL;
   }
   if (!project.storyboard.backgrounds) {
     project.storyboard.backgrounds = project.storyboard.images.map((img) => ({
@@ -164,6 +168,7 @@ async function importJob(jobId: string): Promise<{ products: number; segments: n
       selectedModelImagePath: job.selectedModelImagePath ?? null,
       backgroundImagePaths: job.backgroundImagePaths ?? [],
       selectedBackgroundImagePath: job.selectedBackgroundImagePath ?? null,
+      backgroundModel: job.backgroundModel ?? DEFAULT_STORYBOARD_MODEL,
       imageR2Urls: job.imageR2Urls ?? {},
       flowMediaIds: job.flowMediaIds ?? {},
       concat: job.concat,
@@ -274,6 +279,7 @@ async function importProject(projectId: string): Promise<{ scenes: number; story
       concat: project.concat,
       flowStatusCache: project.flowStatusCache,
       storyboardModel: project.storyboard.model,
+      storyboardBackgroundModel: project.storyboard.backgroundModel,
       storyboardUseProductReference: project.storyboard.useProductReference,
       storyboardUseSpokespersonReference: project.storyboard.useSpokespersonReference,
       scriptTotalDuration: project.script.totalDuration,

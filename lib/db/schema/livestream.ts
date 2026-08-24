@@ -64,6 +64,8 @@ export const livestreamJobs = mysqlTable(
   selectedModelImagePath: varchar('selected_model_image_path', { length: 1024 }),
   backgroundImagePaths: mariaJson('background_image_paths').$type<string[]>().notNull(),
   selectedBackgroundImagePath: varchar('selected_background_image_path', { length: 1024 }),
+  // Model ảnh dùng khi gen background bằng AI — default cho ALTER TABLE trên bảng đã có data.
+  backgroundModel: varchar('background_model', { length: 128 }).notNull().default('chatgpt-web/gpt-5.5'),
   imageR2Urls: mariaJson('image_r2_urls').$type<Record<string, string | null>>().notNull(),
   // Cache mediaId Flow đã upload cho từng ảnh (key=relPath) — tránh upload trùng, xem types.ts.
   flowMediaIds: mariaJson('flow_media_ids').$type<Record<string, string>>().notNull(),

@@ -18,9 +18,9 @@ export const MAX_IMAGE_COUNT = 10;
 
 export const PROJECT_ID_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-// Model ảnh mặc định cho bước Storyboard — sinh qua Orino Flow (flow_generate_image),
-// dùng phiên tài khoản Google Flow đã đăng nhập trong app Orino Flow, không cần API key.
-export const DEFAULT_STORYBOARD_MODEL = 'flow-image';
+// Re-export từ lib/imageModels.ts (file tách riêng, không import 'node:path') để mọi call-site
+// server hiện có (`from '@/lib/constants'` / `'../constants'`) không phải sửa import.
+export { DEFAULT_STORYBOARD_MODEL, IMAGE_MODEL_OPTIONS } from './imageModels';
 
 // Số ảnh storyboard gen song song tối đa khi bấm "Gen tất cả"
 export const STORYBOARD_MAX_CONCURRENT = Number(process.env.STORYBOARD_MAX_CONCURRENT || 2);

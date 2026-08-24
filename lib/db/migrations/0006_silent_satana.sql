@@ -1,0 +1,2 @@
+ALTER TABLE `livestream_jobs` ADD `background_model` varchar(128) DEFAULT 'chatgpt-web/gpt-5.5' NOT NULL;--> statement-breakpoint
+ALTER TABLE `projects` ADD `storyboard_background_model` varchar(128) DEFAULT 'chatgpt-web/gpt-5.5' NOT NULL;
