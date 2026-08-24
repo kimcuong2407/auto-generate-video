@@ -57,7 +57,11 @@ export function GenerateStep({
 
   const flowExpired = !!project.flowStatusCache.projectsError || project.flowStatusCache.flowConnected === false;
 
-  async function handleUpdateSettings(patch: { veoModel?: VeoModel; sceneChaining?: boolean }) {
+  async function handleUpdateSettings(patch: {
+    veoModel?: VeoModel;
+    sceneChaining?: boolean;
+    videoRefImagePaths?: string[];
+  }) {
     setSavingSettings(true);
     try {
       const res = await fetch(`/api/projects/${project.id}/settings`, {
@@ -122,6 +126,32 @@ export function GenerateStep({
   const allDone = project.script.scenes.every((s) => s.status === 'done');
   const storyboardById = new Map(project.storyboard.images.map((img) => [img.sceneId, img]));
 
+  // Pool ảnh có thể chọn thêm làm ref khi gen video: sản phẩm (Bước 1) + người mẫu (Bước 1) +
+  // background đã gen xong (Bước 3). Ảnh storyboard mỗi cảnh KHÔNG nằm ở đây — nó tự động
+  // đứng đầu danh sách ref, xem sceneGenerate.ts.
+  const refCandidates: { path: string; url: string | null; label: string }[] = [
+    ...project.inputs.productImages.map((p, i) => ({
+      path: p,
+      url: project.inputs.productImageUrls?.[i] ?? null,
+      label: 'Sản phẩm',
+    })),
+    ...(project.inputs.spokespersonImagePath
+      ? [{ path: project.inputs.spokespersonImagePath, url: project.inputs.spokespersonImageUrl, label: 'Người mẫu' }]
+      : []),
+    ...project.storyboard.backgrounds
+      .filter((b) => b.status === 'done' && b.imagePath)
+      .map((b) => ({ path: b.imagePath as string, url: b.imageUrl, label: 'Background' })),
+  ];
+
+  function toggleRefImage(path: string) {
+    const cur = project.videoRefImagePaths || [];
+    if (cur.includes(path)) {
+      handleUpdateSettings({ videoRefImagePaths: cur.filter((p) => p !== path) });
+    } else if (cur.length < 3) {
+      handleUpdateSettings({ videoRefImagePaths: [...cur, path] });
+    }
+  }
+
   return (
     <div className="card">
       <div className="card-header">
@@ -173,8 +203,8 @@ export function GenerateStep({
       </div>
 
       <div className="banner banner-info">
-        Mỗi cảnh tự động dùng ảnh storyboard tương ứng đã gen ở Bước 3 (nếu có) làm ảnh tham chiếu khi gen video —
-        không còn dùng ảnh sản phẩm/nhân vật gốc ở Bước 1.
+        Mỗi cảnh tự động dùng ảnh storyboard tương ứng đã gen ở Bước 3 (nếu có) làm ảnh tham chiếu chính khi gen
+        video. Có thể chọn thêm tối đa 3 ảnh (sản phẩm/người mẫu/background) ở phần bên dưới để gửi kèm.
       </div>
 
       <div className="field-group">
@@ -193,6 +223,39 @@ export function GenerateStep({
           trước.
         </span>
       </div>
+
+      {refCandidates.length > 0 && (
+        <div className="field-group">
+          <label>Ảnh tham chiếu bổ sung (tối đa 3) — đã chọn {project.videoRefImagePaths.length}/3</label>
+          <div className="image-preview-grid">
+            {refCandidates.map((c, i) => {
+              const selected = project.videoRefImagePaths.includes(c.path);
+              const atLimit = project.videoRefImagePaths.length >= 3 && !selected;
+              return (
+                <div key={`${c.path}-${i}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <img
+                    className="image-preview-thumb"
+                    src={c.url || mediaSrc(c.path)}
+                    alt={c.label}
+                    title={c.label}
+                    onClick={() => !atLimit && !savingSettings && toggleRefImage(c.path)}
+                    style={{
+                      cursor: atLimit ? 'not-allowed' : 'pointer',
+                      opacity: atLimit ? 0.4 : 1,
+                      outline: selected ? '2px solid var(--accent, #6ee7b7)' : undefined,
+                    }}
+                  />
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{selected ? `✓ ${c.label}` : c.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            Ảnh storyboard của mỗi cảnh luôn được gửi trước; ảnh chọn ở đây lấp đầy phần còn lại (tối đa 3 ảnh
+            ref/cảnh).
+          </span>
+        </div>
+      )}
 
       {project.storyboard.images.some((img) => img.status === 'done' && img.imagePath) && project.veoModel !== 'abra' && (
         <div className="banner banner-info">
@@ -319,13 +382,26 @@ export function GenerateStep({
       {detailsSceneId && (() => {
         const scene = project.script.scenes.find((s) => s.id === detailsSceneId);
         if (!scene) return null;
+        // Tái hiện đúng logic cắt/gộp ref của sceneGenerate.ts để hiển thị chính xác ảnh sẽ gửi.
         const storyboardImage = storyboardById.get(scene.id);
-        const refImage = storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage : null;
+        const storyboardRelPath =
+          storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage.imagePath : null;
         const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
-        const startImagePath =
-          project.sceneChaining && prevScene?.status === 'done' && prevScene.lastFramePath
-            ? prevScene.lastFramePath
-            : null;
+        const hasPrevFrame = project.sceneChaining && prevScene?.status === 'done' && !!prevScene.lastFramePath;
+        const cappedRefPaths = [...(storyboardRelPath ? [storyboardRelPath] : []), ...project.videoRefImagePaths].slice(
+          0,
+          hasPrevFrame ? 2 : 3
+        );
+        const startFramePath = hasPrevFrame && cappedRefPaths.length === 0 ? (prevScene!.lastFramePath as string) : null;
+        const finalRefPaths = hasPrevFrame && cappedRefPaths.length > 0
+          ? [...cappedRefPaths, prevScene!.lastFramePath as string]
+          : cappedRefPaths;
+        const refItems = finalRefPaths.map((p) => {
+          if (p === storyboardRelPath) return { src: storyboardImage!.imageUrl || mediaSrc(p), label: 'Storyboard' };
+          const cand = refCandidates.find((c) => c.path === p);
+          if (cand) return { src: cand.url || mediaSrc(p), label: cand.label };
+          return { src: mediaSrc(p), label: 'Frame nối cảnh trước' };
+        });
         return (
           <div className="media-modal-overlay" onClick={() => setDetailsSceneId(null)}>
             <div
@@ -346,23 +422,23 @@ export function GenerateStep({
               </button>
               <h4 style={{ marginTop: 0 }}>Chi tiết {scene.label}</h4>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                {!refImage && !startImagePath && (
+                {refItems.length === 0 && !startFramePath && (
                   <span style={{ opacity: 0.6 }}>Không có ảnh tham chiếu — gen chỉ bằng text prompt</span>
                 )}
-                {refImage && (
-                  <div>
+                {refItems.map((item, i) => (
+                  <div key={i}>
                     <img
-                      src={refImage.imageUrl || mediaSrc(refImage.imagePath as string)}
-                      alt="Ảnh tham chiếu (storyboard)"
+                      src={item.src}
+                      alt={item.label}
                       style={{ width: 110, height: 110, objectFit: 'cover', borderRadius: 8 }}
                     />
-                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4, textAlign: 'center' }}>Ref ảnh</div>
+                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4, textAlign: 'center' }}>{item.label}</div>
                   </div>
-                )}
-                {startImagePath && (
+                ))}
+                {startFramePath && (
                   <div>
                     <img
-                      src={mediaSrc(startImagePath)}
+                      src={mediaSrc(startFramePath)}
                       alt="Khung hình đầu (nối từ cảnh trước)"
                       style={{ width: 110, height: 110, objectFit: 'cover', borderRadius: 8 }}
                     />

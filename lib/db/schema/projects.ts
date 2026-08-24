@@ -67,6 +67,9 @@ export const projects = mysqlTable('projects', {
   storyboardUseSpokespersonReference: boolean('storyboard_use_spokesperson_reference').notNull(),
   // Ảnh sản phẩm DUY NHẤT được chọn làm ref (trong inputs.productImages) — null = dùng ảnh đầu tiên.
   storyboardProductImagePath: varchar('storyboard_product_image_path', { length: 1024 }),
+  // Tối đa 3 ảnh chọn thêm (sản phẩm/người mẫu/background) gửi kèm ref khi gen video Bước 4.
+  // Nullable (không default) vì cột mới thêm trên bảng đã có data — đọc ra fallback về [].
+  videoRefImagePaths: mariaJson('video_ref_image_paths').$type<string[]>(),
   // Script meta (totalDuration + aspectRatio) — scenes tách bảng scenes.
   scriptTotalDuration: int('script_total_duration').notNull(),
   scriptAspectRatio: mysqlEnum('script_aspect_ratio', ASPECT_RATIOS).notNull(),

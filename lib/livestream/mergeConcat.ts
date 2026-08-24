@@ -12,8 +12,16 @@ import { resolveWithinJob, mergeOutputsDir, mergeTmpDir, resolveWithinMerge } fr
 import { aspectDimensions } from './concat';
 import { run } from '../ffmpeg/run';
 
-/** Đảm bảo final.mp4 của 1 job có mặt local (tải lại từ R2 vào tmp dir của merge nếu job đã bị xoá local). */
-async function ensureLocalFinal(job: LivestreamJob, mergeSlug: string, index: number): Promise<string> {
+/**
+ * Đảm bảo final.mp4 của 1 job có mặt local (tải lại từ R2 vào tmp dir của merge nếu job đã bị xoá local).
+ * Trả về null (thay vì throw) nếu job không có video hoặc tải từ R2 lỗi — để job khác vẫn tải tiếp bình thường.
+ */
+async function ensureLocalFinal(
+  job: LivestreamJob,
+  mergeSlug: string,
+  index: number,
+  onLog: (line: string) => Promise<void>
+): Promise<string | null> {
   if (job.concat.outputPath) {
     const localPath = resolveWithinJob(job.slug, job.concat.outputPath);
     try {
@@ -24,16 +32,25 @@ async function ensureLocalFinal(job: LivestreamJob, mergeSlug: string, index: nu
     }
   }
   if (!job.concat.outputUrl) {
-    throw new Error(`Job "${job.name}" không có video final (cả local lẫn R2)`);
+    await onLog(`✗ Bỏ qua job "${job.name}": không có video final (cả local lẫn R2)`);
+    return null;
   }
-  const res = await fetch(job.concat.outputUrl);
-  if (!res.ok) throw new Error(`Tải final.mp4 job "${job.name}" từ R2 thất bại: HTTP ${res.status}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const tmpDir = mergeTmpDir(mergeSlug);
-  await fs.mkdir(tmpDir, { recursive: true });
-  const downloadedPath = path.join(tmpDir, `job-${index}-final.mp4`);
-  await fs.writeFile(downloadedPath, buffer);
-  return downloadedPath;
+  try {
+    const res = await fetch(job.concat.outputUrl);
+    if (!res.ok) {
+      await onLog(`✗ Bỏ qua job "${job.name}": tải final.mp4 từ R2 thất bại (HTTP ${res.status})`);
+      return null;
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const tmpDir = mergeTmpDir(mergeSlug);
+    await fs.mkdir(tmpDir, { recursive: true });
+    const downloadedPath = path.join(tmpDir, `job-${index}-final.mp4`);
+    await fs.writeFile(downloadedPath, buffer);
+    return downloadedPath;
+  } catch (err) {
+    await onLog(`✗ Bỏ qua job "${job.name}": ${(err as Error).message}`);
+    return null;
+  }
 }
 
 export async function runMergeConcat(
@@ -65,7 +82,16 @@ export async function runMergeConcat(
   }
 
   await onLog(`✓ Chuẩn bị ${jobs.length} video final theo đúng thứ tự...`);
-  const finalPaths = await Promise.all(jobs.map((job, i) => ensureLocalFinal(job, mergeSlug, i)));
+  const downloaded = await Promise.all(jobs.map((job, i) => ensureLocalFinal(job, mergeSlug, i, onLog)));
+  const finalPaths = downloaded.filter((p): p is string => p !== null);
+  if (finalPaths.length < 2) {
+    throw new Error(
+      `Chỉ tải được ${finalPaths.length}/${jobs.length} video final, cần ít nhất 2 video để gộp`
+    );
+  }
+  if (finalPaths.length < jobs.length) {
+    await onLog(`⚠️ Bỏ qua ${jobs.length - finalPaths.length} job lỗi, tiếp tục gộp ${finalPaths.length} video còn lại...`);
+  }
 
   const tmpDir = mergeTmpDir(mergeSlug);
   const outputsDir = mergeOutputsDir(mergeSlug);

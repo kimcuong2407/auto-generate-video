@@ -3,13 +3,24 @@ import { resolveWithinProject } from '../paths';
 import { ensureLocalFile } from '../r2/client';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
-import type { Scene } from '../types';
+import type { Project, Scene } from '../types';
 
 export interface TriggerResult {
   sceneId: string;
   ok: boolean;
   jobId?: string;
   error?: string;
+}
+
+/** Tối đa 3 ảnh reference/lần gen — giới hạn cứng của Google Flow r2v (vượt → INVALID_ARGUMENT). */
+const MAX_REF_IMAGES = 3;
+
+/** Tra R2 URL của 1 relPath đã chọn làm ref (sản phẩm/người mẫu/background) để ensureLocalFile khôi phục khi mất local. */
+function findRefImageUrl(project: Project, relPath: string): string | null {
+  const productIdx = project.inputs.productImages.indexOf(relPath);
+  if (productIdx !== -1) return project.inputs.productImageUrls[productIdx] ?? null;
+  if (project.inputs.spokespersonImagePath === relPath) return project.inputs.spokespersonImageUrl;
+  return project.storyboard.backgrounds.find((b) => b.imagePath === relPath)?.imageUrl ?? null;
 }
 
 /**
@@ -37,25 +48,42 @@ export async function triggerSceneGeneration(
   }
 
   try {
-    // Ảnh storyboard của chính scene này (Bước 3, nếu đã gen xong) làm tham chiếu duy
-    // nhất khi gen video — ảnh này đã kết tinh sẵn sản phẩm + nhân vật + bối cảnh nên
-    // không cần gửi thêm ảnh sản phẩm/nhân vật gốc từ Bước 1 nữa.
-    const refImages: { path: string }[] = [];
+    // Ảnh storyboard của chính scene này (Bước 3, nếu đã gen xong) làm tham chiếu ƯU TIÊN
+    // #1 khi gen video — ảnh này đã kết tinh sẵn sản phẩm + nhân vật + bối cảnh. Ảnh người
+    // dùng chọn thêm ở Bước 4 (sản phẩm/người mẫu/background) lấp đầy các chỗ còn lại, tối
+    // đa 3 ảnh/lần gen (giới hạn Google Flow r2v).
     const storyboardImage = project.storyboard.images.find((img) => img.sceneId === sceneId);
-    if (storyboardImage?.status === 'done' && storyboardImage.imagePath) {
-      const storyboardAbsPath = resolveWithinProject(projectId, storyboardImage.imagePath);
+    const storyboardRelPath =
+      storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage.imagePath : null;
+
+    const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
+    const hasPrevFrame =
+      project.sceneChaining && scene.order > 1 && prevScene?.status === 'done' && !!prevScene.lastFramePath;
+
+    // Chừa 1 chỗ cho frame chain (nếu có) vì nó sẽ được gộp vào refImages bên dưới, không
+    // dùng startImage riêng — xem giải thích ngay dưới.
+    const refCandidates = [...(storyboardRelPath ? [storyboardRelPath] : []), ...project.videoRefImagePaths].slice(
+      0,
+      hasPrevFrame ? MAX_REF_IMAGES - 1 : MAX_REF_IMAGES
+    );
+
+    const refImages: { path: string }[] = [];
+    for (const relPath of refCandidates) {
+      const absPath = resolveWithinProject(projectId, relPath);
       // Khôi phục local từ R2 nếu mất (project chạy/gen ở máy khác với máy tạo project).
-      await ensureLocalFile(storyboardAbsPath, storyboardImage.imageUrl);
-      refImages.push({ path: storyboardAbsPath });
+      await ensureLocalFile(absPath, findRefImageUrl(project, relPath));
+      refImages.push({ path: absPath });
     }
 
     // Chain khung hình cuối cảnh trước → khung hình đầu cảnh này, tạo continuity thị giác.
+    // generateVideo() (googleFlow/videoGen.ts) chọn endpoint referenceImages bất cứ khi nào
+    // refImages không rỗng và ÂM THẦM BỎ QUA startImage riêng trong trường hợp đó — nên khi
+    // đã có ref, phải gộp thẳng frame chain vào refImages thay vì set startImage độc lập.
     let startImage: { path: string } | undefined;
-    if (project.sceneChaining && scene.order > 1) {
-      const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
-      if (prevScene?.status === 'done' && prevScene.lastFramePath) {
-        startImage = { path: resolveWithinProject(projectId, prevScene.lastFramePath) };
-      }
+    if (hasPrevFrame) {
+      const absFrame = resolveWithinProject(projectId, prevScene!.lastFramePath!);
+      if (refImages.length > 0) refImages.push({ path: absFrame });
+      else startImage = { path: absFrame };
     }
 
     const flowProjectId = await ensureProjectFlowId(projectId);

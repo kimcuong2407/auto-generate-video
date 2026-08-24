@@ -299,6 +299,7 @@ export function createNewProject(params: {
     veoModel: DEFAULT_VEO_MODEL,
     sceneChaining: true,
     burnOnScreenText: false,
+    videoRefImagePaths: [],
     flowProjectId: null,
     template: params.template,
     product: params.product,

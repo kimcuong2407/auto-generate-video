@@ -206,6 +206,13 @@ export interface Project {
    * ffmpeg drawtext. Mặc định false — video ghép ra sạch, không có chữ/subtitle đè lên hình.
    */
   burnOnScreenText: boolean;
+  /**
+   * Đường dẫn (khớp phần tử trong inputs.productImages / inputs.spokespersonImagePath /
+   * storyboard.backgrounds[].imagePath) tối đa 3 ảnh được chọn thêm làm ảnh tham chiếu khi
+   * gen video Bước 4 — gửi kèm SAU ảnh storyboard của từng scene (storyboard luôn ưu tiên #1).
+   * [] = không chọn thêm ảnh nào, chỉ dùng storyboard.
+   */
+  videoRefImagePaths: string[];
   flowProjectId: string | null;
   template: Template;
   product: ProductInfo;

@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `video_ref_image_paths` json;
