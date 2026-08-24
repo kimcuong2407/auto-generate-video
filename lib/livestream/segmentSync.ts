@@ -57,6 +57,9 @@ export async function syncOneSegment(
       if (jobStatus.video_path) {
         const destFileName = `${segment.order.toString().padStart(3, '0')}_${segment.id}.mp4`;
         const destPath = path.join(jobSegmentsDir(jobId), destFileName);
+        // fs.copyFile không tự tạo thư mục đích — đảm bảo outputs/segments có sẵn (thiếu
+        // nếu job chạy trên máy khác máy tạo, share chung DB/R2).
+        await fs.mkdir(path.dirname(destPath), { recursive: true });
         await fs.copyFile(jobStatus.video_path, destPath);
         segment.videoPath = path.join('outputs', 'segments', destFileName);
         // Upload lên R2 để preview/tải online không phụ thuộc route stream local — vẫn giữ

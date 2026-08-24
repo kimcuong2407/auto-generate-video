@@ -63,6 +63,12 @@ export async function syncGeneratingScenes(projectId: string): Promise<SyncResul
             if (jobStatus.video_path) {
               const destFileName = `${scene.order.toString().padStart(2, '0')}_${scene.id}.mp4`;
               const destPath = path.join(projectScenesDir(projectId), destFileName);
+              // fs.copyFile không tự tạo thư mục đích — cần có sẵn outputs/scenes. Bình
+              // thường thư mục này được tạo lúc project creation (projectStore.ts), nhưng
+              // thiếu nếu project chạy trên máy khác máy tạo (share chung DB/R2, xem
+              // ensureLocalFile) — lúc đó dir chưa từng được scaffold ở đây, copyFile báo
+              // nhầm "source ENOENT" dù file tmp vừa tải về có thật.
+              await fs.mkdir(path.dirname(destPath), { recursive: true });
               await fs.copyFile(jobStatus.video_path, destPath);
               scene.videoPath = path.join('outputs', 'scenes', destFileName);
               // Upload lên R2 để xem/tải online không phụ thuộc route stream local — vẫn giữ
