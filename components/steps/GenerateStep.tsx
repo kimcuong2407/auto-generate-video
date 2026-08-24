@@ -213,7 +213,7 @@ export function GenerateStep({
               <span className="idx">{String(i + 1).padStart(2, '0')}</span>
               {storyboardImage?.imagePath ? (
                 <img
-                  src={`/api/projects/${project.id}/media/${storyboardImage.imagePath}`}
+                  src={storyboardImage.imageUrl || `/api/projects/${project.id}/media/${storyboardImage.imagePath}`}
                   alt={`Storyboard ${scene.label}`}
                   title={storyboardUsable ? 'Đang dùng làm ảnh tham chiếu khi gen video' : 'Ảnh storyboard (chưa dùng làm tham chiếu)'}
                   style={{

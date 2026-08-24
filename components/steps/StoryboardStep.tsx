@@ -412,10 +412,10 @@ export function StoryboardStep({
             {project.inputs.productImages.length > 1 && ' — chọn đúng 1 ảnh để gửi làm ref, bấm ảnh để xem to'}
           </label>
           <div className="image-preview-grid">
-            {project.inputs.productImages.map((p) => {
+            {project.inputs.productImages.map((p, i) => {
               const selected =
                 (project.storyboard.productReferenceImagePath || project.inputs.productImages[0]) === p;
-              const src = `/api/projects/${project.id}/media/${p}`;
+              const src = project.inputs.productImageUrls?.[i] || `/api/projects/${project.id}/media/${p}`;
               return (
                 <div key={p} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <img
@@ -496,12 +496,17 @@ export function StoryboardStep({
             <div className="image-preview-grid">
               <img
                 className="image-preview-thumb"
-                src={`/api/projects/${project.id}/media/${project.inputs.spokespersonImagePath}`}
+                src={
+                  project.inputs.spokespersonImageUrl ||
+                  `/api/projects/${project.id}/media/${project.inputs.spokespersonImagePath}`
+                }
                 alt="Ảnh nhân vật"
                 style={{ cursor: 'zoom-in' }}
                 onClick={() =>
                   setModal({
-                    src: `/api/projects/${project.id}/media/${project.inputs.spokespersonImagePath}`,
+                    src:
+                      project.inputs.spokespersonImageUrl ||
+                      `/api/projects/${project.id}/media/${project.inputs.spokespersonImagePath}`,
                     alt: 'Ảnh nhân vật',
                   })
                 }
@@ -526,7 +531,7 @@ export function StoryboardStep({
       <div className="scene-list">
         {project.storyboard.images.map((image, i) => {
           const background = backgroundById.get(image.sceneId);
-          const imageSrc = image.imagePath ? `/api/projects/${project.id}/media/${image.imagePath}` : null;
+          const imageSrc = image.imageUrl || (image.imagePath ? `/api/projects/${project.id}/media/${image.imagePath}` : null);
           const imageAlt = `Storyboard ${image.sceneId}`;
           return (
           <div key={image.sceneId} className="script-edit-row">
@@ -591,9 +596,9 @@ export function StoryboardStep({
             </div>
 
             {background && (() => {
-              const backgroundSrc = background.imagePath
-                ? `/api/projects/${project.id}/media/${background.imagePath}`
-                : null;
+              const backgroundSrc =
+                background.imageUrl ||
+                (background.imagePath ? `/api/projects/${project.id}/media/${background.imagePath}` : null);
               const backgroundAlt = `Background ${background.sceneId}`;
               return (
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
@@ -671,16 +676,20 @@ export function StoryboardStep({
         (() => {
           const isBackground = previewTarget.kind === 'background';
           const promptText = (isBackground ? backgroundPrompts : prompts)[previewTarget.sceneId] ?? '';
-          const refPaths: string[] = [];
+          const refs: { path: string; url: string | null }[] = [];
           if (!isBackground) {
             if (project.storyboard.useProductReference) {
               const chosen = project.storyboard.productReferenceImagePath || project.inputs.productImages[0];
-              if (chosen) refPaths.push(chosen);
+              if (chosen) {
+                const idx = project.inputs.productImages.indexOf(chosen);
+                refs.push({ path: chosen, url: (idx >= 0 && project.inputs.productImageUrls?.[idx]) || null });
+              }
             }
             if (project.storyboard.useSpokespersonReference && project.inputs.spokespersonImagePath) {
-              refPaths.push(project.inputs.spokespersonImagePath);
+              refs.push({ path: project.inputs.spokespersonImagePath, url: project.inputs.spokespersonImageUrl });
             }
           }
+          const refPaths = refs.map((r) => r.path);
           const isOmniRouteModel = project.storyboard.model.includes('/');
           const busy = isBackground
             ? busyBackgroundSceneId === previewTarget.sceneId
@@ -724,8 +733,8 @@ export function StoryboardStep({
                       </div>
                     ) : (
                       <div className="image-preview-grid">
-                        {refPaths.map((p) => {
-                          const src = `/api/projects/${project.id}/media/${p}`;
+                        {refs.map(({ path: p, url }) => {
+                          const src = url || `/api/projects/${project.id}/media/${p}`;
                           return (
                             <img
                               key={p}

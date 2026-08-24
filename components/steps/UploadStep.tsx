@@ -291,7 +291,7 @@ export function UploadStep({
             <>
               <img
                 className="preview"
-                src={`/api/projects/${project.id}/media/${existingBackground}`}
+                src={project.inputs.backgroundUrl || `/api/projects/${project.id}/media/${existingBackground}`}
                 alt="Background hiện có"
               />
               <span className="filename">🖼️ Chọn file để thay</span>
@@ -311,11 +311,14 @@ export function UploadStep({
             ? imagePreviewUrls.map((url, i) => (
                 <img key={url} className="image-preview-thumb" src={url} alt={`Ảnh sản phẩm mới ${i + 1}`} />
               ))
-            : existingProductImages.map((p) => (
+            : existingProductImages.map((p, i) => (
                 <img
                   key={p}
                   className="image-preview-thumb"
-                  src={`/api/projects/${project!.id}/media/${p}`}
+                  src={
+                    project!.inputs.productImageUrls?.[i] ||
+                    `/api/projects/${project!.id}/media/${p}`
+                  }
                   alt="Ảnh sản phẩm hiện có"
                 />
               ))}
@@ -352,7 +355,7 @@ export function UploadStep({
             <>
               <img
                 className="preview"
-                src={`/api/projects/${project.id}/media/${existingSpokesperson}`}
+                src={project.inputs.spokespersonImageUrl || `/api/projects/${project.id}/media/${existingSpokesperson}`}
                 alt="Ảnh người mẫu hiện có"
               />
               <span className="filename">🧑 Chọn file để thay</span>
