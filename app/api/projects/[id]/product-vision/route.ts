@@ -3,6 +3,7 @@ import path from 'node:path';
 import { projectExists, readProject, updateProject } from '@/lib/data/projectStore';
 import { projectInputsDir } from '@/lib/paths';
 import { extractVisualDescription } from '@/lib/data/productVisionExtract';
+import { ensureLocalFile } from '@/lib/r2/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,10 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const absPaths = productImages.map((rel) =>
     path.join(projectInputsDir(params.id), path.basename(rel))
+  );
+  // Khôi phục local từ R2 nếu mất (project chạy/gen ở máy khác với máy tạo project).
+  await Promise.all(
+    absPaths.map((abs, i) => ensureLocalFile(abs, project.inputs.productImageUrls?.[i]))
   );
 
   try {

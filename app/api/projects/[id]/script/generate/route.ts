@@ -13,6 +13,7 @@ import path from 'node:path';
 import { slugify, projectInputsDir } from '@/lib/paths';
 import { extractJson } from '@/lib/ai/jsonExtract';
 import { extractVisualDescription } from '@/lib/data/productVisionExtract';
+import { ensureLocalFile } from '@/lib/r2/client';
 import type { Scene } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -174,6 +175,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     try {
       const absPaths = project.inputs.productImages.map((rel) =>
         path.join(projectInputsDir(params.id), path.basename(rel))
+      );
+      // Khôi phục local từ R2 nếu mất (project chạy/gen ở máy khác với máy tạo project).
+      await Promise.all(
+        absPaths.map((abs, i) => ensureLocalFile(abs, project.inputs.productImageUrls?.[i]))
       );
       visualDescription = await extractVisualDescription(absPaths);
       if (visualDescription) {

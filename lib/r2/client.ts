@@ -5,6 +5,7 @@
  */
 
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import {
   R2_ACCOUNT_ID,
@@ -59,6 +60,31 @@ export async function uploadFileToR2(
   } catch (err) {
     console.error(`[r2] upload thất bại cho ${key}:`, err);
     return null;
+  }
+}
+
+/**
+ * Đảm bảo file có mặt ở LOCAL trước khi đọc (VD gửi ref ảnh cho Google Flow, đọc ảnh phân
+ * tích vision) — nếu mất (project tạo/chạy ở máy khác, share chung DB/R2, hoặc server mới
+ * sau deploy) mà có url đã biết thì tải về khôi phục. No-op nếu đã có local hoặc không có
+ * url. Lỗi tải bị nuốt + log — caller tự phát hiện file vẫn thiếu (đọc sẽ ENOENT như cũ).
+ */
+export async function ensureLocalFile(absPath: string, url: string | null | undefined): Promise<void> {
+  try {
+    await fs.access(absPath);
+    return;
+  } catch {
+    // thiếu local — thử tải lại từ R2
+  }
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    await fs.mkdir(path.dirname(absPath), { recursive: true });
+    await fs.writeFile(absPath, buffer);
+  } catch (err) {
+    console.error(`[r2] khôi phục local thất bại cho ${absPath}:`, err);
   }
 }
 

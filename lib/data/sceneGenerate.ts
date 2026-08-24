@@ -1,5 +1,6 @@
 import { readProject, updateProject, ensureProjectFlowId } from './projectStore';
 import { resolveWithinProject } from '../paths';
+import { ensureLocalFile } from '../r2/client';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import type { Scene } from '../types';
@@ -42,7 +43,10 @@ export async function triggerSceneGeneration(
     const refImages: { path: string }[] = [];
     const storyboardImage = project.storyboard.images.find((img) => img.sceneId === sceneId);
     if (storyboardImage?.status === 'done' && storyboardImage.imagePath) {
-      refImages.push({ path: resolveWithinProject(projectId, storyboardImage.imagePath) });
+      const storyboardAbsPath = resolveWithinProject(projectId, storyboardImage.imagePath);
+      // Khôi phục local từ R2 nếu mất (project chạy/gen ở máy khác với máy tạo project).
+      await ensureLocalFile(storyboardAbsPath, storyboardImage.imageUrl);
+      refImages.push({ path: storyboardAbsPath });
     }
 
     // Chain khung hình cuối cảnh trước → khung hình đầu cảnh này, tạo continuity thị giác.

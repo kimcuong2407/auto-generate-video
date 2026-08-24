@@ -4,7 +4,7 @@ import { readProject, updateProject, ensureProjectFlowId } from './projectStore'
 import { projectInputsDir, projectStoryboardDir } from '../paths';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
-import { uploadFileToR2 } from '../r2/client';
+import { uploadFileToR2, ensureLocalFile } from '../r2/client';
 import type { StoryboardImage } from '../types';
 
 export interface TriggerStoryboardResult {
@@ -45,26 +45,34 @@ export async function triggerStoryboardGeneration(
   });
 
   try {
-    const referenceImagePaths: string[] = [];
+    // { path, url }: url dùng để khôi phục local nếu file mất (project chạy/gen ở máy
+    // khác với máy tạo project, share chung DB/R2) — xem ensureLocalFile.
+    const referenceImages: { path: string; url: string | null }[] = [];
     if (project.storyboard.useProductReference) {
       // Chỉ gửi ĐÚNG 1 ảnh sản phẩm làm ref (ảnh đã chọn, hoặc ảnh đầu tiên nếu chưa chọn) —
       // không gửi cả danh sách, tránh Flow nhầm lẫn nhiều ảnh sản phẩm khác góc/khác biến thể.
       const chosen = project.storyboard.productReferenceImagePath || project.inputs.productImages[0];
       if (chosen) {
-        referenceImagePaths.push(path.join(projectInputsDir(projectId), path.basename(chosen)));
+        const idx = project.inputs.productImages.indexOf(chosen);
+        referenceImages.push({
+          path: path.join(projectInputsDir(projectId), path.basename(chosen)),
+          url: (idx >= 0 && project.inputs.productImageUrls?.[idx]) || null,
+        });
       }
     }
     if (project.storyboard.useSpokespersonReference && project.inputs.spokespersonImagePath) {
-      referenceImagePaths.push(
-        path.join(projectInputsDir(projectId), path.basename(project.inputs.spokespersonImagePath))
-      );
+      referenceImages.push({
+        path: path.join(projectInputsDir(projectId), path.basename(project.inputs.spokespersonImagePath)),
+        url: project.inputs.spokespersonImageUrl,
+      });
     }
+    await Promise.all(referenceImages.map((r) => ensureLocalFile(r.path, r.url)));
 
     const flowProjectId = await ensureProjectFlowId(projectId);
     const result = await generateStoryboardImage({
       prompt: image.prompt,
       model: project.storyboard.model,
-      refImages: referenceImagePaths.map((path) => ({ path })),
+      refImages: referenceImages.map((r) => ({ path: r.path })),
       projectId: flowProjectId,
       projectTitle: project.name,
       // Storyboard luôn là ảnh lưới 4x2 (xem SYSTEM_PROMPT trong storyboardPromptGenerate.ts)
