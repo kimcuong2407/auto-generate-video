@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { Project, StoryboardImage, StoryboardStatus } from '@/lib/types';
 import { MediaModal } from '@/components/MediaModal';
-import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
+import { IMAGE_MODEL_OPTIONS, defaultProductReferenceImage } from '@/lib/imageModels';
 
 function statusClass(s: StoryboardStatus): string {
   return (
@@ -415,7 +415,8 @@ export function StoryboardStep({
           <div className="image-preview-grid">
             {project.inputs.productImages.map((p, i) => {
               const selected =
-                (project.storyboard.productReferenceImagePath || project.inputs.productImages[0]) === p;
+                (project.storyboard.productReferenceImagePath ||
+                  defaultProductReferenceImage(project.inputs.productImages)) === p;
               const src = project.inputs.productImageUrls?.[i] || `/api/projects/${project.id}/media/${p}`;
               return (
                 <div key={p} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -680,7 +681,9 @@ export function StoryboardStep({
           const refs: { path: string; url: string | null }[] = [];
           if (!isBackground) {
             if (project.storyboard.useProductReference) {
-              const chosen = project.storyboard.productReferenceImagePath || project.inputs.productImages[0];
+              const chosen =
+                project.storyboard.productReferenceImagePath ||
+                defaultProductReferenceImage(project.inputs.productImages);
               if (chosen) {
                 const idx = project.inputs.productImages.indexOf(chosen);
                 refs.push({ path: chosen, url: (idx >= 0 && project.inputs.productImageUrls?.[idx]) || null });

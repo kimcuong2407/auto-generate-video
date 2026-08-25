@@ -211,18 +211,85 @@ export async function generateVideo(params: GenerateVideoParams): Promise<Genera
   const useFl = mode === 'i2v_se';
   const videoModelKey = resolveVideoModelKey(params.model, mode, params.duration, useFl);
 
-  const body = await buildVideoBody(params, {
-    requests: [{ ...request, videoModelKey }],
-    useV2ModelConfig: true,
-  });
-
-  const res = await apiRequest(endpoint, {
-    accessToken: params.accessToken,
-    json: body,
-    timeoutMs: 60_000,
-  });
+  const res = await requestWithModelKeyFallback(
+    endpoint,
+    videoModelKey,
+    params,
+    request,
+    mode
+  );
   const data = await readJson<VideoWorkflowResponse>(res);
   return { job_id: extractMediaId(data), uploadedMediaIds };
+}
+
+/**
+ * Các biến thể videoModelKey để thử khi Google trả 404 cho key dựng theo quy tắc.
+ *
+ * Vì sao cần: videoModelKey là chuỗi reverse-engineered — Google KHÔNG công bố danh sách key
+ * hợp lệ, và không phải tổ hợp (mode × tier) nào cũng tồn tại. Key không tồn tại trả về
+ * 404 NOT_FOUND giống hệt lỗi "project entity không tồn tại", nên rất dễ chẩn đoán nhầm.
+ * Tiền lệ đã biết: r2v CHỈ có tier lite (xem resolveVideoModelKey).
+ *
+ * Chỉ sinh biến thể ĐỔI DẠNG HẬU TỐ, giữ nguyên tier của người dùng — không tự hạ/nâng tier
+ * vì tier quyết định chi phí và chất lượng, đổi ngầm là vượt quyền quyết định của người dùng.
+ */
+function modelKeyCandidates(baseKey: string): string[] {
+  const out = [baseKey];
+  // Biến thể `_fl` ("first+last"): collection có veo_3_1_i2v_s_lite_6s_fl.
+  if (!baseKey.endsWith('_fl')) out.push(`${baseKey}_fl`);
+  // i2v_s + lite: XÁC MINH THỰC NGHIỆM (2026-08-25) — `veo_3_1_i2v_s_lite` và
+  // `veo_3_1_i2v_s_lite_fl` đều trả 404; key dùng được là `veo_3_1_i2v_lite`, tức tier lite
+  // dùng tên mode RÚT GỌN `i2v` (không có `_s`) trong khi fast/quality dùng `i2v_s`.
+  if (baseKey.includes('_i2v_s_')) {
+    const short = baseKey.replace('_i2v_s_', '_i2v_');
+    out.push(short, `${short}_fl`);
+  }
+  // KHÔNG thêm biến thể `_low_priority`: tier này tài khoản thường không được cấp quyền →
+  // Google trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED (xác minh 2026-08-25). 403 khác 404 ở chỗ
+  // nó KHÔNG được thử tiếp, nên một ứng viên 403 lọt vào danh sách sẽ giết cả lần gen.
+  return Array.from(new Set(out));
+}
+
+/**
+ * Gọi endpoint gen video, tự thử các biến thể videoModelKey khi gặp 404.
+ *
+ * Trả về Response đầu tiên không-404. Nếu mọi biến thể đều 404 thì trả Response 404 CUỐI CÙNG
+ * để readJson ném lỗi như bình thường (giữ nguyên hành vi lỗi cũ, không nuốt lỗi).
+ */
+async function requestWithModelKeyFallback(
+  endpoint: string,
+  baseKey: string,
+  params: GenerateVideoParams,
+  request: Record<string, unknown>,
+  mode: VideoMode
+): Promise<Response> {
+  const override = process.env.FLOW_VIDEO_MODEL_KEY_OVERRIDE;
+  // Người dùng đã ép key qua env → tôn trọng tuyệt đối, không tự thử biến thể khác.
+  const candidates = override && override.trim() ? [baseKey] : modelKeyCandidates(baseKey);
+
+  let lastRes: Response | null = null;
+  for (const key of candidates) {
+    const body = await buildVideoBody(params, {
+      requests: [{ ...request, videoModelKey: key }],
+      useV2ModelConfig: true,
+    });
+    const res = await apiRequest(endpoint, {
+      accessToken: params.accessToken,
+      json: body,
+      timeoutMs: 60_000,
+    });
+    // Chỉ 404 mới đáng thử key khác (key không tồn tại). Mọi status khác — kể cả 403
+    // PERMISSION_DENIED — là câu trả lời thật của Google về key này, trả về ngay.
+    if (res.status !== 404) {
+      if (key !== baseKey) {
+        console.log('[videoGen] mode=%s: key "%s" bị 404, dùng được "%s"', mode, baseKey, key);
+      }
+      return res;
+    }
+    console.warn('[videoGen] mode=%s: videoModelKey "%s" trả 404 (key không tồn tại?)', mode, key);
+    lastRes = res;
+  }
+  return lastRes!;
 }
 
 export type VideoPollState = 'pending' | 'running' | 'done' | 'error';
@@ -270,3 +337,6 @@ export async function pollVideoStatus(
     error: mapped === 'error' ? status.failureReason || raw : undefined,
   };
 }
+
+/** Chỉ dùng cho scripts/check-model-key.ts — không import ở code chạy thật. */
+export const __testables = { modelKeyCandidates };

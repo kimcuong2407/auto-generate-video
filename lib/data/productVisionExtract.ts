@@ -26,11 +26,25 @@ BẮT BUỘC mô tả (chỉ những gì THỰC SỰ nhìn thấy trong ảnh):
 - Màu sắc VẬT LÝ chính xác của từng bộ phận (VD: cán màu trắng, đầu cọ lông màu vàng kem).
 - Chất liệu bề mặt (nhựa bóng/mờ, kim loại, vải, silicon, lông mềm...).
 - Hình dạng, cấu tạo, các bộ phận tách rời, tỉ lệ/kích thước tương đối giữa các bộ phận.
-- Chi tiết đặc trưng dễ nhận ra (lỗ treo, khớp nối, hoa văn, logo dập nổi...).
+- Chi tiết đặc trưng dễ nhận ra (lỗ treo, khớp nối, logo dập nổi...).
+
+QUY TẮC VỀ SỐ ĐẾM (rất quan trọng — mô tả này được dùng làm nguồn tin cậy để sinh ảnh/video,
+một con số sai sẽ khiến sản phẩm trong video khác hẳn sản phẩm thật):
+- Chỉ nêu con số cụ thể (số lỗ xỏ dây, số nút, số ngăn, số đường khâu, số khớp...) khi bạn ĐẾM
+  ĐƯỢC RÕ RÀNG từng cái một trong ảnh và chắc chắn tuyệt đối.
+- Nếu không đếm được chắc chắn, hãy mô tả ĐỊNH TÍNH thay vì đoán số (VD: "một hàng lỗ xỏ dây
+  đối xứng hai bên" thay vì "5 lỗ xỏ dây"). Mô tả mơ hồ mà đúng thì tốt hơn con số cụ thể mà sai.
+- Tương tự với hoa văn/kết cấu bề mặt: chỉ đặt tên một hình dạng hoạ tiết cụ thể (lục giác, sọc,
+  vân chấm, kim cương...) khi bạn NHÌN RÕ hình dạng đó trong ảnh. Không nhìn rõ thì BỎ QUA HẲN chi
+  tiết đó, đừng viết gì cả — im lặng an toàn hơn là đoán, vì mọi chữ bạn viết ra đều bị coi là sự thật.
+- Tương tự với chất liệu: đừng đoán "vải lưới/mesh/da lộn/canvas" khi bề mặt trong ảnh nhìn trơn phẳng.
+  Không phân biệt được thì mô tả trung tính ("bề mặt trơn màu trắng") thay vì gọi tên một chất liệu.
 
 TUYỆT ĐỐI KHÔNG:
 - KHÔNG bịa/suy diễn màu sắc, chất liệu, chi tiết KHÔNG nhìn thấy rõ trong ảnh.
 - KHÔNG mô tả giá, khuyến mãi, đánh giá sao, thương hiệu, chữ marketing trên ảnh.
+- KHÔNG để các nhãn/badge/khung quảng cáo chèn trên ảnh (VD "chính hãng 100%", "bảo hành") ảnh
+  hưởng tới mô tả — chúng là đồ hoạ dán thêm, KHÔNG phải bộ phận của sản phẩm.
 - KHÔNG mô tả bối cảnh/nền/người mẫu — chỉ mô tả bản thân sản phẩm.
 - KHÔNG bọc trong markdown, KHÔNG xuống dòng thừa. Trả về DUY NHẤT 1 đoạn văn mô tả.`;
 
@@ -63,7 +77,12 @@ export async function extractVisualDescription(imageAbsPaths: string[]): Promise
     );
   }
 
-  const picked = imageAbsPaths.slice(0, MAX_VISION_IMAGES);
+  // Bỏ ảnh đầu khi có dư ảnh: ảnh [0] trên sàn TMĐT gần như luôn là ảnh bìa marketing (badge
+  // "chính hãng 100%", logo shop, khung viền) — nó chiếm suất trong MAX_VISION_IMAGES mà không
+  // cho thêm thông tin hình dáng nào, lại kéo model đi mô tả đồ hoạ dán thêm. Xem
+  // defaultProductReferenceImage() trong lib/imageModels.ts — cùng một heuristic.
+  const usable = imageAbsPaths.length > MAX_VISION_IMAGES ? imageAbsPaths.slice(1) : imageAbsPaths;
+  const picked = usable.slice(0, MAX_VISION_IMAGES);
   const images: { mimeType: string; base64: string }[] = [];
   for (const abs of picked) {
     try {

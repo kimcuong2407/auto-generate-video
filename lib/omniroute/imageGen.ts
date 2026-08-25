@@ -19,8 +19,19 @@ export interface GenerateOmniImageParams {
    * nếu upload thất bại, upstream tự fallback về text-only (không lỗi).
    */
   refImagePaths?: string[];
+  /**
+   * Tỉ lệ khung hình mong muốn. Ảnh storyboard được nạp thẳng làm khung hình khởi điểm khi gen
+   * video, nên phải cùng tỉ lệ với video — ảnh vuông buộc Veo crop/reframe ngay khung đầu.
+   */
+  aspect?: '9:16' | '16:9';
   timeoutMs?: number;
 }
+
+/** Kích thước gửi API theo tỉ lệ — bội số 8, bám sát các size OpenAI-images thường chấp nhận. */
+const SIZE_BY_ASPECT: Record<string, string> = {
+  '9:16': '1024x1792',
+  '16:9': '1792x1024',
+};
 
 const TMP_DIR = path.join(process.cwd(), 'data', 'tmp', 'omni-image');
 
@@ -35,7 +46,7 @@ export async function generateOmniImage(params: GenerateOmniImageParams): Promis
     model: params.model,
     prompt: params.prompt,
     n: 1,
-    size: '1024x1024',
+    size: (params.aspect && SIZE_BY_ASPECT[params.aspect]) || '1024x1024',
   };
 
   const refPath = params.refImagePaths?.[0];

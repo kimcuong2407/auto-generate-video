@@ -3,31 +3,32 @@ import { generateScriptText } from '../googleFlow/flowJobs';
 import { ChatApiError } from '../ai/chatClient';
 import type { Project, Scene } from '../types';
 
-const SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế storyboard/concept art cho video review sản phẩm ngắn (TikTok/Reels).
+const SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế key frame (khung hình mở đầu) cho video review sản phẩm ngắn (TikTok/Reels).
 
-Nhiệm vụ: viết 1 prompt tiếng Anh, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả 1 ẢNH
-STORYBOARD DẠNG LƯỚI (contact sheet / grid) gồm ĐÚNG 8 Ô BẰNG NHAU (bố cục dạng lưới, ví dụ 4 cột × 2 hàng),
-có viền/khung phân tách rõ giữa các ô như storyboard chuyên nghiệp trong sản xuất phim/quảng cáo.
+Nhiệm vụ: viết 1 prompt tiếng Anh, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
+KHUNG HÌNH DUY NHẤT — chính là khoảnh khắc MỞ ĐẦU của cảnh quay đã chốt.
+
+Ảnh này KHÔNG dùng cho người xem duyệt: nó được nạp thẳng vào model sinh video (Google Veo) làm KHUNG HÌNH
+KHỞI ĐIỂM. Vì vậy nó phải là 1 frame liền lạc như ảnh chụp thật từ máy quay, KHÔNG được là lưới nhiều ô,
+KHÔNG contact sheet, KHÔNG collage, KHÔNG viền/khung phân tách, KHÔNG chia panel, KHÔNG ghép nhiều khoảnh
+khắc vào cùng 1 ảnh.
 
 Yêu cầu:
-- Mỗi ô trong 8 ô mô tả 1 KHOẢNH KHẮC riêng biệt, cách đều nhau theo thời gian, nối tiếp nhau theo đúng thứ
-  tự từ ô đầu tiên đến ô cuối cùng, phủ trọn vẹn cảnh quay từ lúc bắt đầu đến lúc kết thúc (8 khoảnh khắc chia
-  đều theo thời lượng thực tế của cảnh — thông tin thời lượng và khoảng cách giữa các ô được cung cấp bên
-  dưới, KHÔNG ghi cứng một con số giây cụ thể nào trong prompt, chỉ mô tả bằng lời là các khoảnh khắc chia đều
-  theo thời gian).
-- Xuyên suốt 8 ô: giữ NHẤT QUÁN chủ thể xuất hiện trong khung hình (đúng đặc điểm sản phẩm thật đã cho: tên,
-  màu sắc, chất liệu, hình dạng — không bịa chi tiết mâu thuẫn với mô tả sản phẩm), bối cảnh/không gian, tông
-  màu, phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, KHÔNG phải minh
-  hoạ/illustration/3D render/cartoon. Góc máy/bố cục có thể thay đổi nhẹ giữa các ô để thể hiện diễn biến,
-  nhưng không phá vỡ tính nhất quán của chủ thể và bối cảnh.
-- QUAN TRỌNG về màu sắc/chất liệu/hình dạng sản phẩm: nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" được cung
-  cấp bên dưới, BẮT BUỘC dùng ĐÚNG màu sắc/chất liệu/hình dạng nêu trong đó, giữ nhất quán xuyên suốt cả 8 ô.
-  TUYỆT ĐỐI KHÔNG tự bịa/suy diễn/đổi màu, chất liệu, chi tiết không có trong mô tả đó. Nếu KHÔNG có thông tin
-  màu/chất liệu đáng tin cậy, dùng cụm trung tính "the product shown in the reference image" thay vì tự đặt tên
-  một màu cụ thể (đặt sai màu sẽ làm ảnh lệch với sản phẩm thật khi model bám theo ảnh reference).
-- Mô tả rõ trong prompt: đây là ảnh dạng lưới 8 ô (8-panel storyboard grid / contact sheet), và tóm tắt ngắn
-  gọn nội dung của từng ô theo đúng thứ tự.
-- Bám sát nội dung cảnh quay đã chốt (mô tả video, góc máy, on-screen text) được cung cấp bên dưới.
+- Mô tả ĐÚNG trạng thái tại giây đầu tiên của cảnh: chủ thể đang ở tư thế/vị trí nào, tay đặt ở đâu, sản
+  phẩm đang được cầm/đặt ra sao. KHÔNG mô tả diễn biến, KHÔNG mô tả chuyển động về sau, KHÔNG mô tả âm
+  thanh/lời thoại — đây là ảnh tĩnh, chuyển động sẽ do model video tự sinh tiếp từ khung hình này.
+- Bố cục/khung hình phải hợp với tỉ lệ khung hình của video được nêu bên dưới (dọc 9:16 hay ngang 16:9), chủ
+  thể đặt đúng vị trí để cảnh quay bắt đầu tự nhiên từ đây.
+- Phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, có khiếm khuyết tự nhiên,
+  KHÔNG phải minh hoạ/illustration/3D render/cartoon, không bóng bẩy giả tạo kiểu studio hoàn hảo.
+- QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm: ảnh sản phẩm THẬT được gửi kèm làm reference và nó là
+  nguồn đáng tin cậy DUY NHẤT về hình dáng. Hãy gọi sản phẩm bằng cụm trung tính "the exact product shown in
+  the reference image" kèm tối đa màu tổng thể. TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hay
+  đặc trưng cấu tạo (số lỗ xỏ dây, số nút, số ngăn, kiểu hoa văn đế, loại vân bề mặt, kiểu khớp nối...) —
+  ảnh reference đã thể hiện chính xác hơn mọi câu chữ, mô tả thừa bằng chữ chỉ khiến model vẽ lệch đi so với
+  sản phẩm thật. Chỉ được nêu màu/chất liệu tổng quát nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" bên dưới
+  có nêu, và tuyệt đối không bịa thêm.
+- Bám sát bối cảnh, ánh sáng, góc máy, cỡ cảnh của cảnh quay đã chốt được cung cấp bên dưới.
 - Trả về DUY NHẤT đoạn prompt tiếng Anh, không kèm giải thích, không markdown, không xuống dòng thừa, không
   bọc trong dấu ngoặc kép.`;
 
@@ -55,18 +56,17 @@ function buildProductDescription(project: Project): string {
 
 function buildUserPrompt(project: Project, scene: Scene): string {
   const productDesc = buildProductDescription(project) || '(không có mô tả sản phẩm)';
-  const interval = (scene.duration / 8).toFixed(1);
+  const orientation = project.aspectRatio === '9:16' ? 'dọc (portrait)' : 'ngang (landscape)';
   return [
     `Thông tin sản phẩm (Bước 1):\n${productDesc}`,
+    `Tỉ lệ khung hình video: ${project.aspectRatio} — ${orientation}. Bố cục ảnh phải hợp tỉ lệ này.`,
     `Cảnh quay đã duyệt (Bước 2):`,
     `- Tên cảnh: ${scene.label}`,
     `- Loại cảnh: ${scene.type || 'không rõ'}`,
     `- Góc máy: ${scene.camera}`,
     `- On-screen text: ${scene.onScreenText || '(không có)'}`,
     `- Mô tả video (veoPrompt): ${scene.veoPrompt || '(chưa có, dựa vào tên cảnh và loại cảnh)'}`,
-    `- Thời lượng cảnh: ${scene.duration}s (8 ô chia đều ⇒ mỗi ô cách nhau ~${interval}s, KHÔNG ghi con số này`,
-    `  vào prompt, chỉ dùng để hình dung nhịp độ diễn biến giữa các ô)`,
-    `\nViết prompt ảnh storyboard dạng lưới 8 ô tiếng Anh cho đúng cảnh này.`,
+    `\nViết prompt tiếng Anh cho ĐÚNG 1 khung hình tĩnh: khoảnh khắc MỞ ĐẦU của cảnh này.`,
   ].join('\n');
 }
 

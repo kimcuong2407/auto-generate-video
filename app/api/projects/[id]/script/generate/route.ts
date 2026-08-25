@@ -81,11 +81,18 @@ Với mỗi cảnh tự thiết kế, xác định:
   (1) Subject — NẾU cảnh có người: dùng ĐÚNG mô tả "nhân vật review" đã chốt ở Bước 1.b (giữ nguyên từ ngữ,
       KHÔNG viết lại khác đi giữa các cảnh); luôn kèm mô tả sản phẩm (chất liệu, màu sắc, kích thước) khi
       sản phẩm xuất hiện trong cảnh đó.
-      QUAN TRỌNG về màu sắc/chất liệu/hình dạng sản phẩm: nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm"
-      được cung cấp bên dưới, BẮT BUỘC dùng ĐÚNG màu sắc/chất liệu/hình dạng nêu trong đó, giữ nhất quán
-      xuyên suốt MỌI cảnh. TUYỆT ĐỐI KHÔNG tự bịa/suy diễn/đổi màu, chất liệu, chi tiết không có trong mô tả
-      đó. Nếu KHÔNG có thông tin màu/chất liệu đáng tin cậy, dùng cụm trung tính "the product shown in the
-      reference image" thay vì tự đặt tên một màu cụ thể (đặt sai màu sẽ làm video mất đồng nhất với sản phẩm thật);
+      QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm — đọc kỹ: khi tạo video thật, hệ thống LUÔN nạp
+      kèm 1 khung hình khởi điểm chứa sẵn sản phẩm thật (ảnh key frame hoặc frame cuối cảnh trước). Khung
+      hình đó thể hiện hình dáng sản phẩm chính xác hơn MỌI câu chữ. Vì vậy:
+      - Gọi sản phẩm bằng cụm trung tính "the exact product shown in the reference image", kèm tối đa màu
+        tổng thể và chất liệu tổng quát (VD "the exact all-white sneaker shown in the reference image").
+      - TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hoặc đặc trưng cấu tạo của sản phẩm: số lỗ
+        xỏ dây, số nút, số ngăn, số đường khâu, kiểu hoa văn đế, loại vân bề mặt, kiểu khớp nối, hình dạng
+        logo... Chữ mô tả sai lệch dù chỉ 1 chi tiết sẽ KÉO model vẽ lệch khỏi sản phẩm thật trong ảnh —
+        đây là nguyên nhân phổ biến nhất khiến video ra khác hẳn sản phẩm khách đặt mua.
+      - Nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" bên dưới có nêu màu/chất liệu, dùng đúng màu/chất
+        liệu đó và giữ nhất quán xuyên suốt MỌI cảnh, nhưng vẫn KHÔNG chép lại các con số/chi tiết hình học
+        từ đó vào veoPrompt. TUYỆT ĐỐI KHÔNG tự bịa/suy diễn/đổi màu, chất liệu;
   (2) Action — hành động/cử chỉ/micro-expression cụ thể đang diễn ra; với cảnh thứ 2 trở đi,
       câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/vị trí/hành động kết thúc
       của cảnh ngay trước (xem chỉ dẫn image-to-video chaining ở trên).

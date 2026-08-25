@@ -5,6 +5,7 @@ import { projectInputsDir, projectStoryboardDir } from '../paths';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import { uploadFileToR2, ensureLocalFile } from '../r2/client';
+import { defaultProductReferenceImage } from '../imageModels';
 import type { StoryboardImage } from '../types';
 
 export interface TriggerStoryboardResult {
@@ -15,9 +16,9 @@ export interface TriggerStoryboardResult {
 }
 
 /**
- * Trigger gen 1 ảnh storyboard: validate trạng thái, gọi flow_generate_image qua
- * MCP Orino Flow (đồng bộ — chờ trực tiếp kết quả trong request, không cần job/poll
- * như gen video), copy file ảnh vào outputs/storyboard/<sceneId>.png rồi cập nhật
+ * Trigger gen 1 ảnh storyboard: validate trạng thái, gọi Google Flow API trực tiếp
+ * (đồng bộ — chờ trực tiếp kết quả trong request, không cần job/poll như gen video),
+ * copy file ảnh vào outputs/storyboard/<sceneId>.png rồi cập nhật
  * project.json.
  */
 export async function triggerStoryboardGeneration(
@@ -49,9 +50,11 @@ export async function triggerStoryboardGeneration(
     // khác với máy tạo project, share chung DB/R2) — xem ensureLocalFile.
     const referenceImages: { path: string; url: string | null }[] = [];
     if (project.storyboard.useProductReference) {
-      // Chỉ gửi ĐÚNG 1 ảnh sản phẩm làm ref (ảnh đã chọn, hoặc ảnh đầu tiên nếu chưa chọn) —
+      // Chỉ gửi ĐÚNG 1 ảnh sản phẩm làm ref (ảnh đã chọn, hoặc ảnh mặc định nếu chưa chọn) —
       // không gửi cả danh sách, tránh Flow nhầm lẫn nhiều ảnh sản phẩm khác góc/khác biến thể.
-      const chosen = project.storyboard.productReferenceImagePath || project.inputs.productImages[0];
+      const chosen =
+        project.storyboard.productReferenceImagePath ||
+        defaultProductReferenceImage(project.inputs.productImages);
       if (chosen) {
         const idx = project.inputs.productImages.indexOf(chosen);
         referenceImages.push({
@@ -75,10 +78,10 @@ export async function triggerStoryboardGeneration(
       refImages: referenceImages.map((r) => ({ path: r.path })),
       projectId: flowProjectId,
       projectTitle: project.name,
-      // Storyboard luôn là ảnh lưới 4x2 (xem SYSTEM_PROMPT trong storyboardPromptGenerate.ts)
-      // — cần khung ngang để bố cục lưới hợp lý, không phụ thuộc aspectRatio video của project
-      // (thường là 9:16 dọc, ép lưới ngang vào đó khiến model bỏ qua chỉ dẫn grid).
-      aspect: '16:9',
+      // Ảnh này được nạp thẳng làm khung hình khởi điểm khi gen video (xem sceneGenerate.ts),
+      // nên PHẢI cùng tỉ lệ với video — ref lệch tỉ lệ buộc Veo crop/reframe, làm lệch bố cục
+      // và tỉ lệ sản phẩm ngay từ khung đầu.
+      aspect: project.aspectRatio,
     });
     const generatedPath = result.paths[0];
     if (!generatedPath) {

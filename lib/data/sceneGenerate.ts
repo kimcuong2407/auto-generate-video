@@ -15,12 +15,56 @@ export interface TriggerResult {
 /** Tối đa 3 ảnh reference/lần gen — giới hạn cứng của Google Flow r2v (vượt → INVALID_ARGUMENT). */
 const MAX_REF_IMAGES = 3;
 
-/** Tra R2 URL của 1 relPath đã chọn làm ref (sản phẩm/người mẫu/background) để ensureLocalFile khôi phục khi mất local. */
+/** Tra R2 URL của 1 relPath (ảnh storyboard/sản phẩm/người mẫu/background) để ensureLocalFile khôi phục khi mất local. */
 function findRefImageUrl(project: Project, relPath: string): string | null {
+  const storyboardImg = project.storyboard.images.find((img) => img.imagePath === relPath);
+  if (storyboardImg) return storyboardImg.imageUrl ?? null;
   const productIdx = project.inputs.productImages.indexOf(relPath);
   if (productIdx !== -1) return project.inputs.productImageUrls[productIdx] ?? null;
   if (project.inputs.spokespersonImagePath === relPath) return project.inputs.spokespersonImageUrl;
   return project.storyboard.backgrounds.find((b) => b.imagePath === relPath)?.imageUrl ?? null;
+}
+
+export interface VideoInputPlan {
+  /** relPath khung hình khởi điểm (endpoint i2v) — null nghĩa là rơi về r2v với refPaths. */
+  startRelPath: string | null;
+  /** relPath các ảnh reference (endpoint r2v) — chỉ dùng khi không có startRelPath. */
+  refRelPaths: string[];
+  /** startRelPath có thực sự là frame cảnh trước hay không (quyết định cờ chainedFromPrevious). */
+  chained: boolean;
+}
+
+/**
+ * Quyết định ảnh đầu vào cho 1 lần gen video (thuần, không I/O — xem test ở cuối file).
+ *
+ * Khung hình khởi điểm (startImage → endpoint i2v) là tín hiệu MẠNH NHẤT với Veo: model bắt
+ * đầu vẽ từ đúng frame đó nên sản phẩm/bối cảnh khớp tuyệt đối. Còn refImages (r2v) chỉ là
+ * "asset gợi ý", model tự diễn giải lại hình dáng → dễ lệch so với sản phẩm thật. Vì vậy luôn
+ * ưu tiên chọn được 1 startImage:
+ *   - Cảnh 2 trở đi có chain: frame cuối cảnh trước → vừa khớp sản phẩm, vừa liền mạch.
+ *   - Còn lại: ảnh storyboard key frame của chính cảnh (Bước 3) — đã đúng tỉ lệ khung hình và
+ *     là ảnh 1 khung liền lạc (xem storyboardPromptGenerate.ts).
+ *
+ * generateVideo() ưu tiên endpoint referenceImages bất cứ khi nào refImages không rỗng và ÂM
+ * THẦM BỎ QUA startImage — nên khi đã có startRelPath, refRelPaths PHẢI rỗng.
+ */
+export function planVideoInputs(project: Project, scene: Scene): VideoInputPlan {
+  const storyboardImage = project.storyboard.images.find((img) => img.sceneId === scene.id);
+  const storyboardRelPath =
+    storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage.imagePath : null;
+
+  const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
+  const chained =
+    project.sceneChaining && scene.order > 1 && prevScene?.status === 'done' && !!prevScene.lastFramePath;
+
+  const startRelPath = chained ? prevScene!.lastFramePath! : storyboardRelPath;
+
+  return {
+    startRelPath,
+    // Không có khung khởi điểm nào → mới dùng r2v với các ảnh người dùng chọn ở Bước 4.
+    refRelPaths: startRelPath ? [] : project.videoRefImagePaths.slice(0, MAX_REF_IMAGES),
+    chained,
+  };
 }
 
 /**
@@ -48,42 +92,19 @@ export async function triggerSceneGeneration(
   }
 
   try {
-    // Ảnh storyboard của chính scene này (Bước 3, nếu đã gen xong) làm tham chiếu ƯU TIÊN
-    // #1 khi gen video — ảnh này đã kết tinh sẵn sản phẩm + nhân vật + bối cảnh. Ảnh người
-    // dùng chọn thêm ở Bước 4 (sản phẩm/người mẫu/background) lấp đầy các chỗ còn lại, tối
-    // đa 3 ảnh/lần gen (giới hạn Google Flow r2v).
-    const storyboardImage = project.storyboard.images.find((img) => img.sceneId === sceneId);
-    const storyboardRelPath =
-      storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage.imagePath : null;
+    const plan = planVideoInputs(project, scene);
 
-    const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
-    const hasPrevFrame =
-      project.sceneChaining && scene.order > 1 && prevScene?.status === 'done' && !!prevScene.lastFramePath;
-
-    // Chừa 1 chỗ cho frame chain (nếu có) vì nó sẽ được gộp vào refImages bên dưới, không
-    // dùng startImage riêng — xem giải thích ngay dưới.
-    const refCandidates = [...(storyboardRelPath ? [storyboardRelPath] : []), ...project.videoRefImagePaths].slice(
-      0,
-      hasPrevFrame ? MAX_REF_IMAGES - 1 : MAX_REF_IMAGES
-    );
-
-    const refImages: { path: string }[] = [];
-    for (const relPath of refCandidates) {
+    /** Resolve relPath → abs, khôi phục file local từ R2 nếu thiếu (gen ở máy khác máy tạo project). */
+    const toAbs = async (relPath: string) => {
       const absPath = resolveWithinProject(projectId, relPath);
-      // Khôi phục local từ R2 nếu mất (project chạy/gen ở máy khác với máy tạo project).
       await ensureLocalFile(absPath, findRefImageUrl(project, relPath));
-      refImages.push({ path: absPath });
-    }
+      return { path: absPath };
+    };
 
-    // Chain khung hình cuối cảnh trước → khung hình đầu cảnh này, tạo continuity thị giác.
-    // generateVideo() (googleFlow/videoGen.ts) chọn endpoint referenceImages bất cứ khi nào
-    // refImages không rỗng và ÂM THẦM BỎ QUA startImage riêng trong trường hợp đó — nên khi
-    // đã có ref, phải gộp thẳng frame chain vào refImages thay vì set startImage độc lập.
-    let startImage: { path: string } | undefined;
-    if (hasPrevFrame) {
-      const absFrame = resolveWithinProject(projectId, prevScene!.lastFramePath!);
-      if (refImages.length > 0) refImages.push({ path: absFrame });
-      else startImage = { path: absFrame };
+    const startImage = plan.startRelPath ? await toAbs(plan.startRelPath) : undefined;
+    const refImages: { path: string }[] = [];
+    for (const relPath of plan.refRelPaths) {
+      refImages.push(await toAbs(relPath));
     }
 
     const flowProjectId = await ensureProjectFlowId(projectId);
@@ -108,7 +129,9 @@ export async function triggerSceneGeneration(
     await updateProject(projectId, (p) => {
       const s = p.script.scenes.find((x) => x.id === sceneId);
       if (!s) return;
-      applyGeneratingState(s, job_id, !!startImage);
+      // Chỉ đánh dấu chained khi khung khởi điểm THỰC SỰ là frame cảnh trước — startImage
+      // cũng có thể là ảnh storyboard của chính cảnh này (không phải chain).
+      applyGeneratingState(s, job_id, plan.chained);
       // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
       if (usedFlowProjectId !== flowProjectId) p.flowProjectId = usedFlowProjectId;
     });

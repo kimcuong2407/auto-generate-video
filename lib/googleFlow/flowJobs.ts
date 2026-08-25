@@ -59,8 +59,13 @@ function resolveAllowedDuration(
     return 8;
   }
   const allowedDurations = model === 'abra' ? [4, 6, 8, 10] : [4, 6, 8];
+  // Khi hoà (VD 7s cách đều 6 và 8) → chọn số LỚN hơn (`<=`), không phải số đầu tiên.
+  // Vì sao: các key duration ngắn không phải lúc nào cũng được cấp quyền — thực nghiệm
+  // 2026-08-25 cho thấy `veo_3_1_i2v_s_lite_6s` trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED
+  // trong khi 8s (không hậu tố) chạy bình thường. Chọn dài hơn cũng bám sát thời lượng
+  // kịch bản hơn là cắt ngắn lời thoại.
   return allowedDurations.reduce((closest, d) =>
-    Math.abs(d - requestedDuration) < Math.abs(closest - requestedDuration) ? d : closest
+    Math.abs(d - requestedDuration) <= Math.abs(closest - requestedDuration) ? d : closest
   );
 }
 
@@ -252,6 +257,7 @@ export async function generateStoryboardImage(params: {
     const paths = await generateOmniImage({
       prompt: params.prompt,
       model: params.model,
+      aspect: params.aspect,
       refImagePaths: (params.refImages || []).map((r) => r.path),
       timeoutMs: params.timeoutMs,
     });
@@ -312,3 +318,6 @@ export async function generateScriptText(
 }
 
 export type { FlowAccount };
+
+/** Chỉ dùng cho scripts/check-model-key.ts — không import ở code chạy thật. */
+export const __testables = { resolveAllowedDuration };
