@@ -144,9 +144,17 @@ export function listPendingRequests(accountId?: string): Array<{
   return out;
 }
 
-/** Trả access_token dùng cho API_BASE, tự refresh nếu account chưa có token. */
+/**
+ * access_token của Google (ya29.*) sống ~1 giờ. Refresh sớm ở mốc 45 phút để không bao giờ
+ * gửi token đã hết hạn — trước đây token được cache vĩnh viễn, nên chỉ lượt gen đầu chạy
+ * được, các lượt sau nhận 401 và trông như "hết session Google Labs".
+ */
+const ACCESS_TOKEN_TTL_MS = 45 * 60_000;
+
+/** Trả access_token dùng cho API_BASE, tự refresh khi chưa có hoặc đã quá hạn TTL. */
 export async function resolveAccessToken(account: FlowAccount): Promise<string> {
-  if (account.accessToken) return account.accessToken;
+  const age = account.accessTokenAt ? Date.now() - account.accessTokenAt : Infinity;
+  if (account.accessToken && age < ACCESS_TOKEN_TTL_MS) return account.accessToken;
   return refreshAccessToken(account);
 }
 

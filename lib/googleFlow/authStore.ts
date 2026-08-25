@@ -14,6 +14,8 @@ export interface FlowAccount {
   cookie: string;
   /** access_token từ GET /fx/api/auth/session. Có thể null, sẽ tự refresh. */
   accessToken: string | null;
+  /** Epoch ms lúc lấy accessToken — dùng để refresh trước khi Google hết hạn (~1h). */
+  accessTokenAt?: number;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -154,6 +156,7 @@ export function updateAccessToken(id: string, accessToken: string | null): void 
   const a = accounts.find((x) => x.id === id);
   if (!a) return;
   a.accessToken = accessToken;
+  a.accessTokenAt = accessToken ? Date.now() : undefined;
   a.updatedAt = new Date().toISOString();
   writeAll(accounts);
 }
