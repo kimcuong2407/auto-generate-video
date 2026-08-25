@@ -23,24 +23,64 @@ export async function runLivestreamConcat(
   await fs.mkdir(tmpDir, { recursive: true });
 
   const allSegments = job.products.flatMap((p) => p.segments).sort((a, b) => a.order - b.order);
-  const skipped = allSegments.filter((s) => s.status !== 'done' || !s.videoPath);
-  const available = allSegments.filter((s) => s.status === 'done' && s.videoPath);
+  const skipped = allSegments.filter((s) => s.status !== 'done' || (!s.videoPath && !s.videoUrl));
+  const candidates = allSegments.filter((s) => s.status === 'done' && (s.videoPath || s.videoUrl));
 
-  if (available.length === 0) {
+  if (candidates.length === 0) {
     throw new Error('Chưa có đoạn nào gen xong để ghép');
   }
   if (skipped.length > 0) {
     await onLog(
       `⚠️ Bỏ qua ${skipped.length} đoạn chưa gen xong: ${skipped
         .map((s) => s.id)
-        .join(', ')} — vẫn ghép ${available.length} đoạn còn lại theo đúng thứ tự.`
+        .join(', ')} — vẫn ghép ${candidates.length} đoạn còn lại theo đúng thứ tự.`
     );
+  }
+
+  // Segment local bị xoá sau lần concat trước (chỉ còn videoUrl trên R2) → tải lại vào tmp.
+  // Không có bước này, concat_list trỏ vào file không tồn tại và ffmpeg lặng lẽ cho ra
+  // video ngắn cụt (chỉ gồm các đoạn còn sót local).
+  const resolved = await Promise.all(
+    candidates.map(async (s) => {
+      if (s.videoPath) {
+        const local = resolveWithinJob(job.id, s.videoPath);
+        try {
+          await fs.access(local);
+          return { segment: s, absPath: local, relPath: s.videoPath as string };
+        } catch {
+          // mất local → thử R2 bên dưới
+        }
+      }
+      if (!s.videoUrl) {
+        await onLog(`✗ Bỏ qua đoạn ${s.id}: mất file local và không có bản trên R2`);
+        return null;
+      }
+      try {
+        const res = await fetch(s.videoUrl);
+        if (!res.ok) {
+          await onLog(`✗ Bỏ qua đoạn ${s.id}: tải từ R2 thất bại (HTTP ${res.status})`);
+          return null;
+        }
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const downloaded = path.join(tmpDir, `restored-${s.order}-${s.id}.mp4`);
+        await fs.writeFile(downloaded, buffer);
+        await onLog(`☁️ Tải lại đoạn ${s.id} từ R2 (mất bản local)`);
+        return { segment: s, absPath: downloaded, relPath: null };
+      } catch (err) {
+        await onLog(`✗ Bỏ qua đoạn ${s.id}: ${(err as Error).message}`);
+        return null;
+      }
+    })
+  );
+
+  const available = resolved.filter((r): r is NonNullable<typeof r> => r !== null);
+  if (available.length === 0) {
+    throw new Error('Không lấy được file video của đoạn nào (mất local và tải R2 đều lỗi)');
   }
 
   const concatListPath = path.join(tmpDir, 'concat_list.txt');
   const concatListContent = available
-    .map((s) => resolveWithinJob(job.id, s.videoPath as string))
-    .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
+    .map((r) => `file '${r.absPath.replace(/'/g, "'\\''")}'`)
     .join('\n');
   await fs.writeFile(concatListPath, concatListContent, 'utf-8');
   await onLog(`✓ Concatenating ${available.length} đoạn...`);
@@ -75,7 +115,7 @@ export async function runLivestreamConcat(
   const [num, den] = fpsRaw.split('/').map(Number);
   const fps = den ? Math.round(num / den) : Math.round(num);
 
-  const totalTarget = available.reduce((sum, s) => sum + s.duration, 0);
+  const totalTarget = available.reduce((sum, r) => sum + r.segment.duration, 0);
   const outputMeta: ConcatMeta = {
     sizeBytes: stat.size,
     durationSec: Number(probeData.format?.duration ?? totalTarget),
@@ -86,7 +126,9 @@ export async function runLivestreamConcat(
 
   // Đường dẫn tương đối các đoạn vừa ghép — route concat dùng để xoá file local sau khi
   // đã upload final lên R2 (deploy Ubuntu: không giữ segment local lâu dài).
-  const mergedSegmentPaths = available.map((s) => s.videoPath as string);
+  const mergedSegmentPaths = available
+    .map((r) => r.relPath)
+    .filter((p): p is string => p !== null);
 
   await onLog(`🎉 Final video: ${outputPath}`);
   return { outputPath, outputMeta, mergedSegmentPaths };

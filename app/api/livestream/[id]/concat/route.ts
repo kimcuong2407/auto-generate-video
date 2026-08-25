@@ -34,14 +34,22 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   let hasAnyReady = false;
   for (const product of job.products) {
     for (const segment of product.segments) {
-      if (segment.status !== 'done' || !segment.videoPath) {
+      if (segment.status !== 'done') {
         missing.push(segment.id);
         continue;
       }
-      try {
-        await fs.access(resolveWithinJob(id, segment.videoPath));
+      if (segment.videoPath) {
+        try {
+          await fs.access(resolveWithinJob(id, segment.videoPath));
+          hasAnyReady = true;
+          continue;
+        } catch {
+          // mất local → còn videoUrl thì runLivestreamConcat sẽ tải lại từ R2
+        }
+      }
+      if (segment.videoUrl) {
         hasAnyReady = true;
-      } catch {
+      } else {
         missing.push(segment.id);
       }
     }
