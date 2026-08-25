@@ -25,7 +25,7 @@ export { DEFAULT_STORYBOARD_MODEL, IMAGE_MODEL_OPTIONS } from './imageModels';
 // Số ảnh storyboard gen song song tối đa khi bấm "Gen tất cả"
 export const STORYBOARD_MAX_CONCURRENT = Number(process.env.STORYBOARD_MAX_CONCURRENT || 2);
 
-// Thời gian tối đa (ms) chờ 1 ảnh storyboard sinh xong qua Orino Flow
+// Thời gian tối đa (ms) chờ 1 ảnh storyboard sinh xong qua Google Flow
 export const STORYBOARD_IMAGE_TIMEOUT_MS = Number(process.env.STORYBOARD_IMAGE_TIMEOUT_MS || 120_000);
 
 // Cloudflare R2 — lưu video online. Bật khi đủ 5 biến, thiếu bất kỳ biến nào = tắt (no-op,

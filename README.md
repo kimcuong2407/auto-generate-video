@@ -1,12 +1,12 @@
 # Veo Product Review Pipeline
 
-Ứng dụng Next.js quản lý pipeline 6 bước tạo video review sản phẩm bằng Google Veo (qua MCP server "Orino Flow") và ghép video hoàn chỉnh bằng ffmpeg.
+Ứng dụng Next.js quản lý pipeline 6 bước tạo video review sản phẩm bằng Google Veo (gọi trực tiếp Google Flow API, không qua MCP) và ghép video hoàn chỉnh bằng ffmpeg.
 
 ## Yêu cầu hệ thống
 
 - Node.js 20+ (đã test với v25)
 - ffmpeg + ffprobe cài sẵn trên máy, có trong `PATH` (kiểm tra bằng `ffmpeg -version`)
-- App **Orino Flow** đang chạy local, đã bật MCP Server, đã đăng nhập Google Flow (dùng để gọi Gemini + Veo)
+- Tài khoản Google Flow đã đăng nhập tại **Cài đặt → Flow** (`/settings/flow`) — nhập cookie + access_token của phiên Google Flow, dùng để gọi Veo (video) + Gemini/Flow-image (ảnh)
 
 ## Cài đặt
 
@@ -29,12 +29,9 @@ Copy file mẫu rồi điền token:
 cp .env.example .env.local
 ```
 
-Mở app Orino Flow → mục **"Bật MCP Server"** để lấy URL + token, rồi điền vào `.env.local`:
+Điền các biến vào `.env.local`:
 
 ```bash
-ORINO_FLOW_MCP_URL=http://127.0.0.1:51888/mcp
-ORINO_FLOW_MCP_TOKEN=<token lấy từ app Orino Flow>
-
 # Tuỳ chọn — mặc định lưu tại <project>/data/projects
 PROJECTS_DIR=
 
@@ -45,7 +42,7 @@ FLOW_MAX_CONCURRENT_JOBS=2
 FLOW_JOB_TIMEOUT_MS=900000
 ```
 
-Bước **Storyboard ảnh** (Bước 2) sinh ảnh qua **Orino Flow** (`flow_generate_image`) — dùng chung tài khoản Google Flow đã đăng nhập trong app Orino Flow cho gen video ở Bước 4, không cần cấu hình thêm API key nào riêng:
+Bước **Storyboard ảnh** (Bước 2) sinh ảnh qua **Google Flow** — dùng chung tài khoản Google Flow đã đăng nhập ở Cài đặt → Flow cho gen video ở Bước 4, không cần cấu hình thêm API key nào riêng:
 
 ```bash
 # Tuỳ chọn — thời gian tối đa (ms) chờ 1 ảnh storyboard sinh xong
@@ -90,9 +87,9 @@ npm run lint
 ## Cách dùng pipeline
 
 1. **Upload** — tạo project mới: nhập tên, chọn tỷ lệ khung hình (9:16/16:9), upload ảnh sản phẩm, chỉnh sửa template kịch bản (JSON, đã có sẵn mẫu Handobox), nhập mô tả sản phẩm.
-2. **Storyboard ảnh** — mỗi cảnh trong template ở Bước 1 có 1 ảnh storyboard tương ứng, sinh qua Orino Flow (`flow_generate_image`), có thể dùng ảnh sản phẩm làm ảnh tham chiếu để giữ đúng hình dạng/màu sắc. Giúp hình dung trước bố cục/không khí từng cảnh trước khi viết kịch bản chi tiết.
+2. **Storyboard ảnh** — mỗi cảnh trong template ở Bước 1 có 1 ảnh storyboard tương ứng, sinh qua Google Flow, có thể dùng ảnh sản phẩm làm ảnh tham chiếu để giữ đúng hình dạng/màu sắc. Giúp hình dung trước bố cục/không khí từng cảnh trước khi viết kịch bản chi tiết.
 3. **Duyệt kịch bản** — chọn 1 "góc kịch bản" (Unboxing, Problem → Solution, Demo công năng...), bấm **"Sinh nháp bằng AI"** để AI tự thiết kế **cả cấu trúc cảnh** (số lượng, loại cảnh, thời lượng) phù hợp với góc đã chọn — không còn bị bó buộc theo danh sách cảnh cố định trong template (VD: góc "Demo công năng" sẽ bỏ qua cảnh intro, vào thẳng cảnh dùng sản phẩm). Sau đó xem/sửa voiceover, on-screen text, prompt Veo cho từng cảnh, có thể **thêm/xoá cảnh** và **kéo-thả sắp xếp lại thứ tự**.
-4. **Gen video** — bấm Gen từng cảnh hoặc "Chạy toàn bộ" để gọi Veo tạo video. Nếu thấy banner đỏ "Google Flow chưa kết nối", cần mở app Orino Flow và đăng nhập lại Google Flow trước.
+4. **Gen video** — bấm Gen từng cảnh hoặc "Chạy toàn bộ" để gọi Veo tạo video. Nếu thấy banner đỏ "Google Flow chưa kết nối", cần vào Cài đặt → Flow (`/settings/flow`) đăng nhập/cập nhật lại tài khoản Google Flow trước.
 5. **Tải output** — xem/tải video từng cảnh đã gen xong.
 6. **Ghép video** — ghép các cảnh đã gen xong + overlay text + nhạc nền (nếu có) thành `final.mp4` bằng ffmpeg (số cảnh tuỳ theo cấu trúc kịch bản đã chọn ở Bước 3).
 
@@ -133,8 +130,8 @@ app/
 components/                UI components (Sidebar, Topbar, 6 step components)
 hooks/                     useProjectPolling — poll trạng thái project
 lib/
-  mcp/                     Client gọi MCP Orino Flow (flow_generate_video, flow_generate_image, gemini_generate...)
-  ai/                      Client gọi AI API ngoài MCP (chatClient.ts sinh kịch bản)
+  googleFlow/              Client gọi trực tiếp Google Flow API (video/image gen, auth cookie+access_token)
+  ai/                      Client gọi AI API ngoài Flow (chatClient.ts sinh kịch bản)
   ffmpeg/concat.ts         Logic ghép video bằng ffmpeg
   data/                    Đọc/ghi project.json (dùng làm "database" file JSON)
   shopee/                  parseInitialState (bóc data), ingestStore (lưu in-memory), types
@@ -145,7 +142,6 @@ public/default-template.json  Template kịch bản mặc định
 
 ## Xử lý sự cố
 
-- **Banner "Google Flow chưa kết nối"**: mở app Orino Flow, đăng nhập lại Google Flow. Không phải lỗi ứng dụng.
-- **Lỗi kết nối MCP** (`Không kết nối được tới MCP Orino Flow`): kiểm tra app Orino Flow đã bật MCP Server chưa, đúng port trong `ORINO_FLOW_MCP_URL` chưa.
+- **Banner "Google Flow chưa kết nối"**: vào Cài đặt → Flow (`/settings/flow`), đăng nhập/cập nhật lại tài khoản Google Flow (cookie + access_token). Không phải lỗi ứng dụng.
 - **Ghép video báo thiếu scene**: cần gen xong toàn bộ các cảnh (trạng thái "Xong") trước khi ghép, hoặc chấp nhận bỏ qua cảnh chưa xong.
 - **ffmpeg not found**: cài ffmpeg (`brew install ffmpeg` trên macOS) và đảm bảo có trong `PATH`.

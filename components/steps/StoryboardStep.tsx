@@ -358,7 +358,7 @@ export function StoryboardStep({
   return (
     <div className="card">
       <div className="card-header">
-        🖼️ <span>Bước 3 — Storyboard ảnh (Orino Flow)</span>
+        🖼️ <span>Bước 3 — Storyboard ảnh (Google Flow)</span>
         <span className={`badge ${allDone ? 'badge-done' : 'badge-pending'}`}>{allDone ? 'Done' : 'Chưa xong'}</span>
       </div>
 
@@ -396,8 +396,9 @@ export function StoryboardStep({
 
       <div className="banner banner-info">
         Mỗi cảnh trong kịch bản đã duyệt ở Bước 2 sẽ có 1 ảnh storyboard tương ứng, sinh qua{' '}
-        <strong>Orino Flow</strong> (flow_generate_image) — dùng chung tài khoản Google Flow đã đăng nhập cho gen
-        video ở Bước 4, không cần API key riêng. Ảnh sản phẩm có thể dùng làm ảnh tham chiếu để giữ đúng hình
+        <strong>Google Flow</strong> — dùng chung tài khoản Google Flow đã đăng nhập ở{' '}
+        <a href="/settings/flow">Cài đặt → Flow</a> cho gen video ở Bước 4, không cần API key riêng. Ảnh sản phẩm có
+        thể dùng làm ảnh tham chiếu để giữ đúng hình
         dạng/màu sắc sản phẩm thật. Prompt ảnh có thể tự viết tay, hoặc bấm{' '}
         <strong>&quot;✨ Sinh prompt bằng AI&quot;</strong> để AI viết dựa trên thông tin sản phẩm (Bước 1) và nội
         dung cảnh đã duyệt (Bước 2). Ngoài ra, mỗi cảnh còn có thêm 1{' '}

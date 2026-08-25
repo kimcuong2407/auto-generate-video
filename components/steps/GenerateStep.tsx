@@ -173,8 +173,9 @@ export function GenerateStep({
 
       {flowExpired && (
         <div className="banner">
-          ⚠️ {project.flowStatusCache.projectsError || 'Google Flow chưa kết nối'} — vui lòng mở app Orino Flow và đăng
-          nhập lại Google Flow trước khi tạo video. Đây không phải lỗi ứng dụng.
+          ⚠️ {project.flowStatusCache.projectsError || 'Google Flow chưa kết nối'} — vui lòng vào{' '}
+          <a href="/settings/flow">Cài đặt → Flow</a> để đăng nhập/cập nhật lại tài khoản Google Flow trước khi tạo
+          video. Đây không phải lỗi ứng dụng.
         </div>
       )}
 

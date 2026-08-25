@@ -169,7 +169,7 @@ export default function LivestreamDetailPage() {
               title={
                 jobNeedsRef
                   ? 'Chưa chọn ảnh sản phẩm tham chiếu — chọn 1 ảnh ở phần cấu hình ảnh đầu trang'
-                  : 'Tạo video cho tất cả đoạn (cần Orino Flow đã đăng nhập)'
+                  : 'Tạo video cho tất cả đoạn (cần đăng nhập tài khoản Google Flow ở Cài đặt → Flow)'
               }
             >
               ▶ Gen tất cả đoạn
@@ -180,7 +180,8 @@ export default function LivestreamDetailPage() {
         <div className="content">
           {job.flowStatusCache.flowConnected === false && (
             <div className="banner">
-              ⚠️ Chưa kết nối được Google Flow (Orino Flow) — mở app Orino Flow và đăng nhập trước khi gen video.
+              ⚠️ Chưa kết nối được Google Flow — vào <a href="/settings/flow">Cài đặt → Flow</a> để đăng nhập trước khi
+              gen video.
             </div>
           )}
           {actionError && <div className="banner">{actionError}</div>}

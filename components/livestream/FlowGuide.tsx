@@ -38,7 +38,7 @@ export function FlowGuide() {
           </li>
           <li>
             <strong>Gen video</strong> — Bấm &quot;▶ Gen&quot; từng đoạn hoặc &quot;▶ Gen tất cả
-            đoạn&quot;. Cần Orino Flow đã đăng nhập Google Flow.
+            đoạn&quot;. Cần tài khoản Google Flow đã đăng nhập ở Cài đặt → Flow.
           </li>
           <li>
             <strong>Ghép video</strong> — Ở phần cuối trang, ghép các đoạn đã gen xong thành 1 video
