@@ -200,3 +200,36 @@ c. Dùng từ khoá kiểm soát chất lượng chuyển động phù hợp di�
 
 Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
 {"segments":[{"voiceoverVi":"...","veoPrompt":"..."}]}`;
+
+/**
+ * Prompt chốt "STAGE BIBLE" — bản mô tả CỐ ĐỊNH của buổi live (người dẫn + bối cảnh + giọng),
+ * sinh MỘT LẦN cho cả job rồi ép dùng lại y nguyên khi viết script cho MỌI sản phẩm. Trước đây
+ * mỗi sản phẩm gọi LLM độc lập nên tự bịa người dẫn/bối cảnh khác nhau → ghép lại thành nhiều
+ * buổi live rời rạc. Xem lib/livestream/stageBible.ts.
+ */
+export const STAGE_BIBLE_SYSTEM_PROMPT = `Bạn là đạo diễn hình ảnh của MỘT buổi livestream bán hàng liên tục (TikTok/Facebook Live).
+
+Buổi live này giới thiệu LẦN LƯỢT nhiều sản phẩm khác nhau, nhưng người xem phải cảm giác đây là
+ĐÚNG 1 buổi live duy nhất: cùng 1 người dẫn, cùng 1 căn phòng, cùng 1 góc máy, cùng 1 giọng nói từ
+đầu tới cuối — chỉ có sản phẩm trên bàn là thay đổi.
+
+Nhiệm vụ: dựa vào danh sách sản phẩm được cung cấp, hãy CHỐT một lần duy nhất các yếu tố cố định
+dưới đây (viết bằng TIẾNG ANH, dạng cụm mô tả dùng trực tiếp trong prompt Google Veo):
+
+- host: mô tả người dẫn — giới tính, độ tuổi ước lượng, kiểu tóc/màu tóc, vóc dáng, trang phục
+  (kiểu dáng + màu sắc CỤ THỂ), phụ kiện/đặc điểm nhận diện, "realistic skin texture". Phải đủ chi
+  tiết để mọi lần tạo video đều ra đúng một người. Nếu có mô tả ảnh reference người mẫu, PHẢI khớp
+  đúng người trong ảnh.
+- scene: mô tả bối cảnh quay — căn phòng cụ thể, đồ vật hậu cảnh, kiểu bàn, kiểu ánh sáng. Phải là
+  không gian hợp lý để bày TẤT CẢ các loại sản phẩm trong danh sách.
+- camera: khung hình + góc máy + phong cách máy quay cố định (VD "medium shot, eye-level, static
+  phone camera propped on the table (thats where the camera is), slight natural handheld shake,
+  shot on iPhone, authentic candid look").
+- voice: mô tả chất giọng cố định — giới tính giọng, quãng tuổi, âm vực, tốc độ nói, tông cảm xúc.
+- wardrobeLock: 1 câu tiếng Anh khẳng định người dẫn KHÔNG đổi trang phục/kiểu tóc/vị trí ngồi
+  trong suốt buổi live, kể cả khi chuyển sang giới thiệu sản phẩm khác.
+
+Chọn phương án TRUNG TÍNH, hợp lý với TOÀN BỘ danh sách sản phẩm — không thiên về riêng 1 sản phẩm.
+
+Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
+{"host":"...","scene":"...","camera":"...","voice":"...","wardrobeLock":"..."}`;

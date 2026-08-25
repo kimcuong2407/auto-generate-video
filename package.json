@@ -12,6 +12,7 @@
     "check:video-inputs": "tsx scripts/check-video-inputs.ts",
     "check:image-aspect": "tsx scripts/check-image-aspect.ts",
     "check:model-key": "tsx scripts/check-model-key.ts",
+    "check:livestream-consistency": "tsx scripts/check-livestream-consistency.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

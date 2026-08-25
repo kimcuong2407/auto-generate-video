@@ -87,8 +87,17 @@ GEN VIDEO từng đoạn 8s (Veo) ──► chaining frame cuối ──► đo�
 
 **Route:** `app/api/livestream/[id]/script/generate/route.ts:14` — trả **SSE stream** (`text/event-stream`).
 
+**Trước vòng lặp product — chốt SÂN KHẤU CHUNG (`stageBible`):**
+
+`ensureStageBible()` (`stageBible.ts:22`) gọi LLM 1 lần cho cả job, chốt `{host, scene, camera, voice, wardrobeLock}` (tiếng Anh) rồi cache vào `job.stageBible` (cột DB `stage_bible`). Khối này được `formatStageBibleBlock()` ghép vào **đầu user prompt của MỌI sản phẩm**.
+
+> **Vì sao cần:** route gọi LLM **riêng cho từng product**, mỗi lần là 1 context độc lập → LLM tự bịa người dẫn/phòng/giọng khác nhau cho từng sản phẩm, ghép lại thành nhiều buổi live rời rạc. Cache trong job để sinh lại script 1 sản phẩm lẻ vẫn khớp các sản phẩm đã gen trước. Best-effort: lỗi AI không chặn sinh script.
+
+Ảnh background (STEP 4) cũng đọc `stageBible` để dựng đúng người dẫn/bối cảnh đó — nếu không ảnh nền và veoPrompt sẽ mô tả 2 buổi live khác nhau.
+
 **Luồng cho mỗi product:**
 
+0. Ghép `stageBibleBlock` + **khối vị trí** (`position`): sản phẩm 1 được chào khán giả; sản phẩm 2+ bị cấm chào lại, phải viết câu chuyển tiếp; sản phẩm cuối mới được chào kết thúc live.
 1. `computeSegmentDurations(targetDurationSec)` (`segmentSanitize.ts:9`) — chia tổng thời lượng thành các đoạn **8 giây**; phần dư < 4s gộp vào đoạn áp chót.
 2. `buildLivestreamUserPrompt(description, durations)` (`scriptPrompt.ts:20`) — dựng user prompt.
 3. `generateScriptText()` → `chatCompletion()` (`chatClient.ts:218`) — POST OpenAI-format, có **SSE streaming** (tránh Cloudflare 524), **retry** cho 524/5xx (mặc định 2 lần), timeout 180s.
@@ -103,6 +112,8 @@ GEN VIDEO từng đoạn 8s (Veo) ──► chaining frame cuối ──► đo�
 - Giải thích cơ chế **image-to-video chaining** (frame cuối đoạn trước = frame đầu đoạn sau).
 - **Bước 2** — viết `voiceoverVi` (tiếng Việt, ~2-3 từ/giây) + `veoPrompt` (tiếng Anh, bao phủ **7 thành phần**: Subject / Action ("exactly two hands") / Scene / Style / Dialogue (colon syntax) / Audio / Technical ("no subtitles")).
 - Ràng buộc chân thực: "shot on iPhone", "handheld", "realistic skin texture", tránh "CGI/3D render".
+
+**Giới hạn số từ:** user prompt liệt kê trần số từ cho từng đoạn (`duration × 2.75`, lý tưởng `× 2.5`). Chỉ ghi "2-3 từ/giây" như trước thì LLM luôn viết dư (đo thực tế: 24/24 đoạn ra 3.4-4.0 từ/s) → Veo đọc không kịp, cắt cụt câu cuối. `findOverlongSegments()` (`segmentSanitize.ts:38`) kiểm lại sau khi parse và trả kèm event `product_done` để UI cảnh báo (không chặn).
 
 **Output:** `{"segments":[{"voiceoverVi":"...","veoPrompt":"..."}]}`
 

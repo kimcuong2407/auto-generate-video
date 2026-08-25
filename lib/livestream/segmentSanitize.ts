@@ -24,6 +24,26 @@ export function computeSegmentDurations(targetDurationSec: number): number[] {
 }
 
 /**
+ * Nhịp nói tối đa (từ/giây) trước khi coi là lời thoại quá dài so với thời lượng đoạn. Veo đọc
+ * không kịp sẽ cắt cụt câu cuối hoặc nói hụt hơi. 2.75 khớp trần trong buildLivestreamUserPrompt.
+ */
+const MAX_WORDS_PER_SEC = 2.75;
+
+/** Các đoạn có lời thoại dài quá nhịp nói — cảnh báo trên UI, không chặn (video vẫn gen được). */
+export function findOverlongSegments(
+  segments: LivestreamSegment[]
+): Array<{ id: string; words: number; duration: number; maxWords: number }> {
+  return segments
+    .map((s) => ({
+      id: s.id,
+      words: s.voiceoverVi.trim().split(/\s+/).filter(Boolean).length,
+      duration: s.duration,
+      maxWords: Math.floor(s.duration * MAX_WORDS_PER_SEC),
+    }))
+    .filter((s) => s.words > s.maxWords);
+}
+
+/**
  * Chuẩn hoá danh sách đoạn thô từ AI theo đúng số lượng/thời lượng đã tính trước
  * (computeSegmentDurations). Thừa thì cắt bớt về đúng N (giữ N đoạn đầu). Thiếu thì ném lỗi
  * yêu cầu sinh lại — KHÔNG tự bịa thêm đoạn rỗng (tốn quota Veo cho video vô nghĩa).

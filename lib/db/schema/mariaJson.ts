@@ -12,6 +12,8 @@ export function parseMariaJson(value: unknown): object {
 /** MariaDB trả cột JSON dưới dạng LONGTEXT, nên cần parse thủ công khi đọc qua mysql2. */
 export const mariaJson = customType<{ data: unknown; driverData: unknown }>({
   dataType: () => 'json',
-  toDriver: (value) => JSON.stringify(parseMariaJson(value)),
-  fromDriver: parseMariaJson,
+  // Cột JSON nullable (VD stage_bible) ghi/đọc null hợp lệ — chỉ parse khi thực sự có giá trị,
+  // nếu không parseMariaJson sẽ ném TypeError làm hỏng cả lượt ghi job.
+  toDriver: (value) => (value == null ? null : JSON.stringify(parseMariaJson(value))),
+  fromDriver: (value) => (value == null ? null : parseMariaJson(value)),
 });

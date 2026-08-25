@@ -59,6 +59,20 @@ export type LivestreamJobStatus =
   | 'done'
   | 'failed';
 
+/**
+ * "Sân khấu" CỐ ĐỊNH của cả buổi live — chốt 1 lần ở cấp job rồi ép dùng lại y nguyên khi sinh
+ * script cho MỌI sản phẩm, để nhiều sản phẩm khác nhau vẫn ra 1 buổi live thống nhất (cùng người
+ * dẫn, cùng phòng, cùng góc máy, cùng giọng). Các field là cụm mô tả TIẾNG ANH dùng thẳng trong
+ * veoPrompt. Xem lib/livestream/stageBible.ts.
+ */
+export interface LivestreamStageBible {
+  host: string;
+  scene: string;
+  camera: string;
+  voice: string;
+  wardrobeLock: string;
+}
+
 export interface LivestreamJob {
   /** Định danh public (URL, route param) — luôn bằng `slug`. PK bigint thật chỉ dùng nội bộ DB layer. */
   id: string;
@@ -122,6 +136,12 @@ export interface LivestreamJob {
    * Chỉ override prompt sinh kịch bản; prompt extract/vision không cho override (chỉ read-only ở UI).
    */
   scriptSystemPromptOverride: string | null;
+  /**
+   * Sân khấu cố định dùng chung mọi sản phẩm (xem LivestreamStageBible). null = chưa sinh, sẽ
+   * được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
+   */
+  stageBible: LivestreamStageBible | null;
+
   /**
    * Seed cố định dùng chung cho MỌI lần gen video của job (thay vì random mỗi đoạn) — giúp Veo ổn
    * định hơn giữa các đoạn (hình lẫn giọng), xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen

@@ -5,9 +5,14 @@ import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';
 import { buildLivestreamUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
-import { computeSegmentDurations, sanitizeSegments } from '@/lib/livestream/segmentSanitize';
+import {
+  computeSegmentDurations,
+  findOverlongSegments,
+  sanitizeSegments,
+} from '@/lib/livestream/segmentSanitize';
 import { recomputeSegmentOrder } from '@/lib/livestream/reorder';
 import { describeProductAppearance } from '@/lib/livestream/productVision';
+import { ensureStageBible, formatStageBibleBlock } from '@/lib/livestream/stageBible';
 import { ensureLocalImage } from '@/lib/livestream/imageR2';
 import { resolveWithinJob } from '@/lib/livestream/paths';
 
@@ -77,6 +82,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       }
 
+      // Sân khấu cố định cấp job (người dẫn/bối cảnh/góc máy/giọng) — chốt 1 lần rồi ép dùng lại
+      // cho MỌI sản phẩm, nếu không mỗi lần gọi LLM (1 lần/sản phẩm) sẽ tự bịa 1 buổi live khác.
+      // Sinh lại 1 sản phẩm lẻ vẫn dùng bible đã cache để khớp các sản phẩm đã gen trước đó.
+      send({ type: 'stage_bible_start' });
+      const bible = await ensureStageBible(id, { visualDescription });
+      const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;
+      send({ type: 'stage_bible_done', stageBible: bible });
+
       for (const product of targets) {
         send({ type: 'product_start', productId: product.id, name: product.name });
         await updateJob(id, (j) => {
@@ -86,7 +99,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         try {
           const durations = computeSegmentDurations(product.targetDurationSec);
-          const userPrompt = buildLivestreamUserPrompt(product.description, durations, visualDescription);
+          // Vị trí tính trên TOÀN BỘ sản phẩm của job (không phải trong `targets`) — gen lại 1 sản
+          // phẩm lẻ vẫn phải biết nó nằm giữa buổi live để viết câu chuyển tiếp, không chào lại.
+          const index = job.products.findIndex((p) => p.id === product.id);
+          const userPrompt = buildLivestreamUserPrompt(
+            product.description,
+            durations,
+            visualDescription,
+            stageBibleBlock,
+            {
+              index,
+              total: job.products.length,
+              prevProductName: index > 0 ? job.products[index - 1].name : undefined,
+            }
+          );
 
           const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
             if (e.type === 'start' || e.type === 'retry') {
@@ -126,7 +152,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             continue;
           }
 
-          send({ type: 'product_done', productId: product.id, segments });
+          // Lời thoại dài quá nhịp nói → Veo đọc không kịp, cắt cụt câu cuối. Chỉ cảnh báo (video
+          // vẫn gen được), người dùng tự rút gọn hoặc bấm sinh lại.
+          const overlong = findOverlongSegments(segments);
+          send({ type: 'product_done', productId: product.id, segments, overlong });
         } catch (err) {
           const message =
             err instanceof ChatApiError

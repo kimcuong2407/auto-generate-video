@@ -14,7 +14,12 @@ import { JobImagePanel } from '@/components/livestream/JobImagePanel';
 async function streamScriptGeneration(
   jobId: string,
   productId: string | undefined,
-  onEvent: (event: { type: string; productId?: string; message?: string }) => void
+  onEvent: (event: {
+    type: string;
+    productId?: string;
+    message?: string;
+    overlong?: Array<{ id: string; words: number; duration: number; maxWords: number }>;
+  }) => void
 ): Promise<void> {
   const res = await fetch(`/api/livestream/${jobId}/script/generate`, {
     method: 'POST',
@@ -66,12 +71,23 @@ export default function LivestreamDetailPage() {
     } else {
       setScriptingAll(true);
     }
+    const overlongAll: string[] = [];
     try {
-      await streamScriptGeneration(jobId, productId, () => {
-        // Không cần xử lý từng event riêng — refresh() sau khi stream đóng là đủ, vì mọi
-        // thay đổi trạng thái đã được ghi vào job.json phía server theo từng sản phẩm.
+      await streamScriptGeneration(jobId, productId, (e) => {
+        // Trạng thái sản phẩm đã được server ghi vào job nên chỉ refresh() sau khi stream đóng;
+        // riêng cảnh báo lời thoại quá dài không lưu vào job nên phải bắt tại đây.
+        if (e.type === 'product_done' && e.overlong?.length) {
+          overlongAll.push(
+            ...e.overlong.map((o) => `${o.id}: ${o.words}/${o.maxWords} từ (${o.duration}s)`)
+          );
+        }
       });
       await refresh();
+      if (overlongAll.length > 0) {
+        setActionError(
+          `Cảnh báo: ${overlongAll.length} đoạn có lời thoại dài hơn thời lượng cho phép — Veo có thể đọc không kịp và cắt cụt câu. Hãy rút gọn hoặc sinh lại: ${overlongAll.join('; ')}`
+        );
+      }
     } catch (err) {
       setActionError((err as Error).message);
     } finally {

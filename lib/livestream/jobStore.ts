@@ -141,6 +141,7 @@ function assembleJob(
     flowProjectId: jobRow.flowProjectId,
     scriptSystemPromptOverride: jobRow.scriptSystemPromptOverride,
     videoSeed: jobRow.videoSeed,
+    stageBible: jobRow.stageBible ?? null,
   };
 }
 
@@ -171,6 +172,7 @@ function jobToRow(job: LivestreamJob): Omit<typeof livestreamJobs.$inferInsert, 
     flowProjectId: job.flowProjectId ?? null,
     scriptSystemPromptOverride: job.scriptSystemPromptOverride ?? null,
     videoSeed: job.videoSeed ?? null,
+    stageBible: job.stageBible ?? null,
   };
 }
 

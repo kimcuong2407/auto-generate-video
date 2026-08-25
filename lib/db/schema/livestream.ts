@@ -26,6 +26,7 @@ import type {
   FlowStatusCache,
   VeoModel,
 } from '../../types';
+import type { LivestreamStageBible } from '../../livestream/types';
 import { mariaJson } from './mariaJson';
 
 const VEO_MODELS = [
@@ -76,6 +77,9 @@ export const livestreamJobs = mysqlTable(
   // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
   // ổn định hơn giữa các đoạn — xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen lần nào.
   videoSeed: int('video_seed'),
+  // Sân khấu cố định (người dẫn/bối cảnh/góc máy/giọng) dùng chung MỌI sản phẩm trong job — chốt
+  // 1 lần để nhiều sản phẩm vẫn ra 1 buổi live thống nhất, xem lib/livestream/stageBible.ts.
+  stageBible: mariaJson('stage_bible').$type<LivestreamStageBible | null>(),
   },
   (t) => ({
     slugUnique: uniqueIndex('uq_jobs_slug').on(t.slug),

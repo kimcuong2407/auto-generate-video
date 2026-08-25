@@ -31,7 +31,14 @@ export async function triggerBackgroundImageGeneration(
   }
 
   const basePrompt = promptOverride?.trim() || BACKGROUND_SYSTEM_PROMPT;
-  const prompt = `${basePrompt}\n${product.description || product.name}`;
+  // Nếu job đã chốt sân khấu cố định (stageBible, sinh lúc gen script), ép ảnh nền dựng đúng người
+  // dẫn/bối cảnh/góc máy đó — nếu không ảnh nền và veoPrompt sẽ mô tả 2 buổi live khác nhau, ảnh nền
+  // dùng làm reference lại kéo video lệch khỏi mô tả trong script.
+  const bible = job.stageBible;
+  const bibleBlock = bible
+    ? `\n\nMANDATORY — the frame MUST match this exact fixed livestream setup (copy these descriptions, do not invent a different host or room):\nHost: ${bible.host}\nScene: ${bible.scene}\nCamera: ${bible.camera}`
+    : '';
+  const prompt = `${basePrompt}\n${product.description || product.name}${bibleBlock}`;
 
   // Reference: ảnh sản phẩm đã chọn (1..N) + ảnh mẫu (nếu có) ở BỘ ẢNH CHUNG cấp job để AI tạo
   // cảnh có cả 2. Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow
