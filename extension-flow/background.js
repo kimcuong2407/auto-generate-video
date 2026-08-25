@@ -219,9 +219,38 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+/**
+ * Nạp lại content.js vào mọi tab labs.google đang mở.
+ *
+ * Vì sao cần: reload extension ở chrome://extensions làm content script CŨ trên tab đang mở
+ * bị orphan ("Extension context invalidated") — nó tự dừng vòng tick vĩnh viễn và trước đây
+ * chỉ F5 tab thủ công mới cứu được. Vòng tick chết = server không thấy poll = mọi lệnh gen
+ * ảnh/video fail với "Extension Google Flow không hoạt động". Tự inject lại ở đây để extension
+ * tự hồi phục, không bắt người dùng nhớ thao tác F5 đúng thứ tự.
+ */
+async function reinjectContentScript() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://labs.google/*' });
+    for (const tab of tabs) {
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+        console.log('[flow-grabber] đã nạp lại content.js vào tab', tab.id);
+      } catch (e) {
+        console.warn('[flow-grabber] không nạp được content.js vào tab', tab.id, e && e.message);
+      }
+    }
+  } catch (e) {
+    console.warn('[flow-grabber] reinjectContentScript lỗi:', e && e.message);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 5 });
+  reinjectContentScript();
 });
+chrome.runtime.onStartup.addListener(reinjectContentScript);
+// SW vừa load (reload extension / SW bị kill rồi hồi sinh) → cứu tab đang mở luôn.
+reinjectContentScript();
 chrome.alarms.get(ALARM_NAME, (a) => {
   if (!a) chrome.alarms.create(ALARM_NAME, { periodInMinutes: 5 });
 });

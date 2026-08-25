@@ -12,6 +12,13 @@
 (function () {
   const POLL_INTERVAL_MS = 1500;
 
+  // background.js nạp lại file này vào tab đang mở mỗi lần SW load (xem reinjectContentScript).
+  // Instance cũ có thể vẫn còn timer sống → dọn trước, tránh 2 vòng tick chồng nhau spam SW.
+  if (window.__flowGrabberTimerId != null) {
+    clearInterval(window.__flowGrabberTimerId);
+    window.__flowGrabberTimerId = null;
+  }
+
   let n = 0;
   let timerId = null;
 
@@ -22,9 +29,11 @@
   function stopWithOrphanNotice() {
     if (timerId != null) clearInterval(timerId);
     timerId = null;
+    window.__flowGrabberTimerId = null;
     console.warn(
       '[flow-grabber] Extension context invalidated — content script cũ đã orphan. ' +
-        'HÃY TẢI LẠI (F5) tab labs.google này để nạp content script mới.'
+        'Service worker mới sẽ tự nạp lại content script vào tab này (reinjectContentScript). ' +
+        'Nếu sau ~5s vẫn không thấy tick mới, hãy TẢI LẠI (F5) tab labs.google.'
     );
   }
 
@@ -58,6 +67,7 @@
   }
 
   timerId = setInterval(tick, POLL_INTERVAL_MS);
+  window.__flowGrabberTimerId = timerId;
   tick();
   console.log('[flow-grabber] content script tick loop đã khởi động (SW fetch/mint)');
 })();
