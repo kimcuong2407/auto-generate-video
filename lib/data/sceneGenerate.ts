@@ -2,6 +2,7 @@ import { readProject, updateProject, ensureProjectFlowId } from './projectStore'
 import { resolveWithinProject } from '../paths';
 import { ensureLocalFile } from '../r2/client';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
+import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError } from '../googleFlow/errors';
 import type { Project, Scene } from '../types';
 
@@ -101,9 +102,34 @@ export async function triggerSceneGeneration(
       return { path: absPath };
     };
 
-    const startImage = plan.startRelPath ? await toAbs(plan.startRelPath) : undefined;
+    // Frame cuối cảnh trước chỉ nằm ở disk local (không sync R2 như ảnh ref) → sau deploy/dọn
+    // disk có thể mất dù DB vẫn giữ lastFramePath. Extract lại từ video (local hoặc R2); không
+    // được thì bỏ chain và fallback về ảnh storyboard thay vì fail cả cảnh.
+    let plannedStartRelPath = plan.startRelPath;
+    let chained = plan.chained;
+    if (chained && plannedStartRelPath) {
+      const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
+      const ok = await ensureLastFrame(
+        resolveWithinProject(projectId, plannedStartRelPath),
+        prevScene?.videoPath ? resolveWithinProject(projectId, prevScene.videoPath) : null,
+        prevScene?.videoUrl ?? null
+      );
+      if (!ok) {
+        chained = false;
+        const storyboardImage = project.storyboard.images.find((img) => img.sceneId === scene.id);
+        plannedStartRelPath =
+          storyboardImage?.status === 'done' && storyboardImage.imagePath
+            ? storyboardImage.imagePath
+            : null;
+      }
+    }
+
+    const startImage = plannedStartRelPath ? await toAbs(plannedStartRelPath) : undefined;
     const refImages: { path: string }[] = [];
-    for (const relPath of plan.refRelPaths) {
+    // Mất chain mà cũng không có storyboard → không còn khung khởi điểm, quay về r2v ref images.
+    const refRelPaths =
+      plan.startRelPath && !plannedStartRelPath ? project.videoRefImagePaths.slice(0, MAX_REF_IMAGES) : plan.refRelPaths;
+    for (const relPath of refRelPaths) {
       refImages.push(await toAbs(relPath));
     }
 
@@ -131,7 +157,7 @@ export async function triggerSceneGeneration(
       if (!s) return;
       // Chỉ đánh dấu chained khi khung khởi điểm THỰC SỰ là frame cảnh trước — startImage
       // cũng có thể là ảnh storyboard của chính cảnh này (không phải chain).
-      applyGeneratingState(s, job_id, plan.chained);
+      applyGeneratingState(s, job_id, chained);
       // Project cũ bị Google 404 (entity not found) → đã tự tạo project mới, lưu lại luôn.
       if (usedFlowProjectId !== flowProjectId) p.flowProjectId = usedFlowProjectId;
     });

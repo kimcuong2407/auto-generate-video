@@ -17,15 +17,26 @@ import { FlowApiError } from './errors';
 import { recaptchaState } from './recaptchaState';
 import type { FlowAccount } from './authStore';
 
-/** Chờ extension mint token tối đa 20s. */
+/** Chờ extension mint token tối đa 20s khi poller đang khoẻ. */
 const MINT_TIMEOUT_MS = 20_000;
 
 /**
- * Nếu content script không poll trong khoảng này thì coi như poller offline → fail-fast
- * thay vì bắt người dùng chờ hết MINT_TIMEOUT_MS. Chỉ áp dụng khi ĐÃ từng có poll (
- * lastPollAt > 0) — tránh fail oan ngay sau khi khởi động server.
+ * Khi poller có vẻ đang ngủ, phải chờ đủ lâu để alarm keepalive (chu kỳ 1 phút) kịp
+ * đánh thức service worker và mint. 20s là quá ngắn — sẽ timeout oan ngay trước khi
+ * extension kịp tỉnh.
  */
-const POLLER_STALE_MS = 10_000;
+const MINT_TIMEOUT_ASLEEP_MS = 90_000;
+
+/**
+ * Ngưỡng coi poller là offline.
+ *
+ * KHÔNG được đặt gần nhịp tick (1.5s) của content script: Chrome throttle setInterval
+ * trong tab nền xuống >=60s/lần, và service worker MV3 bị kill sau ~30s idle. Với
+ * ngưỡng 10s cũ, chỉ cần Mr.D chuyển tab vài phút là mọi lệnh gen bị reject oan dù
+ * session vẫn tốt. Alarm keepalive phía extension poll mỗi 1 phút → 3 phút cho phép
+ * lỡ 2 nhịp alarm liên tiếp trước khi kết luận extension thật sự chết.
+ */
+const POLLER_STALE_MS = 180_000;
 
 /**
  * Nhận token từ content script (qua route POST). Tìm pending khớp requestId rồi resolve
@@ -63,17 +74,16 @@ export async function acquireRecaptchaContext(accountId: string, action: string)
 
 /** Tạo pending request + chờ token về (hoặc timeout). */
 function requestFreshToken(accountId: string, action: string): Promise<string> {
-  // Fail-fast: đã từng có poller nhưng lâu rồi không thấy poll → coi như offline.
+  // Trước đây chỗ này reject NGAY khi lastPollAt cũ — sinh ra deadlock một chiều:
+  // service worker ngủ → không poll → gen fail → không có pending nào để poll về →
+  // SW vẫn ngủ. Chỉ thao tác tay (mở popup) mới phá được vòng lặp, nên triệu chứng
+  // trông như "phải gửi lại session mỗi lần gen".
+  //
+  // Giờ luôn TẠO pending trước rồi mới chờ: extension có alarm keepalive 1 phút, khi
+  // tỉnh dậy sẽ thấy pending và mint. Chỉ báo lỗi nếu chờ hết giờ mà vẫn im lặng.
   const lastPoll = recaptchaState.lastPollAt;
-  if (lastPoll > 0 && Date.now() - lastPoll > POLLER_STALE_MS) {
-    return Promise.reject(
-      new FlowApiError(
-        `Extension Google Flow không hoạt động (không thấy poll ${Math.round(
-          (Date.now() - lastPoll) / 1000
-        )}s). Mở tab https://labs.google (đã đăng nhập) và bật extension để mint reCAPTCHA token.`
-      )
-    );
-  }
+  const staleForMs = lastPoll > 0 ? Date.now() - lastPoll : 0;
+  const pollerLikelyAsleep = staleForMs > POLLER_STALE_MS;
 
   const requestId = `rq-${Date.now()}-${recaptchaState.seq++}`;
   return new Promise<string>((resolve, reject) => {
@@ -81,11 +91,16 @@ function requestFreshToken(accountId: string, action: string): Promise<string> {
       recaptchaState.pending.delete(requestId);
       reject(
         new FlowApiError(
-          `Hết thời gian chờ mint reCAPTCHA token (action ${action}). ` +
-            `Mở tab https://labs.google (đã đăng nhập) và cài/bật extension Google Flow.`
+          pollerLikelyAsleep
+            ? `Extension Google Flow không phản hồi (lần poll cuối cách đây ${Math.round(
+                staleForMs / 1000
+              )}s, đã chờ thêm ${MINT_TIMEOUT_ASLEEP_MS / 1000}s). Mở tab https://labs.google ` +
+              `(đã đăng nhập) và kiểm tra extension còn bật không.`
+            : `Hết thời gian chờ mint reCAPTCHA token (action ${action}). ` +
+              `Mở tab https://labs.google (đã đăng nhập) và cài/bật extension Google Flow.`
         )
       );
-    }, MINT_TIMEOUT_MS);
+    }, pollerLikelyAsleep ? MINT_TIMEOUT_ASLEEP_MS : MINT_TIMEOUT_MS);
     // Không giữ event loop sống chỉ vì timer này.
     if (typeof timer.unref === 'function') timer.unref();
 

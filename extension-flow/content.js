@@ -13,11 +13,14 @@
   const POLL_INTERVAL_MS = 1500;
 
   // background.js nạp lại file này vào tab đang mở mỗi lần SW load (xem reinjectContentScript).
-  // Instance cũ có thể vẫn còn timer sống → dọn trước, tránh 2 vòng tick chồng nhau spam SW.
-  if (window.__flowGrabberTimerId != null) {
-    clearInterval(window.__flowGrabberTimerId);
-    window.__flowGrabberTimerId = null;
-  }
+  // Instance cũ có thể vẫn còn timer sống → phải dọn, tránh 2 vòng tick chồng nhau spam SW.
+  //
+  // KHÔNG dùng `window.__flowGrabberTimerId`: content script chạy trong isolated world,
+  // mỗi lần inject lại là một world SẠCH — instance mới không bao giờ nhìn thấy biến của
+  // instance cũ, nên đoạn dọn dẹp cũ thực tế chưa từng chạy. Kênh duy nhất cả hai instance
+  // cùng thấy là DOM của trang, nên phát tín hiệu "dừng" qua một CustomEvent.
+  const STOP_EVENT = '__flowGrabberStop';
+  document.dispatchEvent(new CustomEvent(STOP_EVENT));
 
   let n = 0;
   let timerId = null;
@@ -29,11 +32,12 @@
   function stopWithOrphanNotice() {
     if (timerId != null) clearInterval(timerId);
     timerId = null;
-    window.__flowGrabberTimerId = null;
     console.warn(
-      '[flow-grabber] Extension context invalidated — content script cũ đã orphan. ' +
-        'Service worker mới sẽ tự nạp lại content script vào tab này (reinjectContentScript). ' +
-        'Nếu sau ~5s vẫn không thấy tick mới, hãy TẢI LẠI (F5) tab labs.google.'
+      '[flow-grabber] Extension context invalidated — instance này đã orphan và vừa tự dừng. ' +
+        'Đây là log BÌNH THƯỜNG sau khi reload extension, không phải lỗi. ' +
+        'Service worker mới sẽ nạp lại content script (ngay khi load, và lặp lại mỗi 1 phút ' +
+        'qua alarm keepalive) → sẽ thấy "tick loop đã khởi động" trong vòng ~60s. ' +
+        'Chỉ cần F5 tab nếu quá 60s vẫn im lặng.'
     );
   }
 
@@ -66,8 +70,15 @@
     }
   }
 
+  // Instance sau sẽ dispatch STOP_EVENT → instance này tự tắt, nhường chỗ.
+  document.addEventListener(STOP_EVENT, function onStop() {
+    document.removeEventListener(STOP_EVENT, onStop);
+    if (timerId != null) clearInterval(timerId);
+    timerId = null;
+    console.log('[flow-grabber] instance cũ nhường chỗ cho instance mới');
+  });
+
   timerId = setInterval(tick, POLL_INTERVAL_MS);
-  window.__flowGrabberTimerId = timerId;
   tick();
   console.log('[flow-grabber] content script tick loop đã khởi động (SW fetch/mint)');
 })();

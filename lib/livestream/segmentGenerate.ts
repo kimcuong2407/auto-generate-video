@@ -4,6 +4,7 @@ import { readJob, updateJob, ensureJobFlowId, ensureJobVideoSeed } from './jobSt
 import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
+import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError } from '../googleFlow/errors';
 import { deleteFromR2 } from '../r2/client';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
@@ -137,10 +138,19 @@ export async function triggerSegmentGeneration(
     });
 
     const prevSegment = findPreviousSegment(job, found.product, segment);
-    const prevLastFramePath =
-      prevSegment?.status === 'done' && prevSegment.lastFramePath
-        ? resolveWithinJob(jobId, prevSegment.lastFramePath)
-        : undefined;
+    // File frame chỉ có ở local (không sync R2) → sau deploy/dọn disk có thể mất dù DB vẫn
+    // giữ lastFramePath. Extract lại từ video (local hoặc R2); không được thì bỏ chain,
+    // vẫn gen bằng ref images thay vì fail cả đoạn.
+    let prevLastFramePath: string | undefined;
+    if (prevSegment?.status === 'done' && prevSegment.lastFramePath) {
+      const frameAbsPath = resolveWithinJob(jobId, prevSegment.lastFramePath);
+      const ok = await ensureLastFrame(
+        frameAbsPath,
+        prevSegment.videoPath ? resolveWithinJob(jobId, prevSegment.videoPath) : null,
+        prevSegment.videoUrl
+      );
+      if (ok) prevLastFramePath = frameAbsPath;
+    }
 
     let startImage: { path: string } | undefined;
     if (prevLastFramePath) {

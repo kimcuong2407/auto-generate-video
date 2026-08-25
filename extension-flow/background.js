@@ -14,6 +14,7 @@ console.log('[flow-grabber] service worker đã load', new Date().toISOString())
 
 const DEFAULT_SESSION_ENDPOINT = 'http://localhost:3000/api/flow-auth/session';
 const ALARM_NAME = 'flow-session-refresh';
+const POLL_ALARM_NAME = 'flow-poll-keepalive';
 
 const SITE_KEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
 const MINT_GAP_MS = 200;
@@ -217,6 +218,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
     refreshSessionOnce().catch((err) => console.error('[flow-grabber]', err));
   }
+  // Alarm đánh thức SW kể cả khi tab labs.google ở nền (content script bị Chrome
+  // throttle xuống >=60s/tick). Poll ở đây giữ lastPollAt phía server luôn tươi,
+  // nên lệnh gen không bị fail-fast oan vì "không thấy poll".
+  if (alarm.name === POLL_ALARM_NAME) {
+    pollTokensOnce().catch((err) => console.error('[flow-grabber] poll alarm', err));
+    reinjectContentScript();
+  }
 });
 
 /**
@@ -244,13 +252,20 @@ async function reinjectContentScript() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+function ensureAlarms() {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 5 });
+  // 1 phút là chu kỳ nhỏ nhất Chrome cho phép với MV3 alarm.
+  chrome.alarms.create(POLL_ALARM_NAME, { periodInMinutes: 1 });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  ensureAlarms();
   reinjectContentScript();
 });
-chrome.runtime.onStartup.addListener(reinjectContentScript);
+chrome.runtime.onStartup.addListener(() => {
+  ensureAlarms();
+  reinjectContentScript();
+});
 // SW vừa load (reload extension / SW bị kill rồi hồi sinh) → cứu tab đang mở luôn.
 reinjectContentScript();
-chrome.alarms.get(ALARM_NAME, (a) => {
-  if (!a) chrome.alarms.create(ALARM_NAME, { periodInMinutes: 5 });
-});
+ensureAlarms();
