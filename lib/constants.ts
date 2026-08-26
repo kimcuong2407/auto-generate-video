@@ -8,6 +8,16 @@ export const DATA_ROOT =
 export const FLOW_MAX_CONCURRENT_JOBS = Number(process.env.FLOW_MAX_CONCURRENT_JOBS || 2);
 
 export const FLOW_JOB_TIMEOUT_MS = Number(process.env.FLOW_JOB_TIMEOUT_MS || 15 * 60 * 1000);
+/**
+ * Số lần tự động thử lại tối đa cho 1 đoạn video bị lỗi, tính theo `segment.attempts`.
+ *
+ * Vì sao cần: cascade chỉ trigger đoạn kế khi nó 'idle' nên 1 đoạn 'failed' vì lỗi TẠM THỜI
+ * (mint reCAPTCHA token timeout, Flow 5xx, mạng chập chờn) làm đứt dây chuyền vĩnh viễn — các
+ * đoạn sau nằm im dù người dùng đã bấm gen cả block. Cho retry tự động, nhưng có trần để lỗi
+ * THẬT (prompt sai, quota hết) không quay vòng vô hạn đốt quota Veo.
+ */
+export const MAX_SEGMENT_AUTO_RETRIES = 3;
+
 
 // Chu kỳ background poller quét các job có segment 'generating' và đồng bộ với Google Flow —
 // không phụ thuộc tab UI mở. Đủ thưa để không spam Flow, đủ dày để bắt 'done' sớm.

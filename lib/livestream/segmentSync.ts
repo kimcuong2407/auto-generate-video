@@ -12,11 +12,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { readJob, updateJob } from './jobStore';
 import { pollJobStatus } from '../googleFlow/flowJobs';
-import { triggerSegmentGeneration, findNextSegment } from './segmentGenerate';
+import { triggerSegmentGeneration, findNextSegment, findPreviousSegment } from './segmentGenerate';
 import { extractLastFrame } from '../ffmpeg/frame';
 import { jobSegmentsDir, jobFramesDir, resolveWithinJob } from './paths';
 import { uploadFileToR2 } from '../r2/client';
-import { FLOW_JOB_TIMEOUT_MS } from '../constants';
+import { FLOW_JOB_TIMEOUT_MS, MAX_SEGMENT_AUTO_RETRIES } from '../constants';
 import type { LivestreamSegment } from './types';
 
 export interface SyncResult {
@@ -171,6 +171,22 @@ export async function syncSegmentManually(jobId: string, segmentId: string): Pro
  * extension trên tab labs.google. Nếu extension offline, trigger sẽ fail (segment kế giữ
  * idle) nhưng đoạn vừa done KHÔNG bị ảnh hưởng — reconcile done/download không cần reCAPTCHA.
  */
+/**
+ * Đoạn kế có được cascade tự trigger hay không.
+ *
+ * 'idle' = chưa chạy lần nào → chạy. 'failed' = lần trước lỗi: vẫn chạy lại, MIỄN là chưa quá trần
+ * MAX_SEGMENT_AUTO_RETRIES. Trước đây chỉ nhận 'idle' nên 1 đoạn hỏng vì lỗi tạm thời (mint
+ * reCAPTCHA timeout, Flow 5xx) làm đứt dây chuyền vĩnh viễn — người dùng bấm gen cả block mà chỉ
+ * chạy tới đoạn hỏng rồi nằm im, phải ngồi bấm tay từng đoạn còn lại.
+ *
+ * Trần theo `attempts` (tăng mỗi lần trigger) để lỗi THẬT không quay vòng vô hạn đốt quota Veo.
+ */
+export function shouldAutoTrigger(segment: LivestreamSegment): boolean {
+  if (!segment.veoPrompt.trim()) return false;
+  if (segment.status === 'idle') return true;
+  return segment.status === 'failed' && segment.attempts < MAX_SEGMENT_AUTO_RETRIES;
+}
+
 export async function runChainingForJustDone(
   jobId: string,
   justDoneSegmentIds: string[]
@@ -207,13 +223,61 @@ export async function runChainingForJustDone(
     }
 
     const nextSegment = findNextSegment(job, product, segment);
-    if (nextSegment && nextSegment.status === 'idle' && nextSegment.veoPrompt.trim()) {
+    if (nextSegment && shouldAutoTrigger(nextSegment)) {
       try {
-        await triggerSegmentGeneration(jobId, nextSegment.id);
+        await triggerSegmentGeneration(jobId, nextSegment.id, { requireFailed: false });
       } catch (err) {
         console.error(`[livestream chaining] trigger đoạn kế ${nextSegment.id} thất bại:`, err);
       }
       job = await readJob(jobId);
     }
+  }
+}
+
+/**
+ * Nối lại dây chuyền cho 1 job khi nó đứt giữa chừng — độc lập với `justDoneSegmentIds`.
+ *
+ * Vì sao cần thêm dù đã có cascade trong runChainingForJustDone: cascade chỉ chạy khi có đoạn VỪA
+ * chuyển done. Đoạn đang generating mà hỏng (mint reCAPTCHA timeout, Flow 5xx) thì không có đoạn
+ * nào done trong vòng poll đó → không ai trigger tiếp, job nằm chết với hàng loạt đoạn idle phía
+ * sau dù người dùng đã bấm gen cả block.
+ *
+ * Chạy mỗi vòng poll, chi phí gần như bằng 0 khi không có gì để làm (chỉ đọc job trong bộ nhớ):
+ * - Đang có đoạn generating → không đụng vào, chờ nó xong (giữ đúng thứ tự chain).
+ * - Không còn đoạn nào chạy mà vẫn còn việc → trigger đoạn kế tiếp hợp lệ đầu tiên.
+ *
+ * Trả về id đoạn vừa được trigger lại (null nếu không làm gì) để caller log.
+ */
+export async function resumeStalledJob(jobId: string): Promise<string | null> {
+  const job = await readJob(jobId);
+  if (job.status === 'done') return null;
+
+  const all = job.products.flatMap((p) => p.segments.map((segment) => ({ product: p, segment })));
+  // Còn đoạn đang chạy → dây chuyền chưa đứt, để yên (trigger thêm sẽ gen chồng, lệch thứ tự).
+  if (all.some(({ segment }) => segment.status === 'generating')) return null;
+  // CHỈ nối tiếp việc người dùng đã bắt đầu: phải có đoạn từng được trigger (attempts > 0). Không
+  // có điều kiện này thì poller sẽ tự khởi động MỌI job nháp chưa ai bấm gen, đốt quota Veo.
+  if (!all.some(({ segment }) => segment.attempts > 0)) return null;
+
+  const candidate = all.find(({ product, segment }) => {
+    if (!shouldAutoTrigger(segment)) return false;
+    // Tôn trọng đúng ràng buộc tuần tự của chaining: đoạn liền trước phải xong đã.
+    if (job.chaining === 'off') return true;
+    const prev = findPreviousSegment(job, product, segment);
+    return !prev || prev.status === 'done';
+  });
+  if (!candidate) return null;
+
+  try {
+    const res = await triggerSegmentGeneration(jobId, candidate.segment.id, { requireFailed: false });
+    if (!res.ok) {
+      console.error(`[livestream resume] trigger lại ${candidate.segment.id} thất bại: ${res.error}`);
+      return null;
+    }
+    console.log(`[livestream resume] nối lại dây chuyền job ${jobId} từ đoạn ${candidate.segment.id}`);
+    return candidate.segment.id;
+  } catch (err) {
+    console.error(`[livestream resume] trigger lại ${candidate.segment.id} lỗi:`, err);
+    return null;
   }
 }

@@ -22,7 +22,8 @@
     "check:prompt-ref-images": "tsx scripts/check-prompt-ref-images.ts",
     "check:voiceover-length": "tsx scripts/check-voiceover-length.ts",
     "check:stage-bible-stale": "tsx scripts/check-stage-bible-stale.ts",
-    "check:ref-image-priority": "tsx scripts/check-ref-image-priority.ts"
+    "check:ref-image-priority": "tsx scripts/check-ref-image-priority.ts",
+    "check:cascade-resume": "tsx scripts/check-cascade-resume.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

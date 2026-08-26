@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob, updateJob } from '@/lib/livestream/jobStore';
 import { getFlowStatus } from '@/lib/googleFlow/flowJobs';
-import { syncGeneratingSegments, runChainingForJustDone } from '@/lib/livestream/segmentSync';
+import {
+  syncGeneratingSegments,
+  runChainingForJustDone,
+  resumeStalledJob,
+} from '@/lib/livestream/segmentSync';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,6 +44,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   // 3. Chain khung hình cho các đoạn vừa done + cascade trigger đoạn kế.
   await runChainingForJustDone(id, justDoneSegmentIds);
+
+  // 4. Dây chuyền đứt giữa chừng (đoạn đang chạy bị lỗi nên không có đoạn nào "vừa done" để
+  //    cascade) → nối lại ngay khi người dùng mở trang, không phải chờ vòng poller kế tiếp.
+  await resumeStalledJob(id);
 
   const job = await readJob(id);
   return NextResponse.json({ job });

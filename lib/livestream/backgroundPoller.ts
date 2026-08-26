@@ -16,7 +16,7 @@
  */
 
 import { listJobs, readJob } from './jobStore';
-import { syncGeneratingSegments, runChainingForJustDone } from './segmentSync';
+import { syncGeneratingSegments, runChainingForJustDone, resumeStalledJob } from './segmentSync';
 import { FLOW_POLL_INTERVAL_MS } from '../constants';
 import type { LivestreamJobSummary } from './types';
 
@@ -39,12 +39,22 @@ if (!globalForPoller.__livestreamPoller) {
   globalForPoller.__livestreamPoller = state;
 }
 
-async function jobHasGenerating(summary: LivestreamJobSummary): Promise<boolean> {
+/**
+ * Job có việc dở dang cần poller ngó tới hay không.
+ *
+ * Không chỉ 'generating': job mà dây chuyền vừa ĐỨT (đoạn cuối cùng đang chạy bị failed) không còn
+ * đoạn generating nào, nhưng vẫn còn hàng loạt đoạn chờ phía sau — bỏ qua thì nó nằm chết vĩnh
+ * viễn. `attempts > 0` giới hạn phạm vi vào job người dùng ĐÃ bấm gen (xem resumeStalledJob).
+ */
+async function jobNeedsAttention(summary: LivestreamJobSummary): Promise<boolean> {
   // listJobs() chỉ trả summary; đọc lại từng job để biết job nào ĐÁNG sync. readJob nhẹ
   // (1 file JSON), số job livestream nhỏ nên chấp nhận được.
   try {
     const job = await readJob(summary.id);
-    return job.products.some((p) => p.segments.some((s) => s.status === 'generating' && s.jobId));
+    const segments = job.products.flatMap((p) => p.segments);
+    if (segments.some((s) => s.status === 'generating' && s.jobId)) return true;
+    const started = segments.some((s) => s.attempts > 0);
+    return started && segments.some((s) => s.status === 'idle' || s.status === 'failed');
   } catch {
     return false;
   }
@@ -57,7 +67,7 @@ async function tick(): Promise<void> {
     const summaries = await listJobs();
     for (const summary of summaries) {
       try {
-        if (!(await jobHasGenerating(summary))) continue;
+        if (!(await jobNeedsAttention(summary))) continue;
         const { justDoneSegmentIds } = await syncGeneratingSegments(summary.id);
         if (justDoneSegmentIds.length > 0) {
           console.log(
@@ -65,6 +75,8 @@ async function tick(): Promise<void> {
           );
           await runChainingForJustDone(summary.id, justDoneSegmentIds);
         }
+        // Dây chuyền đứt (không đoạn nào đang chạy mà vẫn còn việc) → nối lại. No-op khi đang chạy.
+        await resumeStalledJob(summary.id);
       } catch (err) {
         console.error(`[livestream poller] lỗi khi sync job ${summary.id}:`, err);
       }
