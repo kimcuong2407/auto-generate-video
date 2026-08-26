@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chatCompletion } from '../ai/chatClient';
+import { chatCompletion, type ChatImageInput } from '../ai/chatClient';
 
 /**
  * Đọc ảnh sản phẩm THẬT bằng AI vision để lấy mô tả HÌNH ẢNH chính xác (màu sắc vật lý,
@@ -63,6 +63,24 @@ const IMAGE_MIME: Record<string, string> = {
 const MAX_VISION_IMAGES = 4;
 
 /**
+ * Đọc danh sách ảnh (đường dẫn TUYỆT ĐỐI) → mảng ChatImageInput để đính kèm vào lượt gọi AI.
+ * Ảnh không đọc được (file thiếu/hỏng) bị bỏ qua lặng lẽ — caller tự xử lý trường hợp mảng rỗng.
+ */
+export async function readImagesAsBase64(absPaths: string[]): Promise<ChatImageInput[]> {
+  const images: ChatImageInput[] = [];
+  for (const abs of absPaths) {
+    try {
+      const buffer = await fs.readFile(abs);
+      const mimeType = IMAGE_MIME[path.extname(abs).toLowerCase()] || 'image/jpeg';
+      images.push({ mimeType, base64: buffer.toString('base64') });
+    } catch {
+      // Bỏ qua ảnh không đọc được — vẫn dùng các ảnh còn lại.
+    }
+  }
+  return images;
+}
+
+/**
  * Đọc danh sách ảnh sản phẩm (đường dẫn TUYỆT ĐỐI) → trả về đoạn mô tả thị giác.
  * Caller tự resolve đường dẫn (VD projectInputsDir + basename) và tự quyết định có
  * bọc try/catch hay không.
@@ -83,17 +101,7 @@ export async function extractVisualDescription(imageAbsPaths: string[]): Promise
   // defaultProductReferenceImage() trong lib/imageModels.ts — cùng một heuristic.
   const usable = imageAbsPaths.length > MAX_VISION_IMAGES ? imageAbsPaths.slice(1) : imageAbsPaths;
   const picked = usable.slice(0, MAX_VISION_IMAGES);
-  const images: { mimeType: string; base64: string }[] = [];
-  for (const abs of picked) {
-    try {
-      const buffer = await fs.readFile(abs);
-      const ext = path.extname(abs).toLowerCase();
-      const mimeType = IMAGE_MIME[ext] || 'image/jpeg';
-      images.push({ mimeType, base64: buffer.toString('base64') });
-    } catch {
-      // Bỏ qua ảnh không đọc được (file thiếu/hỏng) — vẫn dùng các ảnh còn lại.
-    }
-  }
+  const images = await readImagesAsBase64(picked);
 
   if (images.length === 0) {
     throw new Error('Không đọc được ảnh sản phẩm nào để phân tích');

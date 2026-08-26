@@ -1,6 +1,10 @@
+import path from 'node:path';
 import { readProject, updateProject } from './projectStore';
 import { generateScriptText } from '../googleFlow/flowJobs';
-import { ChatApiError } from '../ai/chatClient';
+import { ChatApiError, chatCompletion } from '../ai/chatClient';
+import { readImagesAsBase64 } from './productVisionExtract';
+import { projectInputsDir } from '../paths';
+import { ensureLocalFile } from '../r2/client';
 import type { Project, Scene } from '../types';
 
 const SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế key frame (khung hình mở đầu) cho video review sản phẩm ngắn (TikTok/Reels).
@@ -31,6 +35,114 @@ Yêu cầu:
 - Bám sát bối cảnh, ánh sáng, góc máy, cỡ cảnh của cảnh quay đã chốt được cung cấp bên dưới.
 - Trả về DUY NHẤT đoạn prompt tiếng Anh, không kèm giải thích, không markdown, không xuống dòng thừa, không
   bọc trong dấu ngoặc kép.`;
+
+/**
+ * Số ảnh tối đa gửi kèm mỗi lượt viết prompt. Ảnh sản phẩm chiếm phần lớn suất (hình dáng là
+ * thứ dễ bịa nhất), chừa chỗ cho ảnh mẫu + ảnh background nếu người dùng có tải lên.
+ */
+const MAX_PRODUCT_IMAGES = 3;
+
+interface RefImageSet {
+  images: Awaited<ReturnType<typeof readImagesAsBase64>>;
+  /** Chú thích thứ tự ảnh cho model biết ảnh nào là gì (model chỉ thấy 1 dãy ảnh không nhãn). */
+  legend: string;
+}
+
+/**
+ * Gom ảnh người dùng đã tải lên ở Bước 1 để gửi THẲNG cho model khi viết prompt: ảnh sản phẩm
+ * (hình dáng/màu/chất liệu thật), ảnh mẫu (người dẫn), ảnh background (bối cảnh).
+ *
+ * Vì sao cần: trước đây khâu này chỉ nhận `visualDescription` — bản mô tả bằng chữ do vision
+ * đọc ở bước sinh kịch bản. Qua một lần diễn giải, cấu tạo sản phẩm bị mất chi tiết, còn ảnh
+ * mẫu và ảnh background thì model CHƯA BAO GIỜ nhìn thấy, nên prompt tả người/bối cảnh hoàn
+ * toàn tự bịa. Gửi ảnh gốc để model tự nhìn là nguồn chính xác nhất.
+ *
+ * Best-effort: thiếu ảnh / đọc lỗi đều trả về mảng rỗng, caller vẫn viết prompt bằng text.
+ */
+/** Ảnh reference đã chọn (thuần dữ liệu, chưa đọc file) — tách riêng để test được. */
+interface RefEntry {
+  rel: string;
+  url: string | null | undefined;
+  label: string;
+}
+
+/**
+ * Chọn ảnh nào được gửi kèm + gán nhãn, thuần tính toán trên `project.inputs`.
+ * Không đụng filesystem/R2 nên test được trực tiếp (scripts/check-prompt-ref-images.ts).
+ */
+function pickReferenceEntries(
+  inputs: Pick<
+    Project['inputs'],
+    'productImages' | 'productImageUrls' | 'spokespersonImagePath' | 'spokespersonImageUrl' | 'backgroundPath' | 'backgroundUrl'
+  >,
+  opts: { includeProduct?: boolean; includeSpokesperson?: boolean }
+): RefEntry[] {
+  const { includeProduct = true, includeSpokesperson = true } = opts;
+  const entries: RefEntry[] = [];
+
+  if (includeProduct) {
+    // Bỏ ảnh bìa marketing khi có dư ảnh — cùng heuristic với extractVisualDescription().
+    const all = inputs.productImages;
+    const offset = all.length > MAX_PRODUCT_IMAGES ? 1 : 0;
+    all.slice(offset, offset + MAX_PRODUCT_IMAGES).forEach((rel, i) => {
+      entries.push({
+        rel,
+        // Index gốc trong productImages — productImageUrls song song theo index, không tra theo
+        // giá trị (ảnh trùng đường dẫn sẽ lấy nhầm URL).
+        url: inputs.productImageUrls?.[offset + i],
+        label: `ảnh SẢN PHẨM THẬT ${i + 1}`,
+      });
+    });
+  }
+  if (includeSpokesperson && inputs.spokespersonImagePath) {
+    entries.push({
+      rel: inputs.spokespersonImagePath,
+      url: inputs.spokespersonImageUrl,
+      label: 'ảnh NGƯỜI MẪU/NGƯỜI DẪN',
+    });
+  }
+  if (inputs.backgroundPath) {
+    entries.push({ rel: inputs.backgroundPath, url: inputs.backgroundUrl, label: 'ảnh BỐI CẢNH/BACKGROUND' });
+  }
+  return entries;
+}
+
+/**
+ * Gom ảnh người dùng đã tải lên ở Bước 1 để gửi THẲNG cho model khi viết prompt: ảnh sản phẩm
+ * (hình dáng/màu/chất liệu thật), ảnh mẫu (người dẫn), ảnh background (bối cảnh).
+ *
+ * Vì sao cần: trước đây khâu này chỉ nhận `visualDescription` — bản mô tả bằng chữ do vision
+ * đọc ở bước sinh kịch bản. Qua một lần diễn giải, cấu tạo sản phẩm bị mất chi tiết, còn ảnh
+ * mẫu và ảnh background thì model CHƯA BAO GIỜ nhìn thấy, nên prompt tả người/bối cảnh hoàn
+ * toàn tự bịa. Gửi ảnh gốc để model tự nhìn là nguồn chính xác nhất.
+ *
+ * Best-effort: thiếu ảnh / đọc lỗi đều trả về mảng rỗng, caller vẫn viết prompt bằng text.
+ */
+async function collectReferenceImages(
+  project: Project,
+  opts: { includeProduct?: boolean; includeSpokesperson?: boolean } = {}
+): Promise<RefImageSet> {
+  const entries = pickReferenceEntries(project.inputs, opts);
+  if (entries.length === 0) return { images: [], legend: '' };
+
+  const absOf = (rel: string) => path.join(projectInputsDir(project.id), path.basename(rel));
+  // Khôi phục file local từ R2 nếu mất (project tạo ở máy khác với máy đang gen).
+  await Promise.all(entries.map((e) => ensureLocalFile(absOf(e.rel), e.url).catch(() => {})));
+  const images = await readImagesAsBase64(entries.map((e) => absOf(e.rel)));
+  // readImagesAsBase64 bỏ qua ảnh lỗi nên legend chỉ đúng khi đọc được toàn bộ; đọc thiếu thì
+  // mô tả chung chung còn hơn gán nhãn lệch ảnh.
+  const legend =
+    images.length === entries.length
+      ? entries.map((e, i) => `  ${i + 1}. ${e.label}`).join('\n')
+      : entries.map((e) => e.label).join(', ');
+  return { images, legend };
+}
+
+/** Khối nhắc model dùng ảnh đính kèm làm nguồn sự thật, rỗng nếu không gửi được ảnh nào. */
+function buildImageLegendBlock(refs: RefImageSet): string {
+  if (refs.images.length === 0) return '';
+  return `\n\nẢNH THẬT ĐÍNH KÈM (nhìn kỹ trước khi viết — đây là nguồn sự thật, ưu tiên hơn mọi mô tả bằng chữ ở trên):\n${refs.legend}\nDùng đúng hình dáng/cấu tạo/màu/chất liệu sản phẩm, đúng ngoại hình người mẫu, đúng bối cảnh như trong ảnh. KHÔNG bịa khác, KHÔNG mô tả chi tiết hình học đếm được bằng chữ.`;
+}
 
 function buildProductDescription(project: Project): string {
   const p = project.product;
@@ -70,6 +182,18 @@ function buildUserPrompt(project: Project, scene: Scene): string {
   ].join('\n');
 }
 
+/**
+ * Gọi AI viết prompt. Có ảnh đính kèm thì phải đi qua AI_VISION_MODEL (model chat mặc định
+ * không nhìn được ảnh); không có ảnh / chưa cấu hình vision model thì dùng đường text như cũ.
+ */
+async function runPromptGeneration(system: string, user: string, refs: RefImageSet): Promise<string> {
+  const visionModel = process.env.AI_VISION_MODEL || '';
+  if (refs.images.length > 0 && visionModel) {
+    return chatCompletion(system, user, { model: visionModel, images: refs.images });
+  }
+  return generateScriptText(system, user);
+}
+
 function sanitizePromptText(raw: string): string {
   return raw
     .trim()
@@ -78,7 +202,12 @@ function sanitizePromptText(raw: string): string {
 }
 
 export async function generateStoryboardPromptText(project: Project, scene: Scene): Promise<string> {
-  const raw = await generateScriptText(SYSTEM_PROMPT, buildUserPrompt(project, scene));
+  const refs = await collectReferenceImages(project);
+  const raw = await runPromptGeneration(
+    SYSTEM_PROMPT,
+    buildUserPrompt(project, scene) + buildImageLegendBlock(refs),
+    refs
+  );
   const prompt = sanitizePromptText(raw);
   if (!prompt) {
     throw new ChatApiError('AI không trả về prompt hợp lệ');
@@ -154,8 +283,17 @@ function buildBackgroundUserPrompt(scene: Scene): string {
   ].join('\n');
 }
 
-export async function generateBackgroundPromptText(scene: Scene): Promise<string> {
-  const raw = await generateScriptText(BACKGROUND_SYSTEM_PROMPT, buildBackgroundUserPrompt(scene));
+export async function generateBackgroundPromptText(scene: Scene, project?: Project): Promise<string> {
+  // Chỉ gửi ảnh BỐI CẢNH — prompt này cấm sản phẩm/người xuất hiện trong khung, gửi kèm ảnh
+  // sản phẩm/người mẫu chỉ kéo model vẽ chúng vào ảnh nền.
+  const refs = project
+    ? await collectReferenceImages(project, { includeProduct: false, includeSpokesperson: false })
+    : { images: [], legend: '' };
+  const raw = await runPromptGeneration(
+    BACKGROUND_SYSTEM_PROMPT,
+    buildBackgroundUserPrompt(scene) + buildImageLegendBlock(refs),
+    refs
+  );
   const prompt = sanitizePromptText(raw);
   if (!prompt) {
     throw new ChatApiError('AI không trả về prompt hợp lệ');
@@ -182,7 +320,7 @@ export async function triggerBackgroundPromptGeneration(
   }
 
   try {
-    const prompt = await generateBackgroundPromptText(scene);
+    const prompt = await generateBackgroundPromptText(scene, project);
     await updateProject(projectId, (p) => {
       const img = p.storyboard.backgrounds.find((x) => x.sceneId === sceneId);
       if (img) img.prompt = prompt;
@@ -193,3 +331,6 @@ export async function triggerBackgroundPromptGeneration(
     return { sceneId, ok: false, error: message };
   }
 }
+
+/** Chỉ dùng cho scripts/check-prompt-ref-images.ts — không import ở code chạy thật. */
+export const __testables = { pickReferenceEntries };
