@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, updateProject } from '@/lib/data/projectStore';
-import type { VeoModel } from '@/lib/types';
+import { VEO_MODELS, type VeoModel } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const VALID_MODELS: VeoModel[] = [
-  'veo_3_1_quality',
-  'veo_3_1_fast',
-  'veo_3_1_lite',
-  'veo_3_1_lite_low_priority',
-  'abra',
-];
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
@@ -26,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     videoRefImagePaths?: string[];
   };
 
-  if (body.veoModel !== undefined && !VALID_MODELS.includes(body.veoModel as VeoModel)) {
+  if (body.veoModel !== undefined && !(VEO_MODELS as readonly string[]).includes(body.veoModel)) {
     return NextResponse.json({ error: `Model không hợp lệ: ${body.veoModel}` }, { status: 400 });
   }
   if (body.videoRefImagePaths !== undefined) {

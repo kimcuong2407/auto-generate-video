@@ -2,6 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { TopNav } from '@/components/TopNav';
+import type { VeoModel } from '@/lib/types';
+
+const MODEL_LABELS: Record<VeoModel, string> = {
+  veo_3_1_fast: 'Veo 3.1 Fast',
+  veo_3_1_quality: 'Veo 3.1 Quality',
+  veo_3_1_lite: 'Veo 3.1 Lite',
+  veo_3_1_lite_low_priority: 'Veo 3.1 Lite (Lower Priority)',
+  abra: 'Omni Flash (Abra)',
+};
 
 interface AccountRow {
   id: string;
@@ -27,6 +36,11 @@ export default function FlowAuthPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Model Veo dùng chung cho mọi luồng gen ('' = theo cấu hình từng project/job).
+  const [veoModel, setVeoModel] = useState<VeoModel | ''>('');
+  const [modelOptions, setModelOptions] = useState<VeoModel[]>([]);
+  const [savingModel, setSavingModel] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -44,7 +58,34 @@ export default function FlowAuthPage() {
 
   useEffect(() => {
     load();
+    fetch('/api/flow-settings', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        setVeoModel(d.veoModel || '');
+        setModelOptions(d.options || []);
+      })
+      .catch(() => {});
   }, [load]);
+
+  async function handleSaveModel(next: VeoModel | '') {
+    setVeoModel(next);
+    setSavingModel(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/flow-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ veoModel: next || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lưu thất bại');
+      setMessage(next ? `Đã áp dụng ${MODEL_LABELS[next]} cho mọi luồng gen video` : 'Đã bỏ ép model — theo cấu hình từng project/job');
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setSavingModel(false);
+    }
+  }
 
   function openAdd() {
     setEditId(null);
@@ -114,6 +155,31 @@ export default function FlowAuthPage() {
     <div className="page-shell">
       <TopNav />
       <div className="home-wrap">
+        <div className="card">
+          <div className="card-header">🎬 <span>Model gen video (áp dụng cho tất cả)</span></div>
+
+          <div className="banner banner-info">
+            Model chọn ở đây đè lên cấu hình model của TỪNG project review và TỪNG job livestream.
+            Chọn &quot;Theo từng project/job&quot; để quay lại hành vi cũ.
+          </div>
+
+          <div className="field-group">
+            <label>Model Veo</label>
+            <select
+              value={veoModel}
+              disabled={savingModel}
+              onChange={(e) => handleSaveModel(e.target.value as VeoModel | '')}
+            >
+              <option value="">Theo từng project/job (không ép)</option>
+              {modelOptions.map((m) => (
+                <option key={m} value={m}>
+                  {MODEL_LABELS[m] || m}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div className="card">
           <div className="card-header">🔑 <span>Quản lý tài khoản Veo / Google Flow</span></div>
 

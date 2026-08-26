@@ -178,12 +178,15 @@ export interface FlowStatusCache {
   checkedAt: string | null;
 }
 
-export type VeoModel =
-  | 'veo_3_1_quality'
-  | 'veo_3_1_fast'
-  | 'veo_3_1_lite'
-  | 'veo_3_1_lite_low_priority'
-  | 'abra';
+export const VEO_MODELS = [
+  'veo_3_1_quality',
+  'veo_3_1_fast',
+  'veo_3_1_lite',
+  'veo_3_1_lite_low_priority',
+  'abra',
+] as const;
+
+export type VeoModel = (typeof VEO_MODELS)[number];
 
 export interface Project {
   id: string;

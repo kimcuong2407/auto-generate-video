@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { chatCompletion } from '../ai/chatClient';
 import type { ChatEventHandler } from '../ai/chatClient';
 import type { VeoModel } from '../types';
+import { readAppSettings } from '../data/appSettingsStore';
 import { resolveActiveAccount, resolveAccessToken } from './recaptcha';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
@@ -138,8 +139,12 @@ export async function generateSceneVideo(
   const account = await resolveActiveAccount();
   const accessToken = await resolveAccessToken(account);
 
+  // Model global ở /settings/flow đè model lưu trong project/job. Ép tại đây — cửa duy nhất
+  // mọi luồng gen video (product review + livestream) đi qua — nên không luồng nào lọt.
+  const model = readAppSettings().veoModel || opts.model;
+
   const refImages = opts.refImages && opts.refImages.length > 0 ? opts.refImages : undefined;
-  const duration = resolveAllowedDuration(input.duration, opts.model, !!refImages);
+  const duration = resolveAllowedDuration(input.duration, model, !!refImages);
   let prompt = ensureVietnameseVoiceInstruction(input.veoPrompt, input.voiceoverVi);
   prompt = ensureNoSubtitlesInstruction(prompt);
   prompt = appendNegativePrompt(prompt, input.negativePrompt || '');
@@ -154,7 +159,7 @@ export async function generateSceneVideo(
       accessToken,
       prompt,
       aspect: opts.aspect,
-      model: opts.model,
+      model,
       projectId,
       duration,
       refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,

@@ -26,15 +26,8 @@ import type {
   FlowStatusCache,
   VeoModel,
 } from '../../types';
+import { VEO_MODELS } from '../../types';
 import { mariaJson } from './mariaJson';
-
-const VEO_MODELS = [
-  'veo_3_1_quality',
-  'veo_3_1_fast',
-  'veo_3_1_lite',
-  'veo_3_1_lite_low_priority',
-  'abra',
-] as const;
 
 const ASPECT_RATIOS = ['9:16', '16:9'] as const;
 
