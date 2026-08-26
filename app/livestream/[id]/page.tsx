@@ -85,7 +85,7 @@ export default function LivestreamDetailPage() {
       await refresh();
       if (overlongAll.length > 0) {
         setActionError(
-          `Cảnh báo: ${overlongAll.length} đoạn có lời thoại dài hơn thời lượng cho phép — Veo có thể đọc không kịp và cắt cụt câu. Hãy rút gọn hoặc sinh lại: ${overlongAll.join('; ')}`
+          `Cảnh báo: ${overlongAll.length} đoạn vẫn dài hơn thời lượng cho phép sau khi đã tự rút gọn — Veo có thể đọc không kịp và cắt cụt câu. Bấm sinh lại script cho sản phẩm đó nếu cần: ${overlongAll.join('; ')}`
         );
       }
     } catch (err) {

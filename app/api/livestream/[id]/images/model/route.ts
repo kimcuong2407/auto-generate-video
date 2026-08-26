@@ -70,6 +70,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!j.imageR2Urls) j.imageR2Urls = {};
     if (oldModelPath) delete j.imageR2Urls[oldModelPath];
     j.imageR2Urls[relPath] = r2Url;
+    // Stage bible mô tả người dẫn theo ảnh mẫu — đổi ảnh mà giữ bible cũ thì sinh lại script vẫn ra
+    // đúng người (sai giới tính) như trước. Clear để lần sinh script kế tiếp chốt lại theo ảnh mới.
+    j.stageBible = null;
   });
 
   return NextResponse.json({ job: updatedJob });
@@ -92,6 +95,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const { job: updatedJob } = await updateJob(id, (j) => {
     j.selectedModelImagePath = null;
     if (j.imageR2Urls && oldModelPath) delete j.imageR2Urls[oldModelPath];
+    j.stageBible = null; // xem ghi chú ở POST — bible bám theo ảnh mẫu.
   });
 
   return NextResponse.json({ job: updatedJob });

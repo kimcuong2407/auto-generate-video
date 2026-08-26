@@ -1,6 +1,10 @@
 import { readJob, updateJob } from './jobStore';
 import { generateScriptText } from '../googleFlow/flowJobs';
+import { chatCompletion } from '../ai/chatClient';
+import { readImagesAsBase64 } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
+import { ensureLocalImage } from './imageR2';
+import { resolveWithinJob } from './paths';
 import { STAGE_BIBLE_SYSTEM_PROMPT } from './promptDefaults';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 
@@ -36,6 +40,40 @@ export async function ensureStageBible(
   }
 }
 
+/**
+ * Đọc ảnh MẪU/NGƯỜI DẪN (job.selectedModelImagePath) + ảnh background đã chọn để gửi THẲNG cho
+ * model khi chốt stage bible.
+ *
+ * Vì sao cần: trước đây bước này chỉ nhận `visualDescription` — mô tả bằng chữ do vision đọc từ ảnh
+ * SẢN PHẨM, model CHƯA BAO GIỜ nhìn thấy ảnh mẫu nên tự bịa người dẫn (mặc định hay ra "woman" với
+ * hàng mỹ phẩm dù ảnh mẫu là nam). Ảnh mẫu là nguồn sự thật duy nhất về giới tính/ngoại hình người dẫn.
+ *
+ * Best-effort: không có ảnh / đọc lỗi → mảng rỗng, caller vẫn chốt bible bằng text như cũ.
+ */
+async function collectStageRefImages(
+  job: LivestreamJob
+): Promise<{ images: Awaited<ReturnType<typeof readImagesAsBase64>>; legend: string }> {
+  const entries: Array<{ rel: string; label: string }> = [];
+  if (job.selectedModelImagePath) {
+    entries.push({ rel: job.selectedModelImagePath, label: 'ảnh NGƯỜI MẪU/NGƯỜI DẪN' });
+  }
+  if (job.selectedBackgroundImagePath) {
+    entries.push({ rel: job.selectedBackgroundImagePath, label: 'ảnh BỐI CẢNH/BACKGROUND' });
+  }
+  if (entries.length === 0) return { images: [], legend: '' };
+
+  await Promise.all(
+    entries.map((e) => ensureLocalImage(job.id, e.rel, job.imageR2Urls?.[e.rel]).catch(() => {}))
+  );
+  const images = await readImagesAsBase64(entries.map((e) => resolveWithinJob(job.id, e.rel)));
+  // readImagesAsBase64 bỏ ảnh lỗi nên legend đánh số chỉ đúng khi đọc được toàn bộ.
+  const legend =
+    images.length === entries.length
+      ? entries.map((e, i) => `  ${i + 1}. ${e.label}`).join('\n')
+      : entries.map((e) => e.label).join(', ');
+  return { images, legend };
+}
+
 async function generateStageBible(
   job: LivestreamJob,
   visualDescription?: string
@@ -46,9 +84,22 @@ async function generateStageBible(
   const visualBlock = visualDescription
     ? `\n\nMô tả ảnh reference (người mẫu/sản phẩm thật) — mô tả người dẫn phải khớp nếu ảnh có người:\n${visualDescription}`
     : '';
-  const user = `Danh sách sản phẩm sẽ giới thiệu lần lượt trong buổi live này:\n${productList}${visualBlock}`;
+  const refs = await collectStageRefImages(job);
+  const imageBlock =
+    refs.images.length > 0
+      ? `\n\nẢNH THẬT ĐÍNH KÈM (nhìn kỹ trước khi chốt — đây là nguồn sự thật, ưu tiên hơn MỌI mô tả bằng chữ ở trên):\n${refs.legend}\nNếu có ảnh NGƯỜI MẪU: "host" PHẢI tả ĐÚNG người trong ảnh — đúng GIỚI TÍNH (nhìn ảnh để xác định, KHÔNG mặc định theo loại sản phẩm), đúng độ tuổi, kiểu tóc, vóc dáng, trang phục và màu sắc trang phục. "voice" PHẢI khớp giới tính người trong ảnh (ảnh nam → giọng nam, ảnh nữ → giọng nữ). Nếu có ảnh BỐI CẢNH: "scene" phải tả đúng căn phòng/bàn/ánh sáng trong ảnh. TUYỆT ĐỐI KHÔNG bịa khác ảnh.`
+      : '';
+  const user = `Danh sách sản phẩm sẽ giới thiệu lần lượt trong buổi live này:\n${productList}${visualBlock}${imageBlock}`;
 
-  const raw = await generateScriptText(STAGE_BIBLE_SYSTEM_PROMPT, user);
+  // Có ảnh đính kèm thì phải đi qua AI_VISION_MODEL (model chat mặc định không nhìn được ảnh).
+  const visionModel = process.env.AI_VISION_MODEL || '';
+  const raw =
+    refs.images.length > 0 && visionModel
+      ? await chatCompletion(STAGE_BIBLE_SYSTEM_PROMPT, user, {
+          model: visionModel,
+          images: refs.images,
+        })
+      : await generateScriptText(STAGE_BIBLE_SYSTEM_PROMPT, user);
   const parsed = JSON.parse(extractJson(raw)) as Partial<LivestreamStageBible>;
   const required = ['host', 'scene', 'camera', 'voice'] as const;
   for (const key of required) {

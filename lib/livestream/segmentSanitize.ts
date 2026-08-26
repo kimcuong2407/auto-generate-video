@@ -29,16 +29,29 @@ export function computeSegmentDurations(targetDurationSec: number): number[] {
  */
 const MAX_WORDS_PER_SEC = 2.75;
 
-/** Các đoạn có lời thoại dài quá nhịp nói — cảnh báo trên UI, không chặn (video vẫn gen được). */
+/** Đếm từ trong 1 câu tiếng Việt — cụm ký tự ngăn cách bởi khoảng trắng. */
+export function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/** Giới hạn số từ của 1 đoạn theo thời lượng — khớp trần ghi trong buildLivestreamUserPrompt. */
+export function maxWordsFor(durationSec: number): number {
+  return Math.floor(durationSec * MAX_WORDS_PER_SEC);
+}
+
+/**
+ * Các đoạn có lời thoại dài quá nhịp nói. Dùng 2 chỗ: đầu vào cho bước tự rút gọn
+ * (shortenOverlongSegments) và cảnh báo trên UI cho phần còn sót — không chặn, video vẫn gen được.
+ */
 export function findOverlongSegments(
   segments: LivestreamSegment[]
 ): Array<{ id: string; words: number; duration: number; maxWords: number }> {
   return segments
     .map((s) => ({
       id: s.id,
-      words: s.voiceoverVi.trim().split(/\s+/).filter(Boolean).length,
+      words: countWords(s.voiceoverVi),
       duration: s.duration,
-      maxWords: Math.floor(s.duration * MAX_WORDS_PER_SEC),
+      maxWords: maxWordsFor(s.duration),
     }))
     .filter((s) => s.words > s.maxWords);
 }

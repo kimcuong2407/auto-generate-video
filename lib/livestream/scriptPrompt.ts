@@ -1,3 +1,4 @@
+import { maxWordsFor } from './segmentSanitize';
 import type { LivestreamJob } from './types';
 
 
@@ -45,9 +46,10 @@ export function buildLivestreamUserPrompt(
     : '';
   // Ràng buộc SỐ TỪ tường minh cho từng đoạn: chỉ nói "khoảng 2-3 từ/giây" thì LLM luôn viết dư
   // (đo thực tế: 24/24 đoạn ra 3.4-4.0 từ/s), Veo đọc không kịp trong 8s nên cắt cụt câu cuối.
-  // 2.5 từ/s là nhịp nói tiếng Việt tự nhiên; trần cứng đặt ở 2.75 từ/s.
+  // Trần cứng lấy từ maxWordsFor() — đúng ngưỡng findOverlongSegments() dùng để chấm, nếu 2 chỗ
+  // lệch nhau thì LLM viết "đúng" theo prompt vẫn bị chấm là vượt. Mốc lý tưởng đặt dưới trần ~10%.
   const wordBudget = durations
-    .map((d, i) => `  - Đoạn ${i + 1} (${d}s): tối đa ${Math.floor(d * 2.75)} từ (lý tưởng ${Math.round(d * 2.5)} từ)`)
+    .map((d, i) => `  - Đoạn ${i + 1} (${d}s): tối đa ${maxWordsFor(d)} từ (lý tưởng ${Math.round(maxWordsFor(d) * 0.9)} từ)`)
     .join('\n');
   return `${bibleBlock}${positionBlock}Mô tả sản phẩm:\n${description}${visualBlock}\n\nViết đúng ${durations.length} đoạn liên tiếp, thời lượng lần lượt (giây): ${durations.join(
     ', '

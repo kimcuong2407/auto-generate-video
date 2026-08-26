@@ -10,6 +10,7 @@ import {
   findOverlongSegments,
   sanitizeSegments,
 } from '@/lib/livestream/segmentSanitize';
+import { shortenOverlongSegments } from '@/lib/livestream/shortenVoiceover';
 import { recomputeSegmentOrder } from '@/lib/livestream/reorder';
 import { describeProductAppearance } from '@/lib/livestream/productVision';
 import { ensureStageBible, formatStageBibleBlock } from '@/lib/livestream/stageBible';
@@ -84,9 +85,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
       // Sân khấu cố định cấp job (người dẫn/bối cảnh/góc máy/giọng) — chốt 1 lần rồi ép dùng lại
       // cho MỌI sản phẩm, nếu không mỗi lần gọi LLM (1 lần/sản phẩm) sẽ tự bịa 1 buổi live khác.
-      // Sinh lại 1 sản phẩm lẻ vẫn dùng bible đã cache để khớp các sản phẩm đã gen trước đó.
+      // "Sinh script tất cả" (không có productId) = làm lại cả buổi live → chốt LẠI sân khấu theo ảnh
+      // mẫu/background hiện tại; nếu không, bible cache từ lần trước (VD chốt người dẫn nữ khi chưa
+      // có ảnh mẫu) được dùng lại mãi, sinh lại bao nhiêu lần cũng vẫn sai người. Còn sinh 1 sản
+      // phẩm lẻ thì giữ bible cũ để khớp các sản phẩm đã gen trước đó.
       send({ type: 'stage_bible_start' });
-      const bible = await ensureStageBible(id, { visualDescription });
+      const bible = await ensureStageBible(id, { visualDescription, force: !body.productId });
       const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;
       send({ type: 'stage_bible_done', stageBible: bible });
 
@@ -126,7 +130,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           if (!Array.isArray(parsed.segments)) {
             throw new Error('AI không trả về danh sách đoạn hợp lệ');
           }
-          const segments = sanitizeSegments(parsed.segments, durations);
+          const rawSegments = sanitizeSegments(parsed.segments, durations);
+          // Lời thoại dài quá nhịp nói → Veo đọc không kịp, cắt cụt câu cuối. Ép AI viết lại NGAY
+          // tại đây thay vì chỉ cảnh báo rồi bắt người dùng bấm sinh lại (lần sinh lại vẫn hay dư).
+          const segments = await shortenOverlongSegments(rawSegments, (round, remaining) => {
+            send({ type: 'shorten_start', productId: product.id, round, remaining });
+          });
 
           const { result } = await updateJob(id, (j) => {
             const p = j.products.find((x) => x.id === product.id);
@@ -152,8 +161,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             continue;
           }
 
-          // Lời thoại dài quá nhịp nói → Veo đọc không kịp, cắt cụt câu cuối. Chỉ cảnh báo (video
-          // vẫn gen được), người dùng tự rút gọn hoặc bấm sinh lại.
+          // Phần còn sót sau khi đã tự rút gọn (AI lỗi / viết lại vẫn dư) — chỉ cảnh báo, không
+          // chặn: video vẫn gen được, người dùng tự sửa tay hoặc bấm sinh lại.
           const overlong = findOverlongSegments(segments);
           send({ type: 'product_done', productId: product.id, segments, overlong });
         } catch (err) {
