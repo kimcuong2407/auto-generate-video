@@ -17,6 +17,17 @@ export const SCRIPT_ANGLES: ScriptAngle[] = [
       'Cấu trúc cảnh gợi ý: (1) cảnh mở hộp là cảnh đầu tiên bắt buộc, không bỏ qua; (2) 1-2 cảnh khám phá cận cảnh phụ kiện/chất liệu; (3) 1-2 cảnh thử dùng nhanh để cho thấy sản phẩm hoạt động; (4) CTA kết. Không cần cảnh "vấn đề/nỗi đau" mở đầu — người xem đã tò mò sẵn vì thấy hộp.',
   },
   {
+    id: 'clickbait-shock',
+    title: 'Hook giật gân: "Lừa rồi! Làm gì có hàng rẻ thế này"',
+    description:
+      'Cảnh đầu la lên kiểu vạch trần ("Lừa rồi lừa rồi... làm gì có hàng rẻ thế này!"), sau đó lật ngược lại chứng minh hàng thật giá thật. Giọng đọc nhanh, dồn dập, giữ chân người xem 3 giây đầu. Hợp sản phẩm giá tốt, đang chạy khuyến mãi.',
+    aiGuidance:
+      'Viết theo góc Hook giật gân (clickbait lật ngược): cảnh ĐẦU TIÊN bắt buộc là một câu la lên đầy hoài nghi/bức xúc như đang vạch trần lừa đảo, nói ngay trong 1-2 giây đầu, KHÔNG chào hỏi, KHÔNG giới thiệu tên, KHÔNG mở hộp. Mẫu tham khảo (viết lại cho hợp sản phẩm, không chép nguyên si): "Lừa rồi lừa rồi... làm gì có hàng rẻ thế này!", "Thôi xong, mua hớ rồi!", "Giá này là bán phá giá chứ review gì nữa!". ' +
+      'Cấu trúc cảnh gợi ý: (1) cảnh hook la lên hoài nghi/tố giá rẻ bất thường — cảnh ngắn 3-5 giây, cận mặt hoặc cận sản phẩm, năng lượng cao nhất video; (2) 1 cảnh "soi hàng" kiểm chứng ngay tại chỗ (lật, bóp, cạo, thử...) để xem có phải hàng dỏm không; (3) 1-2 cảnh LẬT NGƯỢC — thừa nhận hàng thật, chỉ ra bằng chứng chất lượng cụ thể, cảm xúc chuyển từ nghi ngờ sang bất ngờ/thích thú; (4) CTA kết chốt đơn gấp, nhấn "giá này không giữ lâu". ' +
+      'BẮT BUỘC về giọng đọc — khi chốt "chất giọng cố định" ở Bước 1.c và nhúng vào phần Dialogue của MỌI veoPrompt, phải mô tả đúng kiểu: giọng nói rất nhanh, dồn dập, cao và vang, năng lượng cao như đang livestream chốt đơn, nhấn mạnh từng từ ở cảnh hook rồi giữ nhịp nhanh xuyên suốt. Trong veoPrompt dùng các cụm tiếng Anh như "speaks very fast, rapid-fire delivery, high-energy, loud excited tone, urgent street-vendor livestream energy, rising intonation" đặt ngay trước câu thoại theo đúng cú pháp colon đã quy định. Giữ nguyên văn mô tả giọng này ở tất cả các cảnh. ' +
+      'Vì nói nhanh nên voiceoverVi được phép dài hơn mức thường: ước lượng khoảng 4-5 từ/giây thay vì 2-3 từ/giây. Câu thoại ngắn, cụt, nhiều dấu chấm than, dùng khẩu ngữ đời thường như đang nói với bạn.',
+  },
+  {
     id: 'problem-solution',
     title: 'Problem → Solution',
     description:
