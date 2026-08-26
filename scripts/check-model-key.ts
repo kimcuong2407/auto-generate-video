@@ -43,7 +43,7 @@ for (const k of cands) {
 }
 
 // 7. r2v giữ nguyên quy tắc ép tier lite đã biết.
-assert.equal(resolveVideoModelKey('veo_3_1_fast', 'r2v', 8, false), 'veo_3_1_r2v_lite');
+assert.equal(resolveVideoModelKey('veo_3_1_fast', 'r2v', 8, false), 'veo_3_1_r2v_lite_low_priority');
 
 // 8. Duration: khi hoà (7s cách đều 6 và 8) phải chọn 8, KHÔNG chọn 6.
 // veo_3_1_*_6s trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED (thực nghiệm 2026-08-25).
@@ -63,20 +63,47 @@ assert.equal(resolveAllowedDuration(4, 'veo_3_1_lite', true), 8);
 for (const model of ['veo_3_1_quality', 'veo_3_1_fast', 'veo_3_1_lite', 'veo_3_1_lite_low_priority'] as const) {
   assert.strictEqual(
     resolveVideoModelKey(model, 'r2v', 8, false),
-    'veo_3_1_r2v_lite',
-    `r2v phải ép về tier lite (model ${model})`
+    'veo_3_1_r2v_lite_low_priority',
+    `r2v phải ép về tier lite_low_priority (model ${model})`
   );
 }
 
+// Mode KHÁC r2v không được ăn theo tier ép của r2v — t2v/i2v vẫn theo model người dùng chọn.
+assert.strictEqual(
+  resolveVideoModelKey('veo_3_1_fast', 't2v', 8, false),
+  'veo_3_1_t2v_fast',
+  't2v giữ nguyên tier người dùng chọn, không bị r2v kéo theo'
+);
+assert.strictEqual(
+  resolveVideoModelKey('veo_3_1_quality', 'i2v_s', 8, false),
+  'veo_3_1_i2v_s_quality',
+  'i2v_s giữ nguyên tier người dùng chọn'
+);
+
+// Hậu tố thời lượng vẫn đúng khi đã đổi tier (8s bỏ hậu tố, khác 8s thì thêm).
+assert.strictEqual(
+  resolveVideoModelKey('veo_3_1_fast', 'r2v', 6, false),
+  'veo_3_1_r2v_lite_low_priority_6s',
+  'r2v 6s phải kèm hậu tố _6s sau tier'
+);
+
 // Biến thể key sinh ra cho r2v: KHÔNG được chứa _low_priority (403 sẽ giết cả lần gen, khác 404
 // ở chỗ không được thử tiếp) — xem ghi chú trong modelKeyCandidates.
-const r2vCandidates = modelKeyCandidates('veo_3_1_r2v_lite');
+// modelKeyCandidates KHÔNG được TỰ THÊM biến thể _low_priority vào key chưa có nó: 403 khác 404
+// ở chỗ không được thử tiếp, một ứng viên 403 lọt vào là giết cả lần gen. (Key r2v nay đã mang
+// sẵn _low_priority từ resolveVideoModelKey — đó là lựa chọn tường minh, không phải tự sinh.)
+const liteCandidates = modelKeyCandidates('veo_3_1_i2v_s_lite');
 assert.ok(
-  r2vCandidates.every((k) => !k.includes('low_priority')),
-  'không được sinh biến thể _low_priority (403 PERMISSION_DENIED giết cả lần gen)'
+  liteCandidates.every((k) => !k.includes('low_priority')),
+  'không được TỰ SINH biến thể _low_priority (403 PERMISSION_DENIED giết cả lần gen)'
 );
-assert.ok(r2vCandidates.includes('veo_3_1_r2v_lite'), 'key gốc luôn được thử đầu tiên');
-assert.strictEqual(r2vCandidates[0], 'veo_3_1_r2v_lite', 'key gốc phải đứng đầu danh sách thử');
+
+const r2vCandidates = modelKeyCandidates('veo_3_1_r2v_lite_low_priority');
+assert.strictEqual(
+  r2vCandidates[0],
+  'veo_3_1_r2v_lite_low_priority',
+  'key gốc phải đứng đầu danh sách thử'
+);
 assert.strictEqual(
   new Set(r2vCandidates).size,
   r2vCandidates.length,

@@ -46,6 +46,15 @@ function durationSuffix(duration: number): string {
 }
 
 /**
+ * Dùng tier `lite_low_priority` cho mode r2v (thay vì `lite` thường).
+ *
+ * Đổi về false nếu Google thu lại quyền tier này (403 PUBLIC_ERROR_MODEL_ACCESS_DENIED) — 403
+ * không được thử biến thể khác nên sẽ giết cả lần gen, phải sửa tay tại đây.
+ * Đặt env FLOW_R2V_LOW_PRIORITY=false để tắt nhanh trên production mà không cần deploy.
+ */
+const R2V_USE_LOW_PRIORITY = (process.env.FLOW_R2V_LOW_PRIORITY ?? 'true').toLowerCase() !== 'false';
+
+/**
  * Dựng videoModelKey (best-effort, reverse-engineered — xem GoogleFlow.postman_collection.json).
  * - core tier: quality/fast/lite/lite_low_priority/abra.
  * - mode infix: t2v (text), i2v_s (start image), i2v_se (start+end, thêm _fl), r2v (reference),
@@ -67,13 +76,23 @@ export function resolveVideoModelKey(
     return `abra_${mode}${durationSuffix(duration)}${useFl ? '_fl' : ''}`;
   }
 
-  // Mode reference-to-video (r2v — @Characters/ảnh người mẫu) của Veo 3.1 CHỈ có tier `lite`.
-  // Các tier khác (fast/quality/*_low_priority) không tồn tại → Google trả 404 NOT_FOUND
-  // (fast/quality) hoặc 403 PERMISSION_DENIED (lite_low_priority). Kiểm chứng thực nghiệm:
-  // chỉ `veo_3_1_r2v_lite` được chấp nhận. Ép tier về lite cho r2v bất kể model job chọn,
-  // để dùng ảnh spokesperson làm character reference cho đoạn đầu (không có start frame).
+  // Mode reference-to-video (r2v — @Characters/ảnh người mẫu) của Veo 3.1 KHÔNG có tier
+  // fast/quality (Google trả 404 NOT_FOUND), nên tier luôn bị ép về lite bất kể model job chọn.
+  //
+  // Dùng `_low_priority`: XÁC MINH THỰC NGHIỆM 2026-08-26 — gen thật qua production, Google chấp
+  // nhận `veo_3_1_r2v_lite_low_priority` và render xong bình thường. Ghi chú cũ (2026-08-25) nói
+  // tier này trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED đã KHÔNG còn đúng: quyền tài khoản đổi theo
+  // thời gian, nên đây là điều cần đo lại chứ không phải hằng số.
+  //
+  // Vì sao chọn low_priority: nó tiêu tốn quota chậm hơn tier lite thường — với job livestream
+  // hàng chục đoạn thì đây là khác biệt giữa chạy hết block và cụt giữa chừng vì hết quota.
+  // Đánh đổi: hàng đợi ưu tiên thấp nên thời gian chờ render có thể lâu hơn.
+  //
+  // Nếu Google thu lại quyền (403 trở lại), đổi cờ này về false là quay lại hành vi cũ ngay;
+  // 403 KHÔNG được fallback tự động (xem modelKeyCandidates) nên phải sửa ở đây.
   if (mode === 'r2v') {
-    return `veo_3_1_r2v_lite${durationSuffix(duration)}`;
+    const tier = R2V_USE_LOW_PRIORITY ? 'lite_low_priority' : 'lite';
+    return `veo_3_1_r2v_${tier}${durationSuffix(duration)}`;
   }
 
   const { base, suffix } = coreParts(model);
