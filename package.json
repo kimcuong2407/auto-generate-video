@@ -20,7 +20,8 @@
     "check:extension": "node scripts/check-poller-staleness.mjs && node scripts/check-content-handoff.mjs",
     "check:global-veo-model": "tsx scripts/check-global-veo-model.ts",
     "check:prompt-ref-images": "tsx scripts/check-prompt-ref-images.ts",
-    "check:voiceover-length": "tsx scripts/check-voiceover-length.ts"
+    "check:voiceover-length": "tsx scripts/check-voiceover-length.ts",
+    "check:stage-bible-stale": "tsx scripts/check-stage-bible-stale.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

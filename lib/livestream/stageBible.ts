@@ -9,6 +9,21 @@ import { STAGE_BIBLE_SYSTEM_PROMPT } from './promptDefaults';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 
 /**
+ * Bible đã chốt có còn khớp ảnh mẫu hiện tại của job hay không. Lệch = bible đang tả sai người dẫn
+ * (VD chốt "woman" khi chưa có ảnh mẫu, sau đó Mr.D mới upload ảnh người dẫn nam) → phải chốt lại.
+ *
+ * Bible do bản code cũ chốt không có `modelImagePath` (undefined). Coi undefined là "chốt khi chưa
+ * có ảnh mẫu" (null): job đang có ảnh mẫu thì tính là lệch → chốt lại 1 lần rồi ghi dấu vết; job
+ * không có ảnh mẫu thì khớp → giữ nguyên bible, không gọi AI vô ích.
+ */
+export function isStageBibleStale(
+  job: Pick<LivestreamJob, 'stageBible' | 'selectedModelImagePath'>
+): boolean {
+  if (!job.stageBible) return false;
+  return (job.stageBible.modelImagePath ?? null) !== (job.selectedModelImagePath ?? null);
+}
+
+/**
  * Lấy (hoặc sinh lần đầu rồi cache vào job) "stage bible" — mô tả CỐ ĐỊNH người dẫn/bối cảnh/
  * góc máy/giọng dùng chung cho MỌI sản phẩm trong job.
  *
@@ -18,15 +33,19 @@ import type { LivestreamJob, LivestreamStageBible } from './types';
  * cách rẻ nhất để mọi sản phẩm dùng chung 1 sân khấu.
  *
  * Cache trong job.stageBible: sinh lại script cho từng sản phẩm vẫn dùng đúng bible cũ (nếu không
- * thì gen lại 1 sản phẩm sẽ lệch khỏi các sản phẩm đã gen trước đó). Muốn đổi sân khấu → xoá bible
- * (force = true).
+ * thì gen lại 1 sản phẩm sẽ lệch khỏi các sản phẩm đã gen trước đó). Muốn đổi sân khấu → force.
+ *
+ * NGOẠI LỆ tự động: bible chốt từ ảnh mẫu KHÁC ảnh mẫu hiện tại thì nó đang tả sai người dẫn —
+ * chốt lại ngay dù caller không force. Không có ngoại lệ này thì job đã sinh script xong bị kẹt
+ * vĩnh viễn với người dẫn sai: mọi sản phẩm đều scriptStatus='done' nên "Sinh script tất cả" không
+ * còn target nào để chạy, mà sinh lại từng sản phẩm lẻ thì theo thiết kế vẫn giữ bible cũ.
  */
 export async function ensureStageBible(
   jobId: string,
   opts: { force?: boolean; visualDescription?: string } = {}
 ): Promise<LivestreamStageBible | null> {
   const job = await readJob(jobId);
-  if (!opts.force && job.stageBible) return job.stageBible;
+  if (!opts.force && job.stageBible && !isStageBibleStale(job)) return job.stageBible;
 
   try {
     const bible = await generateStageBible(job, opts.visualDescription);
@@ -111,6 +130,8 @@ async function generateStageBible(
     camera: parsed.camera!.trim(),
     voice: parsed.voice!.trim(),
     wardrobeLock: parsed.wardrobeLock?.trim() || '',
+    // Dấu vết ảnh mẫu đã dùng — lần sau đổi ảnh là biết bible cũ tả sai người, tự chốt lại.
+    modelImagePath: job.selectedModelImagePath ?? null,
   };
 }
 

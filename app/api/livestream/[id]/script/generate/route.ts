@@ -85,12 +85,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
       // Sân khấu cố định cấp job (người dẫn/bối cảnh/góc máy/giọng) — chốt 1 lần rồi ép dùng lại
       // cho MỌI sản phẩm, nếu không mỗi lần gọi LLM (1 lần/sản phẩm) sẽ tự bịa 1 buổi live khác.
-      // "Sinh script tất cả" (không có productId) = làm lại cả buổi live → chốt LẠI sân khấu theo ảnh
-      // mẫu/background hiện tại; nếu không, bible cache từ lần trước (VD chốt người dẫn nữ khi chưa
-      // có ảnh mẫu) được dùng lại mãi, sinh lại bao nhiêu lần cũng vẫn sai người. Còn sinh 1 sản
-      // phẩm lẻ thì giữ bible cũ để khớp các sản phẩm đã gen trước đó.
+      // Sinh lại 1 sản phẩm lẻ vẫn dùng bible đã cache để khớp các sản phẩm đã gen trước đó —
+      // TRỪ khi bible chốt từ ảnh mẫu cũ (ensureStageBible tự phát hiện và chốt lại, xem ở đó).
       send({ type: 'stage_bible_start' });
-      const bible = await ensureStageBible(id, { visualDescription, force: !body.productId });
+      const bible = await ensureStageBible(id, { visualDescription });
       const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;
       send({ type: 'stage_bible_done', stageBible: bible });
 

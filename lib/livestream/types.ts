@@ -71,6 +71,13 @@ export interface LivestreamStageBible {
   camera: string;
   voice: string;
   wardrobeLock: string;
+  /**
+   * Ảnh mẫu (selectedModelImagePath) đã dùng để chốt bible này — dấu vết để biết bible còn khớp
+   * input hay không. Ảnh mẫu hiện tại khác giá trị này (VD chốt khi chưa có ảnh, sau đó mới upload
+   * ảnh người dẫn nam) → bible tả sai người, phải chốt lại; xem ensureStageBible().
+   * undefined = bible chốt bởi bản code cũ (chưa ghi dấu vết) → coi như không khớp, chốt lại 1 lần.
+   */
+  modelImagePath?: string | null;
 }
 
 export interface LivestreamJob {
