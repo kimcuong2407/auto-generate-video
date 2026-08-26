@@ -7,6 +7,7 @@ import { findPreviousSegment, pickRefImagePaths } from './refImages';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError, isQuotaError } from '../googleFlow/errors';
+import { MAX_SEGMENT_AUTO_RETRIES } from '../constants';
 import { deleteFromR2 } from '../r2/client';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
 
@@ -81,9 +82,31 @@ export async function triggerSegmentGeneration(
       !!findPreviousSegment(job, found.product, segment)?.lastFramePath;
     const refCandidates = pickRefImagePaths(job, hasPrevFrame);
     const refPathList: string[] = [];
+    const missingRefs: string[] = [];
     for (const relPath of refCandidates) {
       await ensureLocalImage(jobId, relPath, job.imageR2Urls?.[relPath]);
-      refPathList.push(relPath);
+      // ensureLocalImage im lặng khi không khôi phục được (mất local VÀ không có bản R2). Không
+      // kiểm tra ở đây thì lỗi nổ muộn thành ENOENT lúc upload lên Flow — thông điệp vô nghĩa với
+      // người dùng, và auto-retry sẽ lặp lại mãi vì đây là lỗi VĨNH VIỄN (file không tự quay về).
+      try {
+        await fs.access(resolveWithinJob(jobId, relPath));
+        refPathList.push(relPath);
+      } catch {
+        missingRefs.push(relPath);
+      }
+    }
+    if (missingRefs.length > 0) {
+      const message = `Ảnh tham chiếu không còn tồn tại (mất file local và không có bản R2 để khôi phục): ${missingRefs.join(', ')}. Hãy tải lại ảnh cho job này.`;
+      await updateJob(jobId, (j) => {
+        const f = findSegment(j, segmentId);
+        if (!f) return;
+        f.segment.status = 'failed';
+        f.segment.error = message;
+        // Đốt hết trần retry: file mất là lỗi vĩnh viễn, thử lại mỗi vòng poll chỉ ngập log.
+        f.segment.attempts = MAX_SEGMENT_AUTO_RETRIES;
+        f.segment.lastUpdatedAt = new Date().toISOString();
+      });
+      return { segmentId, ok: false, error: message };
     }
     // refImages dùng mediaId đã cache (job.flowMediaIds) nếu có — tránh upload lại lên Flow.
     // relPathByAbsPath dùng để map ngược uploadedMediaIds (keyed theo abs path) → relPath khi lưu cache.

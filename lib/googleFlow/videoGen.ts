@@ -254,7 +254,13 @@ function modelKeyCandidates(baseKey: string): string[] {
  * Gọi endpoint gen video, tự thử các biến thể videoModelKey khi gặp 404.
  *
  * Trả về Response đầu tiên không-404. Nếu mọi biến thể đều 404 thì trả Response 404 CUỐI CÙNG
- * để readJson ném lỗi như bình thường (giữ nguyên hành vi lỗi cũ, không nuốt lỗi).
+ * để readJson ném lỗi như bình thường (giữ nguyên hành vi lỗi cũ, không nuốt lỗi) — caller
+ * (generateSceneVideo) bắt 404 đó qua isEntityNotFound và tạo lại Flow project.
+ *
+ * CẢNH GIÁC KHI ĐỌC LOG: 404 ở đây có HAI nguyên nhân hoàn toàn khác nhau, cùng một mã lỗi —
+ * (a) videoModelKey không tồn tại thật, (b) Flow PROJECT đã bị Google xoá/hết hạn (mọi key đều
+ * 404). Phân biệt bằng chính danh sách này: chỉ MỘT vài biến thể 404 → nghi key; TOÀN BỘ biến
+ * thể đều 404 → gần như chắc chắn là project hết hạn, không phải key. Xem log tổng kết bên dưới.
  */
 async function requestWithModelKeyFallback(
   endpoint: string,
@@ -286,9 +292,18 @@ async function requestWithModelKeyFallback(
       }
       return res;
     }
-    console.warn('[videoGen] mode=%s: videoModelKey "%s" trả 404 (key không tồn tại?)', mode, key);
+    console.warn('[videoGen] mode=%s: videoModelKey "%s" trả 404', mode, key);
     lastRes = res;
   }
+  // Mọi biến thể đều 404 → nhiều khả năng KHÔNG phải do tên key (nếu key sai thì các biến thể có
+  // dạng hậu tố khác nhau khó cùng sai), mà do Flow project đã hết hạn. Nói rõ để người đọc log
+  // không đi sửa nhầm bảng key — caller sẽ tự tạo project mới và chạy lại.
+  console.warn(
+    '[videoGen] mode=%s: TẤT CẢ %d biến thể key đều 404 (%s) — thường là Flow project đã hết hạn, không phải key sai. Caller sẽ tạo project mới và thử lại.',
+    mode,
+    candidates.length,
+    candidates.join(', ')
+  );
   return lastRes!;
 }
 

@@ -54,4 +54,33 @@ assert.equal(resolveAllowedDuration(5, 'veo_3_1_lite', false), 6);
 // Có ref images → luôn ép 8s bất kể yêu cầu.
 assert.equal(resolveAllowedDuration(4, 'veo_3_1_lite', true), 8);
 
-console.log('OK — model key + duration: 11/11 checks passed');
+
+// ---------------------------------------------------------------
+// r2v: tier LUÔN bị ép về lite bất kể model người dùng chọn.
+// Veo 3.1 chỉ có r2v ở tier lite — fast/quality trả 404, lite_low_priority trả 403.
+// Đây là lý do "job chọn fast nhưng thực tế chạy lite": có ảnh ref là vào nhánh này.
+// ---------------------------------------------------------------
+for (const model of ['veo_3_1_quality', 'veo_3_1_fast', 'veo_3_1_lite', 'veo_3_1_lite_low_priority'] as const) {
+  assert.strictEqual(
+    resolveVideoModelKey(model, 'r2v', 8, false),
+    'veo_3_1_r2v_lite',
+    `r2v phải ép về tier lite (model ${model})`
+  );
+}
+
+// Biến thể key sinh ra cho r2v: KHÔNG được chứa _low_priority (403 sẽ giết cả lần gen, khác 404
+// ở chỗ không được thử tiếp) — xem ghi chú trong modelKeyCandidates.
+const r2vCandidates = modelKeyCandidates('veo_3_1_r2v_lite');
+assert.ok(
+  r2vCandidates.every((k) => !k.includes('low_priority')),
+  'không được sinh biến thể _low_priority (403 PERMISSION_DENIED giết cả lần gen)'
+);
+assert.ok(r2vCandidates.includes('veo_3_1_r2v_lite'), 'key gốc luôn được thử đầu tiên');
+assert.strictEqual(r2vCandidates[0], 'veo_3_1_r2v_lite', 'key gốc phải đứng đầu danh sách thử');
+assert.strictEqual(
+  new Set(r2vCandidates).size,
+  r2vCandidates.length,
+  'không được thử trùng key (tốn 1 request thừa mỗi lần)'
+);
+
+console.log('OK — model key + duration + r2v tier lock: tất cả assert pass');
