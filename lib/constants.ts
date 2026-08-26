@@ -18,6 +18,13 @@ export const FLOW_JOB_TIMEOUT_MS = Number(process.env.FLOW_JOB_TIMEOUT_MS || 15 
  */
 export const MAX_SEGMENT_AUTO_RETRIES = 3;
 
+/**
+ * Khoảng lùi tối thiểu trước khi tự thử lại 1 đoạn vừa lỗi (ms). Poller chạy mỗi
+ * FLOW_POLL_INTERVAL_MS (15s) — không có backoff thì đoạn lỗi vì hết quota Veo sẽ bị đập lại 240
+ * lần/giờ, đốt log và dập vào API Google suốt thời gian chờ quota reset.
+ */
+export const SEGMENT_RETRY_BACKOFF_MS = Number(process.env.SEGMENT_RETRY_BACKOFF_MS || 5 * 60 * 1000);
+
 
 // Chu kỳ background poller quét các job có segment 'generating' và đồng bộ với Google Flow —
 // không phụ thuộc tab UI mở. Đủ thưa để không spam Flow, đủ dày để bắt 'done' sớm.

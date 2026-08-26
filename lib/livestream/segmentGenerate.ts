@@ -6,7 +6,7 @@ import { ensureLocalImage } from './imageR2';
 import { findPreviousSegment, pickRefImagePaths } from './refImages';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
-import { FlowApiError } from '../googleFlow/errors';
+import { FlowApiError, isQuotaError } from '../googleFlow/errors';
 import { deleteFromR2 } from '../r2/client';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
 
@@ -18,6 +18,8 @@ export interface TriggerResult {
   ok: boolean;
   jobId?: string;
   error?: string;
+  /** true = thất bại vì HẾT QUOTA Veo phía Google, không phải lỗi tạm thời (xem isQuotaError). */
+  quotaExceeded?: boolean;
 }
 
 interface FoundSegment {
@@ -164,14 +166,20 @@ export async function triggerSegmentGeneration(
     return { segmentId, ok: true, jobId: job_id };
   } catch (err) {
     const message = err instanceof FlowApiError ? err.message : (err as Error).message;
+    const quota = isQuotaError(err);
     await updateJob(jobId, (j) => {
       const f = findSegment(j, segmentId);
       if (!f) return;
       f.segment.status = 'failed';
       f.segment.error = message;
+      // Tăng attempts cả khi trigger THẤT BẠI (trước đây chỉ tăng lúc thành công): trần retry của
+      // cascade đếm theo attempts, không tăng ở đây thì lỗi lặp lại mãi mà counter đứng yên → tự
+      // động thử lại vô hạn. Trừ lỗi hết quota: nó không phải "đã dùng 1 lượt thử", quota reset là
+      // chạy lại được, đốt hết trần vào đây thì mất luôn quyền tự retry về sau.
+      if (!quota) f.segment.attempts += 1;
       f.segment.lastUpdatedAt = new Date().toISOString();
     });
-    return { segmentId, ok: false, error: message };
+    return { segmentId, ok: false, error: message, quotaExceeded: quota };
   }
 }
 

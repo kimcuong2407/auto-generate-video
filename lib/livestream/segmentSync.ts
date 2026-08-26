@@ -16,7 +16,11 @@ import { triggerSegmentGeneration, findNextSegment, findPreviousSegment } from '
 import { extractLastFrame } from '../ffmpeg/frame';
 import { jobSegmentsDir, jobFramesDir, resolveWithinJob } from './paths';
 import { uploadFileToR2 } from '../r2/client';
-import { FLOW_JOB_TIMEOUT_MS, MAX_SEGMENT_AUTO_RETRIES } from '../constants';
+import {
+  FLOW_JOB_TIMEOUT_MS,
+  MAX_SEGMENT_AUTO_RETRIES,
+  SEGMENT_RETRY_BACKOFF_MS,
+} from '../constants';
 import type { LivestreamSegment } from './types';
 
 export interface SyncResult {
@@ -181,10 +185,16 @@ export async function syncSegmentManually(jobId: string, segmentId: string): Pro
  *
  * Trần theo `attempts` (tăng mỗi lần trigger) để lỗi THẬT không quay vòng vô hạn đốt quota Veo.
  */
-export function shouldAutoTrigger(segment: LivestreamSegment): boolean {
+export function shouldAutoTrigger(segment: LivestreamSegment, now = Date.now()): boolean {
   if (!segment.veoPrompt.trim()) return false;
   if (segment.status === 'idle') return true;
-  return segment.status === 'failed' && segment.attempts < MAX_SEGMENT_AUTO_RETRIES;
+  if (segment.status !== 'failed') return false;
+  if (segment.attempts >= MAX_SEGMENT_AUTO_RETRIES) return false;
+  // Lùi lại trước khi thử lại: poller chạy mỗi 15s, thử lại ngay thì đoạn lỗi vì hết quota Veo bị
+  // đập 240 lần/giờ. Lỗi hết quota không tăng attempts (xem triggerSegmentGeneration) nên backoff
+  // theo thời gian là thứ DUY NHẤT chặn vòng lặp đó.
+  const lastAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
+  return now - lastAt >= SEGMENT_RETRY_BACKOFF_MS;
 }
 
 export async function runChainingForJustDone(
@@ -225,7 +235,13 @@ export async function runChainingForJustDone(
     const nextSegment = findNextSegment(job, product, segment);
     if (nextSegment && shouldAutoTrigger(nextSegment)) {
       try {
-        await triggerSegmentGeneration(jobId, nextSegment.id, { requireFailed: false });
+        const res = await triggerSegmentGeneration(jobId, nextSegment.id, { requireFailed: false });
+        // Hết quota Veo → dừng cascade cả vòng này: các đoạn sau chắc chắn cũng 429, thử tiếp chỉ
+        // đập vào API vô ích. Đoạn vẫn ở 'failed' nên vòng poll sau (khi quota đã reset) tự chạy lại.
+        if (res.quotaExceeded) {
+          console.warn(`[livestream chaining] job ${jobId}: hết quota Veo, tạm dừng cascade`);
+          return;
+        }
       } catch (err) {
         console.error(`[livestream chaining] trigger đoạn kế ${nextSegment.id} thất bại:`, err);
       }
@@ -271,7 +287,12 @@ export async function resumeStalledJob(jobId: string): Promise<string | null> {
   try {
     const res = await triggerSegmentGeneration(jobId, candidate.segment.id, { requireFailed: false });
     if (!res.ok) {
-      console.error(`[livestream resume] trigger lại ${candidate.segment.id} thất bại: ${res.error}`);
+      // Hết quota là trạng thái chờ, không phải hỏng — log gọn để khỏi ngập log mỗi vòng poll.
+      if (res.quotaExceeded) {
+        console.warn(`[livestream resume] job ${jobId}: hết quota Veo, chờ quota reset rồi tự chạy tiếp`);
+      } else {
+        console.error(`[livestream resume] trigger lại ${candidate.segment.id} thất bại: ${res.error}`);
+      }
       return null;
     }
     console.log(`[livestream resume] nối lại dây chuyền job ${jobId} từ đoạn ${candidate.segment.id}`);
