@@ -3,11 +3,15 @@ import path from 'node:path';
 import { readJob, updateJob, ensureJobFlowId, ensureJobVideoSeed } from './jobStore';
 import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
+import { findPreviousSegment, pickRefImagePaths } from './refImages';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError } from '../googleFlow/errors';
 import { deleteFromR2 } from '../r2/client';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
+
+// Re-export: 2 hàm thuần nay ở refImages.ts (client dùng chung), giữ đường import cũ cho caller.
+export { findPreviousSegment, findNextSegment } from './refImages';
 
 export interface TriggerResult {
   segmentId: string;
@@ -29,47 +33,6 @@ function findSegment(job: LivestreamJob, segmentId: string): FoundSegment | null
   return null;
 }
 
-/**
- * Tìm đoạn liền trước theo `order` tuyệt đối, dùng làm nguồn khung hình chain
- * (image-to-video). 'off' không chain, 'per_product' chỉ chain trong cùng sản phẩm,
- * 'continuous' chain xuyên suốt toàn bộ job kể cả giữa các sản phẩm khác nhau.
- */
-export function findPreviousSegment(
-  job: LivestreamJob,
-  product: LivestreamProduct,
-  segment: LivestreamSegment
-): LivestreamSegment | null {
-  if (job.chaining === 'off') return null;
-  if (job.chaining === 'per_product') {
-    return product.segments.find((s) => s.order === segment.order - 1) || null;
-  }
-  for (const p of job.products) {
-    const found = p.segments.find((s) => s.order === segment.order - 1);
-    if (found) return found;
-  }
-  return null;
-}
-
-/**
- * Tìm đoạn kế tiếp theo `order` tuyệt đối — dùng để auto-cascade trigger sau khi 1 đoạn
- * vừa done (xem app/api/livestream/[id]/status/route.ts). Đối xứng với findPreviousSegment.
- */
-export function findNextSegment(
-  job: LivestreamJob,
-  product: LivestreamProduct,
-  segment: LivestreamSegment
-): LivestreamSegment | null {
-  if (job.chaining === 'per_product') {
-    return product.segments.find((s) => s.order === segment.order + 1) || null;
-  }
-  for (const p of job.products) {
-    const found = p.segments.find((s) => s.order === segment.order + 1);
-    if (found) return found;
-  }
-  return null;
-}
-
-/** Trigger gen video cho 1 đoạn: validate trạng thái, gọi flow_generate_video, cập nhật job.json. */
 export async function triggerSegmentGeneration(
   jobId: string,
   segmentId: string,
@@ -109,20 +72,12 @@ export async function triggerSegmentGeneration(
   try {
     // Ref (r2v) luôn ưu tiên hơn i2v chaining thuần (startPath) để giữ sản phẩm/nhân vật nhất
     // quán xuyên suốt — chỉ dùng startPath (endpoint StartImage) khi hoàn toàn không có ref nào
-    // khác. Veo reference-to-video chỉ nhận TỐI ĐA 3 ảnh reference (vượt → Flow trả
-    // INVALID_ARGUMENT), nên ưu tiên: ảnh sản phẩm (1..N) → ảnh mẫu (người dẫn) → ảnh background,
-    // cắt bớt tới khi đủ 3 — chừa 1 chỗ cho frame cuối đoạn liền trước nếu có (chaining).
-    // Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc
-    // file local để làm refPaths. No-op nếu file đã có / không có bản R2.
-    const MAX_REF_IMAGES = 3;
+    // khác. Tải lại ảnh ref từ R2 về local nếu file local mất (server mới sau deploy) — Google
+    // Flow đọc file local để làm refPaths. No-op nếu file đã có / không có bản R2.
     const hasPrevFrame =
       findPreviousSegment(job, found.product, segment)?.status === 'done' &&
       !!findPreviousSegment(job, found.product, segment)?.lastFramePath;
-    const refCandidates = [
-      ...(job.selectedRefImagePaths ?? []),
-      ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
-      ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
-    ].slice(0, hasPrevFrame ? MAX_REF_IMAGES - 1 : MAX_REF_IMAGES);
+    const refCandidates = pickRefImagePaths(job, hasPrevFrame);
     const refPathList: string[] = [];
     for (const relPath of refCandidates) {
       await ensureLocalImage(jobId, relPath, job.imageR2Urls?.[relPath]);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { findPreviousSegment, pickRefImagePaths } from '@/lib/livestream/refImages';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from '@/lib/livestream/types';
 
 function segmentStatusClass(status: LivestreamSegment['status']): string {
@@ -297,11 +298,11 @@ export function ProductPanel({
       {detailsSegmentId && (() => {
         const segment = product.segments.find((s) => s.id === detailsSegmentId);
         if (!segment) return null;
-        const refPaths = [
-          ...(job.selectedRefImagePaths ?? []),
-          ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
-          ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
-        ];
+        // Dùng chung pickRefImagePaths với server để hiển thị ĐÚNG những ảnh Veo thực sự nhận
+        // (tối đa 3). Đoạn có chain frame trước thì 1 suất dành cho frame đó, còn 2 cho ảnh.
+        const prev = findPreviousSegment(job, product, segment);
+        const hasPrevFrame = prev?.status === 'done' && !!prev.lastFramePath;
+        const refPaths = pickRefImagePaths(job, hasPrevFrame);
         return (
           <div className="media-modal-overlay" onClick={() => setDetailsSegmentId(null)}>
             <div
