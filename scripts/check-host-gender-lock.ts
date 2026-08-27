@@ -48,6 +48,25 @@ assert.ok(block.startsWith('⛔ NGƯỜI DẪN CỦA BUỔI LIVE NÀY LÀ NỮ')
 assert.ok(block.includes('KHÔNG viết người dẫn nam'), 'bible nữ phải cấm viết nam');
 assert.ok(block.includes('Dùng đại từ "cô"'), 'bible nữ phải chỉ định đại từ "cô"');
 
+// --- BẪY "Việt Nam": chữ "Nam" trong địa danh KHÔNG phải giới tính nam ---
+// Đây đúng là host mặc định khi job không có ảnh mẫu, nên sai ở đây là hỏng luôn tính năng.
+block = formatStageBibleBlock({
+  ...base,
+  host: 'Nữ, người Việt Nam, khoảng 25 tuổi, da trắng trẻo, gương mặt xinh xắn, tóc đen dài',
+  voice: 'Nữ trẻ, giọng vui tươi',
+});
+assert.ok(
+  block.startsWith('⛔ NGƯỜI DẪN CỦA BUỔI LIVE NÀY LÀ NỮ'),
+  '"Việt Nam" không được làm bộ dò tưởng là giới tính nam rồi mất câu khoá'
+);
+// Nam thật + quốc tịch Việt Nam vẫn phải ra nam.
+block = formatStageBibleBlock({
+  ...base,
+  host: 'Nam, người Việt Nam, khoảng 35 tuổi, đầu cạo gọn, đeo kính',
+  voice: 'Nam, giọng trầm',
+});
+assert.ok(block.startsWith('⛔ NGƯỜI DẪN CỦA BUỔI LIVE NÀY LÀ NAM'), 'nam + "Việt Nam" vẫn phải ra nam');
+
 // --- không nhận ra giới tính → bỏ câu cấm, KHÔNG đoán bừa ---
 block = formatStageBibleBlock({
   ...base,

@@ -235,8 +235,17 @@ dưới đây (viết bằng TIẾNG VIỆT, dạng cụm mô tả dùng trực 
 
 - host: mô tả người dẫn — giới tính, độ tuổi ước lượng, kiểu tóc/màu tóc, vóc dáng, trang phục
   (kiểu dáng + màu sắc CỤ THỂ), phụ kiện/đặc điểm nhận diện, "kết cấu da chân thực". Phải đủ chi
-  tiết để mọi lần tạo video đều ra đúng một người. Nếu có mô tả ảnh reference người mẫu, PHẢI khớp
-  đúng người trong ảnh.
+  tiết để mọi lần tạo video đều ra đúng một người.
+
+  QUY TẮC CHỌN NGƯỜI DẪN (theo đúng thứ tự ưu tiên, KHÔNG được đảo):
+  1. CÓ ảnh người mẫu đính kèm (hoặc mô tả ảnh reference người mẫu) → BẮT BUỘC tả ĐÚNG người
+     trong ảnh: đúng giới tính, độ tuổi, kiểu tóc, vóc dáng, trang phục. Đây là nguồn sự thật
+     duy nhất, thắng mọi mặc định bên dưới. TUYỆT ĐỐI KHÔNG bịa người khác.
+  2. KHÔNG có ảnh người mẫu → dùng MẶC ĐỊNH cố định sau, KHÔNG tự nghĩ người khác và KHÔNG suy
+     diễn giới tính theo loại sản phẩm: nữ, người Việt Nam, khoảng 25 tuổi, da trắng trẻo, gương
+     mặt xinh xắn ưa nhìn, tóc đen dài, dáng người thon gọn. Được tự chọn thêm trang phục và phụ
+     kiện cho hợp bối cảnh bán hàng, nhưng giới tính/độ tuổi/ngoại hình cơ bản phải giữ đúng mặc
+     định này. "voice" khi đó là giọng NỮ trẻ.
 - scene: mô tả bối cảnh quay — căn phòng cụ thể, đồ vật hậu cảnh, kiểu bàn, kiểu ánh sáng. Phải là
   không gian hợp lý để bày TẤT CẢ các loại sản phẩm trong danh sách.
 - camera: khung hình + góc máy + phong cách máy quay cố định (VD "khung trung cảnh, ngang tầm mắt,

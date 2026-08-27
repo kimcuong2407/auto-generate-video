@@ -186,10 +186,15 @@ async function generateStageBible(
  * ponytail: đủ cho dữ liệu ta tự sinh, cần chắc hơn thì thêm field gender vào bible.
  */
 function detectHostGender(host: string): 'nam' | 'nữ' | null {
-  const h = host.toLowerCase();
+  // Bỏ các cụm chứa từ "nam" nhưng KHÔNG chỉ giới tính, trước khi dò. Bắt buộc phải làm:
+  // host mặc định là "Nữ, người Việt Nam, khoảng 25 tuổi..." — "Việt Nam" khiến bộ dò thấy CẢ nam
+  // lẫn nữ rồi trả null, mất luôn câu khoá giới tính. Self-check đã bẫy đúng ca này.
+  const h = host
+    .toLowerCase()
+    .replace(/việt nam|miền nam|phía nam|hướng nam|đông nam|tây nam/g, ' ');
   // KHÔNG dùng \b: trong regex JS, chữ tiếng Việt có dấu ("ữ", "à") không phải word-char nên
-  // /\bnữ\b/ KHÔNG BAO GIỜ khớp "nữ," — đã tự bẫy đúng lỗi này khi viết check. Dùng ranh giới
-  // thủ công: đầu chuỗi hoặc khoảng trắng ở trước, và không phải chữ cái ở sau.
+  // /\bnữ\b/ KHÔNG BAO GIỜ khớp "nữ," — cũng do self-check bẫy được. Dùng ranh giới thủ công:
+  // đầu chuỗi hoặc khoảng trắng/dấu mở ở trước, và khoảng trắng/dấu câu ở sau.
   const has = (words: string[]) =>
     words.some((w) => new RegExp(`(^|[\\s(,])${w}([\\s,.)]|$)`).test(h));
   const nam = has(['nam', 'đàn ông', 'người đàn ông', 'anh chàng', 'chàng trai']);
