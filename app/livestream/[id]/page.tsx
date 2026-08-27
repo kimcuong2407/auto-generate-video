@@ -9,6 +9,7 @@ import { ConcatPanel } from '@/components/livestream/ConcatPanel';
 import { FlowGuide } from '@/components/livestream/FlowGuide';
 import { PromptSettingsPanel } from '@/components/livestream/PromptSettingsPanel';
 import { JobImagePanel } from '@/components/livestream/JobImagePanel';
+import { PromptPreviewModal } from '@/components/livestream/PromptPreviewModal';
 
 /** Đọc SSE response của route script/generate (fetch thường, không dùng EventSource vì cần POST). */
 async function streamScriptGeneration(
@@ -67,6 +68,9 @@ export default function LivestreamDetailPage() {
   const [scriptingAll, setScriptingAll] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Sản phẩm đang xem trước prompt sinh script (null = không mở modal). Preview theo TỪNG sản phẩm
+  // vì user prompt chứa mô tả + vị trí trong buổi live riêng của sản phẩm đó.
+  const [previewScriptProductId, setPreviewScriptProductId] = useState<string | null>(null);
 
   /**
    * @param forceStageBible chốt LẠI sân khấu (người dẫn/bối cảnh/giọng) dù input chưa đổi. Cần
@@ -200,6 +204,14 @@ export default function LivestreamDetailPage() {
             </button>
             <button
               className="btn btn-ghost"
+              onClick={() => setPreviewScriptProductId(job?.products[0]?.id ?? null)}
+              disabled={!job?.products.length}
+              title="Xem system prompt + user prompt + ảnh ref server sẽ gửi cho AI khi sinh script (không tốn lượt AI)"
+            >
+              👁 Xem prompt sinh script
+            </button>
+            <button
+              className="btn btn-ghost"
               onClick={() => {
                 if (
                   confirm(
@@ -272,6 +284,16 @@ export default function LivestreamDetailPage() {
           <ConcatPanel job={job} onRefresh={refresh} />
         </div>
       </main>
+
+      {previewScriptProductId && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="script"
+          productId={previewScriptProductId}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          onClose={() => setPreviewScriptProductId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { LivestreamJob } from '@/lib/livestream/types';
 import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
 import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
+import { PromptPreviewModal } from './PromptPreviewModal';
 
 /**
  * Khu cấu hình BỘ ẢNH CHUNG cả job (đặt cạnh panel System prompt đầu trang): ảnh sản phẩm (kho +
@@ -30,6 +31,7 @@ export function JobImagePanel({
   const [selectingRef, setSelectingRef] = useState(false);
   const [savingBgModel, setSavingBgModel] = useState(false);
   const [detaching, setDetaching] = useState(false);
+  const [previewingBgPrompt, setPreviewingBgPrompt] = useState(false);
 
   const detachedSet = new Set(job.detachedImagePaths ?? []);
 
@@ -531,6 +533,14 @@ export function JobImagePanel({
           >
             {generatingBg ? '⏳ Đang gen background...' : '🎨 Gen background bằng AI'}
           </button>
+          <button
+            className="btn btn-ghost"
+            style={{ marginLeft: 8 }}
+            onClick={() => setPreviewingBgPrompt(true)}
+            title="Xem prompt đầy đủ + ảnh ref server sẽ gửi cho AI (không tốn lượt gen)"
+          >
+            👁 Xem prompt + ảnh ref
+          </button>
           {job.selectedRefImagePaths.length === 0 && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
               Cần chọn ít nhất 1 ảnh sản phẩm làm tham chiếu trước.
@@ -549,10 +559,21 @@ export function JobImagePanel({
             style={{ width: '100%', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5, marginTop: 6 }}
           />
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Mô tả sản phẩm (sản phẩm đầu tiên) sẽ được ghép tự động vào cuối prompt khi gen.
+            Mô tả sản phẩm (sản phẩm đầu tiên), sân khấu đã chốt và chú giải ảnh ref sẽ được ghép tự
+            động vào prompt khi gen — bấm &quot;Xem prompt + ảnh ref&quot; để thấy chuỗi cuối cùng.
           </div>
         </details>
       </div>
+
+      {previewingBgPrompt && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="background"
+          promptOverride={bgPromptDraft}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          onClose={() => setPreviewingBgPrompt(false)}
+        />
+      )}
     </div>
   );
 }

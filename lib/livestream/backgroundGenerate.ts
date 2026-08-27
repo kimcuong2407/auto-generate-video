@@ -5,6 +5,8 @@ import { jobInputsDir, resolveWithinJob } from './paths';
 import { ensureLocalImage, uploadImageToR2 } from './imageR2';
 import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
 import { pickVisionRefEntries } from './refImages';
+import type { VisionRefEntry } from './refImages';
+import type { LivestreamStageBible } from './types';
 import { ensureStageBible } from './stageBible';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
@@ -13,6 +15,34 @@ export interface BackgroundGenResult {
   ok: boolean;
   imagePath?: string;
   error?: string;
+}
+
+/**
+ * Ghép prompt gen ảnh nền từ 4 mảnh (prompt gốc + mô tả sản phẩm + sân khấu đã chốt + chú giải ảnh
+ * ref). Tách khỏi triggerBackgroundImageGeneration để route preview
+ * (app/api/livestream/[id]/preview-prompt) hiện ĐÚNG chuỗi server thật sự gửi đi — trước đây UI chỉ
+ * thấy mỗi basePrompt nên Mr.D không biết 3 mảnh còn lại được ghép vào những gì.
+ *
+ * Hàm thuần: không đọc job từ disk, không gọi AI — caller tự truyền bible (có thể null nếu chưa chốt).
+ */
+export function buildBackgroundPrompt(
+  basePrompt: string,
+  productText: string,
+  bible: LivestreamStageBible | null,
+  entries: VisionRefEntry[]
+): string {
+  const bibleBlock = bible
+    ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
+    : '';
+  // Đánh số vai trò từng ảnh vào prompt: model nhận một chồng ảnh VÔ DANH thì không biết ảnh nào là
+  // người cần copy khuôn mặt, ảnh nào là món hàng — kết quả ra người lạ dù ảnh mẫu đã được gửi.
+  const refLegendBlock =
+    entries.length > 0
+      ? `\n\nẢNH REFERENCE ĐÍNH KÈM (theo đúng thứ tự):\n${entries
+          .map((e, i) => `  ${i + 1}. ${e.label}`)
+          .join('\n')}\nẢnh reference là NGUỒN SỰ THẬT, ưu tiên hơn MỌI mô tả bằng chữ ở trên. Khuôn mặt, giới tính, kiểu tóc, vóc dáng và trang phục của người dẫn PHẢI copy đúng ảnh NGƯỜI MẪU — nếu mô tả bằng chữ khác ảnh thì theo ẢNH. Sản phẩm trên bàn PHẢI đúng món trong ảnh SẢN PHẨM THẬT, không thay bằng món khác.`
+      : '';
+  return `${basePrompt}\n${productText}${bibleBlock}${refLegendBlock}`;
 }
 
 /**
@@ -43,23 +73,17 @@ export async function triggerBackgroundImageGeneration(
   // đính kèm. Đúng ca của Mr.D: ảnh mẫu là nam đầu cua đeo kính, bible cũ tả "athletic woman... high
   // ponytail" → ảnh nền gen ra là nữ. ensureStageBible tự phát hiện stale và chốt lại từ chính ảnh.
   const bible = await ensureStageBible(jobId);
-  const bibleBlock = bible
-    ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
-    : '';
 
   // Reference: ảnh mẫu ĐỨNG ĐẦU (cùng lý do pickRefImagePaths — nhân vật là thứ model bịa sai nặng
   // nhất), rồi ảnh sản phẩm, rồi ảnh nền. Trước đây ảnh mẫu bị push CUỐI sau N ảnh sản phẩm nên
   // model gần như bỏ qua nó, dù người dùng đã chọn ảnh mẫu.
   const entries = pickVisionRefEntries(job);
-  // Đánh số vai trò từng ảnh vào prompt: model nhận một chồng ảnh VÔ DANH thì không biết ảnh nào là
-  // người cần copy khuôn mặt, ảnh nào là món hàng — kết quả ra người lạ dù ảnh mẫu đã được gửi.
-  const refLegendBlock =
-    entries.length > 0
-      ? `\n\nẢNH REFERENCE ĐÍNH KÈM (theo đúng thứ tự):\n${entries
-          .map((e, i) => `  ${i + 1}. ${e.label}`)
-          .join('\n')}\nẢnh reference là NGUỒN SỰ THẬT, ưu tiên hơn MỌI mô tả bằng chữ ở trên. Khuôn mặt, giới tính, kiểu tóc, vóc dáng và trang phục của người dẫn PHẢI copy đúng ảnh NGƯỜI MẪU — nếu mô tả bằng chữ khác ảnh thì theo ẢNH. Sản phẩm trên bàn PHẢI đúng món trong ảnh SẢN PHẨM THẬT, không thay bằng món khác.`
-      : '';
-  const prompt = `${basePrompt}\n${product.description || product.name}${bibleBlock}${refLegendBlock}`;
+  const prompt = buildBackgroundPrompt(
+    basePrompt,
+    product.description || product.name,
+    bible,
+    entries
+  );
 
   // Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc file local.
   // mediaId dùng cache job.flowMediaIds nếu có để tránh upload lại lên Flow.
