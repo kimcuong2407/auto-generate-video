@@ -33,7 +33,8 @@
     "check:preview-prompt": "tsx scripts/check-preview-prompt.ts",
     "check:host-gender-lock": "tsx scripts/check-host-gender-lock.ts",
     "check:stage-bible-failure": "tsx scripts/check-stage-bible-failure.ts",
-    "check:default-host": "tsx scripts/check-default-host.ts"
+    "check:default-host": "tsx scripts/check-default-host.ts",
+    "check:subject-anchor": "tsx scripts/check-subject-anchor.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

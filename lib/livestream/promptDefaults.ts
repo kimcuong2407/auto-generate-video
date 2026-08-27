@@ -156,10 +156,13 @@ KHÔNG cần mỗi đoạn phải có cấu trúc hook/CTA riêng — coi toàn 
 Với mỗi đoạn, veoPrompt (viết bằng TIẾNG VIỆT, dùng cho AI tạo video Google Veo) phải là 1 đoạn văn liền mạch
 nhưng BẮT BUỘC bao phủ đủ 7 thành phần chuyên nghiệp sau (không cần ghi nhãn từng phần, chỉ cần nội
 dung có mặt):
-(1) Subject — mô tả người dẫn livestream ĐÚNG theo mô tả cố định đã chốt ở Bước 1.b (giữ nguyên
-    giới tính, kiểu tóc, trang phục, đặc điểm nhận diện — KHÔNG thay đổi hay viết lại khác đi giữa
-    các đoạn), ĐANG NGỒI tại bàn (tư thế ngồi cố định như đã chốt ở Bước 1.c), và/hoặc sản phẩm
-    (chất liệu, màu sắc, kích thước) đặt NGAY TRƯỚC MẶT trên bàn;
+(1) Subject — mô tả người dẫn livestream. NGUỒN LẤY MÔ TẢ, theo thứ tự:
+    • Nếu user prompt CÓ khối "SÂN KHẤU CỐ ĐỊNH CỦA BUỔI LIVE" → COPY NGUYÊN VĂN dòng "Người dẫn
+      (Subject)" trong khối đó vào đầu veoPrompt của MỌI đoạn. Đây là nguồn DUY NHẤT, KHÔNG lấy từ
+      Bước 1 (Bước 1 đã bị vô hiệu), KHÔNG tự viết lại, KHÔNG đổi giới tính/tuổi/tóc/trang phục.
+    • Nếu KHÔNG có khối đó → dùng mô tả tự chốt ở Bước 1.b.
+    Kèm theo: người dẫn ĐANG NGỒI tại bàn (tư thế ngồi cố định), và/hoặc sản phẩm (chất liệu, màu
+    sắc, kích thước) đặt NGAY TRƯỚC MẶT trên bàn;
 (2) Action — hành động/cử chỉ cụ thể đang diễn ra, CHỈ là cử động tay/thân trên khi ngồi (cầm,
     xoay, chỉ vào sản phẩm) — người dẫn NGỒI YÊN tại chỗ, KHÔNG đứng dậy/đi lại/rời ghế; với đoạn
     thứ 2 trở đi, câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/hành động kết thúc
@@ -179,12 +182,14 @@ dung có mặt):
     - Nếu user prompt có kèm mục "Mô tả ngoại hình sản phẩm" (đọc từ ảnh thật), PHẢI dựa vào đó để
       quyết định cầm bằng 1 tay hay 2 tay và mô tả đúng kích thước/chất liệu khi tay chạm/cầm sản
       phẩm — không tự đoán chung chung khác với mô tả này.
-(3) Scene — bối cảnh quay chung đã xác định ở Bước 1.a, PHẢI nhắc lại nhất quán;
+(3) Scene — bối cảnh quay chung: có khối "SÂN KHẤU CỐ ĐỊNH" thì COPY NGUYÊN VĂN dòng "Bối cảnh
+    (Scene)" trong khối đó; không có thì dùng Bước 1.a. PHẢI nhắc lại nhất quán ở mọi đoạn;
 (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách
     ánh sáng;
 (5) Dialogue — Google Veo tự sinh giọng nói dựa theo mô tả trong prompt, nên veoPrompt BẮT BUỘC
-    nhúng mô tả chất giọng cố định đã chốt ở Bước 1.d (giữ nguyên từ ngữ, KHÔNG diễn đạt lại khác
-    đi giữa các đoạn) ngay trước câu thoại, rồi mới đến đoạn lời thoại lấy NGUYÊN VĂN từ
+    nhúng mô tả chất giọng cố định — lấy NGUYÊN VĂN dòng "Chất giọng (Voice)" trong khối "SÂN KHẤU
+    CỐ ĐỊNH" nếu có, không có thì dùng Bước 1.d (giữ nguyên từ ngữ, KHÔNG diễn đạt lại khác đi
+    giữa các đoạn) ngay trước câu thoại, rồi mới đến đoạn lời thoại lấy NGUYÊN VĂN từ
     voiceoverVi của chính đoạn đó, dùng ĐÚNG cú pháp có dấu hai chấm trước dấu ngoặc kép (colon
     syntax — giúp ngăn Veo tự sinh phụ đề đè lên video): Người này có <mô tả giọng cố định>, nói
     tiếng Việt vui vẻ và tràn năng lượng kèm nụ cười, nói rằng: "<nguyên văn voiceoverVi>". Không
