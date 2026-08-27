@@ -98,7 +98,13 @@ export const LIVESTREAM_SYSTEM_PROMPT = `Bạn là chuyên gia viết lời tho�
 đồng thời là đạo diễn hình ảnh đảm bảo các đoạn video ghép lại liền mạch như 1 buổi quay liên tục.
 
 BƯỚC 1 — Trước khi viết, hãy tự xác định 2 yếu tố CỐ ĐỊNH dùng chung cho TOÀN BỘ các đoạn của sản
-phẩm này, và ghi nhớ xuyên suốt khi viết từng đoạn:
+phẩm này, và ghi nhớ xuyên suốt khi viết từng đoạn.
+
+⚠️ NGOẠI LỆ QUAN TRỌNG NHẤT: nếu user prompt có khối "SÂN KHẤU CỐ ĐỊNH CỦA BUỔI LIVE" thì BỎ QUA
+HOÀN TOÀN toàn bộ BƯỚC 1 này — người dẫn, bối cảnh, góc máy, giọng ĐÃ được chốt sẵn ở đó và là
+lệnh CAO NHẤT, thắng mọi mô tả trong system prompt. Đặc biệt là GIỚI TÍNH người dẫn: copy đúng
+giới tính đã chốt, TUYỆT ĐỐI KHÔNG tự đổi sang giới tính khác dù loại sản phẩm gợi ý điều ngược lại.
+Chỉ khi user prompt KHÔNG có khối đó thì mới tự chốt theo hướng dẫn dưới đây:
 
 a. 1 "bối cảnh quay" (shoot setup) DUY NHẤT: 1 không gian cụ thể, 1 kiểu ánh sáng nhất quán, 1
    phong cách máy quay nhất quán (cầm tay nhẹ, hơi rung tự nhiên như quay bằng điện thoại thật —

@@ -150,9 +150,45 @@ async function generateStageBible(
   };
 }
 
+/**
+ * Suy ra giới tính người dẫn từ mô tả bible để dựng câu cấm tường minh.
+ *
+ * Vì sao cần: bible tả "Nam, khoảng 35-40 tuổi, đầu cạo gọn..." mà LLM vẫn viết "người dẫn nữ 27
+ * tuổi tóc đuôi ngựa" ở CẢ 8/8 đoạn (đã xác minh trên job production 825314, script sinh lúc
+ * 10:07 sau khi bible nam đã chốt). Nguyên nhân: system prompt ra lệnh "BƯỚC 1 — tự chốt người
+ * dẫn" bằng giọng bắt buộc suốt nhiều dòng, còn câu huỷ lệnh chỉ nằm lọt thỏm ở cuối khối này.
+ * Một câu CẤM ngắn, đặt ở ĐẦU khối, nêu thẳng giới tính, thắng được lệnh dài phía trên.
+ *
+ * Heuristic thuần chuỗi: bible do chính ta ép model trả về tiếng Việt theo STAGE_BIBLE_SYSTEM_PROMPT
+ * nên gần như luôn mở đầu bằng "Nam,"/"Nữ,". Không nhận ra được thì trả null và bỏ câu cấm —
+ * ponytail: đủ cho dữ liệu ta tự sinh, cần chắc hơn thì thêm field gender vào bible.
+ */
+function detectHostGender(host: string): 'nam' | 'nữ' | null {
+  const h = host.toLowerCase();
+  // KHÔNG dùng \b: trong regex JS, chữ tiếng Việt có dấu ("ữ", "à") không phải word-char nên
+  // /\bnữ\b/ KHÔNG BAO GIỜ khớp "nữ," — đã tự bẫy đúng lỗi này khi viết check. Dùng ranh giới
+  // thủ công: đầu chuỗi hoặc khoảng trắng ở trước, và không phải chữ cái ở sau.
+  const has = (words: string[]) =>
+    words.some((w) => new RegExp(`(^|[\\s(,])${w}([\\s,.)]|$)`).test(h));
+  const nam = has(['nam', 'đàn ông', 'người đàn ông', 'anh chàng', 'chàng trai']);
+  const nu = has(['nữ', 'phụ nữ', 'người phụ nữ', 'cô gái', 'cô ấy']);
+  if (nam === nu) return null; // không có dấu hiệu, hoặc lẫn cả hai → không đoán bừa
+  return nam ? 'nam' : 'nữ';
+}
+
 /** Khối text ép LLM viết script dùng đúng sân khấu đã chốt — ghép vào user prompt từng sản phẩm. */
 export function formatStageBibleBlock(bible: LivestreamStageBible): string {
-  return `SÂN KHẤU CỐ ĐỊNH CỦA BUỔI LIVE (đã chốt sẵn cho TOÀN BỘ các sản phẩm trong buổi live này —
+  const gender = detectHostGender(bible.host);
+  // Câu cấm đặt TRƯỚC mọi thứ khác: model đọc tuần tự, gặp lệnh "tự chốt người dẫn" ở system prompt
+  // trước, nên câu huỷ lệnh phải là thứ ĐẦU TIÊN nó thấy trong user prompt, không phải dòng cuối.
+  const genderLock = gender
+    ? `⛔ NGƯỜI DẪN CỦA BUỔI LIVE NÀY LÀ ${gender.toUpperCase()}. Mọi đoạn PHẢI viết người dẫn là ${gender}.
+TUYỆT ĐỐI KHÔNG viết người dẫn ${gender === 'nam' ? 'nữ/phụ nữ/cô gái, KHÔNG "cô", KHÔNG tóc đuôi ngựa' : 'nam/đàn ông/anh chàng, KHÔNG "anh"'}.
+Dùng đại từ "${gender === 'nam' ? 'anh' : 'cô'}" khi nhắc lại người dẫn trong veoPrompt.
+
+`
+    : '';
+  return `${genderLock}SÂN KHẤU CỐ ĐỊNH CỦA BUỔI LIVE (đã chốt sẵn cho TOÀN BỘ các sản phẩm trong buổi live này —
 KHÔNG được tự nghĩ ra người dẫn/bối cảnh/góc máy/giọng khác, KHÔNG diễn đạt lại khác đi):
 
 - Người dẫn (Subject): ${bible.host}
@@ -161,7 +197,7 @@ KHÔNG được tự nghĩ ra người dẫn/bối cảnh/góc máy/giọng khá
 - Chất giọng (Voice): ${bible.voice}
 ${bible.wardrobeLock ? `- Ràng buộc: ${bible.wardrobeLock}\n` : ''}
 BẮT BUỘC: veoPrompt của MỌI đoạn phải chứa NGUYÊN VĂN các cụm mô tả ở trên (copy y hệt,
-không paraphrase, không rút gọn, không thêm chi tiết ngoại hình mới). Bỏ qua yêu cầu tự chốt người
-dẫn/bối cảnh/giọng ở BƯỚC 1 của system prompt — đã chốt sẵn ở đây rồi. Sản phẩm trên bàn là thứ
-DUY NHẤT thay đổi so với các sản phẩm khác trong buổi live.`;
+không paraphrase, không rút gọn, không thêm chi tiết ngoại hình mới). Bỏ qua HOÀN TOÀN yêu cầu tự
+chốt người dẫn/bối cảnh/giọng ở BƯỚC 1 của system prompt — BƯỚC 1 KHÔNG áp dụng, sân khấu đã chốt
+sẵn ở đây rồi. Sản phẩm trên bàn là thứ DUY NHẤT thay đổi so với các sản phẩm khác trong buổi live.`;
 }
