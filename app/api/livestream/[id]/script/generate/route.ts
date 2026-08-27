@@ -32,12 +32,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const job = await readJob(id);
-  const body = (await req.json().catch(() => ({}))) as { productId?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    productId?: string;
+    /** Ép chốt lại sân khấu dù bible cũ còn "khớp" fingerprint — dùng khi bible cũ sai về chất
+     *  (VD gen bằng bản prompt tiếng Anh cũ) mà fingerprint không thể phát hiện. */
+    forceStageBible?: boolean;
+  };
 
+  // forceStageBible = chốt lại sân khấu rồi sinh lại script cho MỌI sản phẩm hợp lệ, kể cả
+  // scriptStatus='done' — chốt bible mới mà giữ nguyên script cũ thì bible mới không có tác dụng gì.
   const targets = body.productId
     ? job.products.filter((p) => p.id === body.productId)
     : job.products.filter(
-        (p) => p.scriptStatus !== 'done' && p.ingestStatus !== 'needs_manual' && p.description.trim()
+        (p) =>
+          (body.forceStageBible || p.scriptStatus !== 'done') &&
+          p.ingestStatus !== 'needs_manual' &&
+          p.description.trim()
       );
 
   if (targets.length === 0) {
@@ -98,9 +108,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Sinh lại 1 sản phẩm lẻ vẫn dùng bible đã cache để khớp các sản phẩm đã gen trước đó —
       // TRỪ khi input đã đổi (ensureStageBible tự phát hiện qua fingerprint và chốt lại, xem ở đó).
       // Báo trước cho UI biết vì sao sắp tốn 1 lượt AI: bible cũ không còn khớp ảnh/mô tả hiện tại.
-      if (isStageBibleStale(job)) send({ type: 'stage_bible_stale' });
+      if (body.forceStageBible || isStageBibleStale(job)) send({ type: 'stage_bible_stale' });
       send({ type: 'stage_bible_start' });
-      const bible = await ensureStageBible(id, { visualDescription });
+      const bible = await ensureStageBible(id, {
+        visualDescription,
+        force: body.forceStageBible,
+      });
       const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;
       send({ type: 'stage_bible_done', stageBible: bible });
 

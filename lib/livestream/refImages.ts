@@ -83,14 +83,15 @@ export function stageBibleFingerprint(
 
 /**
  * Chọn tối đa 3 ảnh reference gửi kèm khi gen video, theo thứ tự ƯU TIÊN:
- * ảnh mẫu (người dẫn) → ảnh sản phẩm → ảnh background.
+ * ảnh mẫu (người dẫn) → ảnh background → ảnh sản phẩm.
  *
- * Ảnh mẫu đứng ĐẦU vì nhân vật là thứ Veo bịa sai nặng nhất: không có ảnh người thì nó vẽ người
- * hoàn toàn khác dù prompt tả kỹ đến đâu (mô tả bằng chữ không ghim được khuôn mặt). Sản phẩm thì
- * ngược lại — prompt tả màu/hình dạng cộng 1-2 ảnh là đủ nhận ra.
+ * Ảnh mẫu và ảnh nền đứng TRƯỚC vì nhân vật và bối cảnh là thứ Veo bịa sai nặng nhất: không có
+ * ảnh thì nó vẽ người/căn phòng hoàn toàn khác dù prompt tả kỹ đến đâu (mô tả bằng chữ không ghim
+ * được khuôn mặt lẫn layout phòng). Sản phẩm thì ngược lại — prompt đã có sẵn "Mô tả ngoại hình
+ * sản phẩm" do vision đọc từ ảnh thật, nên 1 suất ảnh là đủ nhận ra.
  *
- * Trước đây ảnh sản phẩm xếp trước rồi cắt `.slice(0, 3)`: job chọn đủ 3 ảnh sản phẩm là ảnh mẫu
- * bị cắt mất hoàn toàn, Veo không bao giờ nhìn thấy người dẫn → video ra người lạ.
+ * Trước đây ảnh sản phẩm xếp trước ảnh nền rồi cắt `.slice(0, 3)`: job chọn ≥2 ảnh sản phẩm là
+ * ảnh nền bị cắt mất, Veo không bao giờ nhìn thấy bối cảnh đã chọn → dựng phòng khác hẳn.
  *
  * @param hasPrevFrame có frame cuối đoạn trước để chain hay không — nếu có, chừa 1 suất cho nó.
  */
@@ -108,8 +109,8 @@ export function pickRefImagePaths(
   const detached = new Set(job.detachedImagePaths ?? []);
   return [
     ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
-    ...(job.selectedRefImagePaths ?? []),
     ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
+    ...(job.selectedRefImagePaths ?? []),
   ]
     .filter((rel) => !detached.has(rel))
     .slice(0, limit);

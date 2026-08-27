@@ -4,6 +4,8 @@
  * Vì sao cần: Veo chỉ nhận TỐI ĐA 3 ảnh reference. Trước đây ảnh sản phẩm xếp trước rồi cắt 3, nên
  * job chọn đủ 3 ảnh sản phẩm là ảnh mẫu (người dẫn) bị cắt mất hoàn toàn — Veo không bao giờ nhìn
  * thấy người dẫn và vẽ ra người lạ, dù prompt tả rất kỹ. Ảnh mẫu PHẢI luôn nằm trong danh sách gửi.
+ * Cùng lý do đó, ảnh NỀN xếp ngay sau ảnh mẫu: bối cảnh cũng không ghim được bằng chữ, trong khi
+ * ảnh sản phẩm đã có "Mô tả ngoại hình sản phẩm" do vision đọc vào prompt nên chịu được việc bị cắt.
  *
  * Chạy: npx tsx scripts/check-ref-image-priority.ts
  */
@@ -32,7 +34,7 @@ assert.strictEqual(r[0], 'inputs/model-1.jpg', 'ảnh mẫu phải đứng đầ
 assert.deepStrictEqual(
   r,
   ['inputs/model-1.jpg', 'inputs/product-1.jpg', 'inputs/product-2.jpg'],
-  'sau ảnh mẫu là ảnh sản phẩm theo thứ tự đã chọn'
+  'không có ảnh nền thì sau ảnh mẫu là ảnh sản phẩm theo thứ tự đã chọn'
 );
 
 // Có frame chain đoạn trước → chừa 1 suất cho frame, chỉ còn 2 ảnh; ảnh mẫu vẫn phải giữ chỗ.
@@ -46,27 +48,43 @@ r = pickRefImagePaths(
 assert.strictEqual(r.length, 2, 'có frame chain thì chỉ còn 2 suất cho ảnh');
 assert.strictEqual(r[0], 'inputs/model-1.jpg', 'ảnh mẫu vẫn được ưu tiên khi có chain');
 
-// Background xếp cuối — bị cắt trước ảnh mẫu và ảnh sản phẩm khi hết suất.
+// CA CỦA MR.D (bug "đã chọn ảnh background nhưng không gửi kèm trong ref"): ảnh nền phải đứng
+// TRƯỚC ảnh sản phẩm, ảnh sản phẩm thừa mới là thứ bị cắt.
+r = pickRefImagePaths(
+  job({
+    selectedRefImagePaths: ['inputs/p1.jpg', 'inputs/p2.jpg', 'inputs/p3.jpg'],
+    selectedModelImagePath: 'inputs/model-1.jpg',
+    selectedBackgroundImagePath: 'inputs/bg.jpg',
+  }),
+  false
+);
+assert.ok(r.includes('inputs/bg.jpg'), 'ảnh nền đã chọn KHÔNG được bị ảnh sản phẩm cắt mất');
+assert.deepStrictEqual(
+  r,
+  ['inputs/model-1.jpg', 'inputs/bg.jpg', 'inputs/p1.jpg'],
+  'thứ tự: ảnh mẫu → ảnh nền → ảnh sản phẩm, cắt ảnh sản phẩm thừa'
+);
+
+// Có frame chain + đủ cả 3 loại → chỉ còn 2 suất: mẫu + nền, ảnh sản phẩm nhường chỗ.
 r = pickRefImagePaths(
   job({
     selectedRefImagePaths: ['inputs/p1.jpg', 'inputs/p2.jpg'],
     selectedModelImagePath: 'inputs/model-1.jpg',
     selectedBackgroundImagePath: 'inputs/bg.jpg',
   }),
-  false
+  true
 );
-assert.deepStrictEqual(r, ['inputs/model-1.jpg', 'inputs/p1.jpg', 'inputs/p2.jpg'], 'background bị cắt cuối cùng');
+assert.deepStrictEqual(r, ['inputs/model-1.jpg', 'inputs/bg.jpg'], 'chain: giữ mẫu + nền');
 
-// Còn chỗ thì background vẫn được gửi.
+// Không có ảnh mẫu → nền vẫn đứng trước sản phẩm.
 r = pickRefImagePaths(
   job({
-    selectedRefImagePaths: ['inputs/p1.jpg'],
-    selectedModelImagePath: 'inputs/model-1.jpg',
+    selectedRefImagePaths: ['inputs/p1.jpg', 'inputs/p2.jpg', 'inputs/p3.jpg'],
     selectedBackgroundImagePath: 'inputs/bg.jpg',
   }),
   false
 );
-assert.deepStrictEqual(r, ['inputs/model-1.jpg', 'inputs/p1.jpg', 'inputs/bg.jpg'], 'đủ chỗ thì gửi cả background');
+assert.deepStrictEqual(r, ['inputs/bg.jpg', 'inputs/p1.jpg', 'inputs/p2.jpg'], 'không ảnh mẫu: nền vẫn trước sản phẩm');
 
 // Không có ảnh mẫu → giữ nguyên hành vi cũ (chỉ sản phẩm), không chèn gì lạ.
 r = pickRefImagePaths(job({ selectedRefImagePaths: ['inputs/p1.jpg', 'inputs/p2.jpg'] }), false);
@@ -119,6 +137,22 @@ r = pickRefImagePaths(
   false
 );
 assert.deepStrictEqual(r, ['inputs/model-1.jpg', 'inputs/p1.jpg'], 'background đã tách thì không gửi');
+
+// Tách ảnh nền khi dư ảnh sản phẩm → ảnh sản phẩm dồn lên chiếm suất trống của nền.
+r = pickRefImagePaths(
+  job({
+    selectedRefImagePaths: ['inputs/p1.jpg', 'inputs/p2.jpg', 'inputs/p3.jpg'],
+    selectedModelImagePath: 'inputs/model-1.jpg',
+    selectedBackgroundImagePath: 'inputs/bg.jpg',
+    detachedImagePaths: ['inputs/bg.jpg'],
+  }),
+  false
+);
+assert.deepStrictEqual(
+  r,
+  ['inputs/model-1.jpg', 'inputs/p1.jpg', 'inputs/p2.jpg'],
+  'tách nền thì ảnh sản phẩm dồn lên, không để trống suất'
+);
 
 // Tách HẾT → rỗng, không crash (route gen tự chặn bằng guard riêng).
 r = pickRefImagePaths(

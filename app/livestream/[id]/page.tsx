@@ -14,6 +14,7 @@ import { JobImagePanel } from '@/components/livestream/JobImagePanel';
 async function streamScriptGeneration(
   jobId: string,
   productId: string | undefined,
+  forceStageBible: boolean,
   onEvent: (event: {
     type: string;
     productId?: string;
@@ -24,7 +25,10 @@ async function streamScriptGeneration(
   const res = await fetch(`/api/livestream/${jobId}/script/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(productId ? { productId } : {}),
+    body: JSON.stringify({
+      ...(productId ? { productId } : {}),
+      ...(forceStageBible ? { forceStageBible: true } : {}),
+    }),
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => ({}));
@@ -64,7 +68,12 @@ export default function LivestreamDetailPage() {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  async function handleGenerateScript(productId?: string) {
+  /**
+   * @param forceStageBible chốt LẠI sân khấu (người dẫn/bối cảnh/giọng) dù input chưa đổi. Cần
+   * khi bible cũ sai về CHẤT chứ không phải về input — VD bible chốt bằng bản prompt tiếng Anh
+   * cũ nên veoPrompt sinh ra vẫn dính tiếng Anh dù prompt hiện tại đã là tiếng Việt.
+   */
+  async function handleGenerateScript(productId?: string, forceStageBible = false) {
     setActionError(null);
     if (productId) {
       setScriptingProductIds((prev) => new Set(prev).add(productId));
@@ -74,7 +83,7 @@ export default function LivestreamDetailPage() {
     const overlongAll: string[] = [];
     let bibleRechecked = false;
     try {
-      await streamScriptGeneration(jobId, productId, (e) => {
+      await streamScriptGeneration(jobId, productId, forceStageBible, (e) => {
         // Ảnh/mô tả sản phẩm đã đổi từ lần chốt trước → server đang chốt lại sân khấu. Báo cho
         // Mr.D biết vì sao lần này chậm hơn và vì sao người dẫn có thể khác lần trước.
         if (e.type === 'stage_bible_stale') bibleRechecked = true;
@@ -89,7 +98,9 @@ export default function LivestreamDetailPage() {
       await refresh();
       if (bibleRechecked) {
         setActionError(
-          'Ảnh hoặc mô tả sản phẩm đã đổi so với lần trước — sân khấu (người dẫn/bối cảnh/giọng) đã được chốt lại theo dữ liệu mới. Các sản phẩm đã sinh script trước đó vẫn giữ sân khấu cũ, bấm "Sinh lại script" cho từng sản phẩm nếu muốn đồng bộ.'
+          forceStageBible
+            ? 'Đã chốt lại sân khấu (người dẫn/bối cảnh/giọng) và sinh lại script cho toàn bộ sản phẩm. Video đã gen trước đó vẫn theo sân khấu cũ — gen lại đoạn nếu muốn đồng bộ.'
+            : 'Ảnh hoặc mô tả sản phẩm đã đổi so với lần trước — sân khấu (người dẫn/bối cảnh/giọng) đã được chốt lại theo dữ liệu mới. Các sản phẩm đã sinh script trước đó vẫn giữ sân khấu cũ, bấm "Sinh lại script" cho từng sản phẩm nếu muốn đồng bộ.'
         );
       }
       if (overlongAll.length > 0) {
@@ -186,6 +197,22 @@ export default function LivestreamDetailPage() {
               title="Sinh lời thoại + prompt video cho mọi sản phẩm đã có mô tả"
             >
               {scriptingAll ? 'Đang sinh script...' : '✍️ Sinh script tất cả'}
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                if (
+                  confirm(
+                    'Chốt lại sân khấu (người dẫn/bối cảnh/góc máy/giọng) và SINH LẠI script cho TOÀN BỘ sản phẩm?\n\nScript hiện tại sẽ bị ghi đè. Video đã gen không bị xoá nhưng sẽ lệch với script mới.'
+                  )
+                ) {
+                  handleGenerateScript(undefined, true);
+                }
+              }}
+              disabled={scriptingAll || busy}
+              title="Dùng khi sân khấu đã chốt bị sai (VD prompt còn tiếng Anh từ bản cũ) — ép AI chốt lại từ ảnh + mô tả hiện tại rồi sinh lại toàn bộ script"
+            >
+              🎬 Chốt lại sân khấu
             </button>
             <button
               className="btn btn-primary"
