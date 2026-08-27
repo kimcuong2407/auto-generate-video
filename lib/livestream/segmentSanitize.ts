@@ -95,3 +95,43 @@ export function sanitizeSegments(
     };
   });
 }
+
+/**
+ * Ghép danh sách đoạn MỚI (vừa sinh lại kịch bản) với đoạn CŨ: đoạn nào nội dung không đổi
+ * (trùng id + voiceoverVi + veoPrompt + duration) thì GIỮ NGUYÊN video đã gen.
+ *
+ * Vì sao cần: route sinh kịch bản trước đây gán thẳng `p.segments = segments`, nên mỗi lần sinh
+ * lại là mọi đoạn về `idle` và mất sạch tham chiếu video — kể cả những đoạn AI viết ra y hệt cũ.
+ * File video vẫn nằm trên đĩa/R2 nhưng job không còn trỏ tới, người dùng phải gen lại từ đầu và
+ * đốt thêm quota Veo. Chỉ giữ khi nội dung khớp tuyệt đối: lời thoại/prompt đổi thì video cũ
+ * không còn đúng kịch bản nữa, phải gen lại.
+ */
+export function mergeSegmentsKeepingVideos(
+  next: LivestreamSegment[],
+  prev: LivestreamSegment[]
+): LivestreamSegment[] {
+  const prevById = new Map(prev.map((s) => [s.id, s]));
+  return next.map((segment) => {
+    const old = prevById.get(segment.id);
+    if (
+      !old ||
+      old.status !== 'done' ||
+      !old.videoPath ||
+      old.voiceoverVi !== segment.voiceoverVi ||
+      old.veoPrompt !== segment.veoPrompt ||
+      old.duration !== segment.duration
+    ) {
+      return segment;
+    }
+    return {
+      ...segment,
+      status: old.status,
+      jobId: old.jobId,
+      videoPath: old.videoPath,
+      videoUrl: old.videoUrl,
+      lastFramePath: old.lastFramePath,
+      attempts: old.attempts,
+      lastUpdatedAt: old.lastUpdatedAt,
+    };
+  });
+}

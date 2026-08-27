@@ -9,6 +9,7 @@ import {
   computeSegmentDurations,
   findOverlongSegments,
   sanitizeSegments,
+  mergeSegmentsKeepingVideos,
 } from '@/lib/livestream/segmentSanitize';
 import { shortenOverlongSegments } from '@/lib/livestream/shortenVoiceover';
 import { recomputeSegmentOrder } from '@/lib/livestream/reorder';
@@ -147,7 +148,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                 message: `Có đoạn đang generating giữa chừng: ${stillGen.map((s) => s.id).join(', ')}`,
               };
             }
-            p.segments = segments;
+            // Giữ video của các đoạn AI viết ra y hệt cũ — gán thẳng `segments` sẽ đưa mọi
+            // đoạn về idle và mất sạch video đã gen, buộc gen lại và đốt thêm quota Veo.
+            p.segments = mergeSegmentsKeepingVideos(segments, p.segments);
             p.scriptStatus = 'done';
             p.scriptError = null;
             recomputeSegmentOrder(j);
