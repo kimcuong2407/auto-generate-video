@@ -4,23 +4,42 @@ import { chatCompletion } from '../ai/chatClient';
 import { readImagesAsBase64 } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
 import { ensureLocalImage } from './imageR2';
+import { pickVisionRefEntries, stageBibleFingerprint } from './refImages';
 import { resolveWithinJob } from './paths';
 import { STAGE_BIBLE_SYSTEM_PROMPT } from './promptDefaults';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 
 /**
- * Bible đã chốt có còn khớp ảnh mẫu hiện tại của job hay không. Lệch = bible đang tả sai người dẫn
- * (VD chốt "woman" khi chưa có ảnh mẫu, sau đó Mr.D mới upload ảnh người dẫn nam) → phải chốt lại.
+ * Bible đã chốt có còn khớp DỮ LIỆU ĐẦU VÀO hiện tại của job hay không. Lệch = bible đang tả sai
+ * sân khấu (VD chốt "woman" khi chưa có ảnh mẫu, sau đó Mr.D mới upload ảnh người dẫn nam; hoặc
+ * chốt xong mới chọn ảnh nền khác) → phải chốt lại.
  *
- * Bible do bản code cũ chốt không có `modelImagePath` (undefined). Coi undefined là "chốt khi chưa
- * có ảnh mẫu" (null): job đang có ảnh mẫu thì tính là lệch → chốt lại 1 lần rồi ghi dấu vết; job
- * không có ảnh mẫu thì khớp → giữ nguyên bible, không gọi AI vô ích.
+ * Hai lớp kiểm tra, lớp nào lệch cũng tính là stale:
+ * - `inputsFingerprint`: toàn bộ input bible phụ thuộc (ảnh mẫu + ảnh sản phẩm + ảnh nền + danh
+ *   sách sản phẩm). Đây là lớp chính.
+ * - `modelImagePath`: giữ lại để bible do bản code cũ chốt (thiếu CẢ HAI field) vẫn bị bắt đúng
+ *   như hành vi trước đây — job đang có ảnh mẫu thì chốt lại 1 lần rồi ghi đủ dấu vết, job không
+ *   có ảnh mẫu thì khớp, không gọi AI vô ích.
+ *
+ * Job kèm `products` mới so được fingerprint; thiếu (caller cũ chỉ truyền 2 field) thì bỏ qua lớp
+ * này và rơi về đúng hành vi cũ.
  */
 export function isStageBibleStale(
-  job: Pick<LivestreamJob, 'stageBible' | 'selectedModelImagePath'>
+  job: Pick<LivestreamJob, 'stageBible' | 'selectedModelImagePath'> &
+    Partial<Pick<LivestreamJob, 'selectedRefImagePaths' | 'selectedBackgroundImagePath' | 'products'>>
 ): boolean {
   if (!job.stageBible) return false;
-  return (job.stageBible.modelImagePath ?? null) !== (job.selectedModelImagePath ?? null);
+  if ((job.stageBible.modelImagePath ?? null) !== (job.selectedModelImagePath ?? null)) return true;
+  if (!job.products) return false;
+  return (
+    job.stageBible.inputsFingerprint !==
+    stageBibleFingerprint({
+      selectedModelImagePath: job.selectedModelImagePath,
+      selectedRefImagePaths: job.selectedRefImagePaths ?? [],
+      selectedBackgroundImagePath: job.selectedBackgroundImagePath ?? null,
+      products: job.products,
+    })
+  );
 }
 
 /**
@@ -60,25 +79,19 @@ export async function ensureStageBible(
 }
 
 /**
- * Đọc ảnh MẪU/NGƯỜI DẪN (job.selectedModelImagePath) + ảnh background đã chọn để gửi THẲNG cho
- * model khi chốt stage bible.
+ * Đọc MỌI ảnh Mr.D đã chọn (ảnh mẫu/người dẫn + ảnh sản phẩm + ảnh nền) để gửi THẲNG cho model khi
+ * chốt stage bible — xem pickVisionRefEntries() ở refImages.ts để biết thứ tự và trần số ảnh.
  *
  * Vì sao cần: trước đây bước này chỉ nhận `visualDescription` — mô tả bằng chữ do vision đọc từ ảnh
- * SẢN PHẨM, model CHƯA BAO GIỜ nhìn thấy ảnh mẫu nên tự bịa người dẫn (mặc định hay ra "woman" với
- * hàng mỹ phẩm dù ảnh mẫu là nam). Ảnh mẫu là nguồn sự thật duy nhất về giới tính/ngoại hình người dẫn.
+ * SẢN PHẨM, model CHƯA BAO GIỜ nhìn thấy ảnh mẫu nên tự bịa người dẫn (mặc định hay ra "woman" dù
+ * ảnh mẫu là nam). Ảnh là nguồn sự thật duy nhất về ngoại hình người dẫn lẫn bối cảnh/đạo cụ.
  *
  * Best-effort: không có ảnh / đọc lỗi → mảng rỗng, caller vẫn chốt bible bằng text như cũ.
  */
 async function collectStageRefImages(
   job: LivestreamJob
 ): Promise<{ images: Awaited<ReturnType<typeof readImagesAsBase64>>; legend: string }> {
-  const entries: Array<{ rel: string; label: string }> = [];
-  if (job.selectedModelImagePath) {
-    entries.push({ rel: job.selectedModelImagePath, label: 'ảnh NGƯỜI MẪU/NGƯỜI DẪN' });
-  }
-  if (job.selectedBackgroundImagePath) {
-    entries.push({ rel: job.selectedBackgroundImagePath, label: 'ảnh BỐI CẢNH/BACKGROUND' });
-  }
+  const entries = pickVisionRefEntries(job);
   if (entries.length === 0) return { images: [], legend: '' };
 
   await Promise.all(
@@ -106,7 +119,7 @@ async function generateStageBible(
   const refs = await collectStageRefImages(job);
   const imageBlock =
     refs.images.length > 0
-      ? `\n\nẢNH THẬT ĐÍNH KÈM (nhìn kỹ trước khi chốt — đây là nguồn sự thật, ưu tiên hơn MỌI mô tả bằng chữ ở trên):\n${refs.legend}\nNếu có ảnh NGƯỜI MẪU: "host" PHẢI tả ĐÚNG người trong ảnh — đúng GIỚI TÍNH (nhìn ảnh để xác định, KHÔNG mặc định theo loại sản phẩm), đúng độ tuổi, kiểu tóc, vóc dáng, trang phục và màu sắc trang phục. "voice" PHẢI khớp giới tính người trong ảnh (ảnh nam → giọng nam, ảnh nữ → giọng nữ). Nếu có ảnh BỐI CẢNH: "scene" phải tả đúng căn phòng/bàn/ánh sáng trong ảnh. TUYỆT ĐỐI KHÔNG bịa khác ảnh.`
+      ? `\n\nẢNH THẬT ĐÍNH KÈM (nhìn kỹ trước khi chốt — đây là nguồn sự thật, ưu tiên hơn MỌI mô tả bằng chữ ở trên):\n${refs.legend}\nNếu có ảnh NGƯỜI MẪU: "host" PHẢI tả ĐÚNG người trong ảnh — đúng GIỚI TÍNH (nhìn ảnh để xác định, KHÔNG mặc định theo loại sản phẩm), đúng độ tuổi, kiểu tóc, vóc dáng, trang phục và màu sắc trang phục. "voice" PHẢI khớp giới tính người trong ảnh (ảnh nam → giọng nam, ảnh nữ → giọng nữ). Nếu có ảnh SẢN PHẨM THẬT: "scene" phải là không gian bày vừa và hợp lý với ĐÚNG món hàng trong ảnh (đúng kích thước, đúng loại mặt bàn/giá đỡ cần có); đạo cụ nhắc trong "scene" phải phù hợp sản phẩm thật, KHÔNG bịa thêm đồ vật không thấy trong ảnh. Nếu có ảnh BỐI CẢNH: "scene" phải tả đúng căn phòng/bàn/ánh sáng trong ảnh. TUYỆT ĐỐI KHÔNG bịa khác ảnh.`
       : '';
   const user = `Danh sách sản phẩm sẽ giới thiệu lần lượt trong buổi live này:\n${productList}${visualBlock}${imageBlock}`;
 
@@ -132,6 +145,8 @@ async function generateStageBible(
     wardrobeLock: parsed.wardrobeLock?.trim() || '',
     // Dấu vết ảnh mẫu đã dùng — lần sau đổi ảnh là biết bible cũ tả sai người, tự chốt lại.
     modelImagePath: job.selectedModelImagePath ?? null,
+    // Dấu vết ĐẦY ĐỦ (ảnh sản phẩm + ảnh nền + danh sách sản phẩm) — xem isStageBibleStale.
+    inputsFingerprint: stageBibleFingerprint(job),
   };
 }
 
@@ -145,7 +160,7 @@ KHÔNG được tự nghĩ ra người dẫn/bối cảnh/góc máy/giọng khá
 - Máy quay (Style): ${bible.camera}
 - Chất giọng (Voice): ${bible.voice}
 ${bible.wardrobeLock ? `- Ràng buộc: ${bible.wardrobeLock}\n` : ''}
-BẮT BUỘC: veoPrompt của MỌI đoạn phải chứa NGUYÊN VĂN các cụm mô tả tiếng Anh ở trên (copy y hệt,
+BẮT BUỘC: veoPrompt của MỌI đoạn phải chứa NGUYÊN VĂN các cụm mô tả ở trên (copy y hệt,
 không paraphrase, không rút gọn, không thêm chi tiết ngoại hình mới). Bỏ qua yêu cầu tự chốt người
 dẫn/bối cảnh/giọng ở BƯỚC 1 của system prompt — đã chốt sẵn ở đây rồi. Sản phẩm trên bàn là thứ
 DUY NHẤT thay đổi so với các sản phẩm khác trong buổi live.`;

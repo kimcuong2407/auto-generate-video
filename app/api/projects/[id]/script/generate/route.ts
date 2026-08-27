@@ -80,7 +80,7 @@ Với mỗi cảnh tự thiết kế, xác định:
 - type: loại cảnh (VD: "hook", "reveal", "demo", "feature", "comparison", "outro"...)
 - voiceoverVi: lời thoại tiếng Việt tự nhiên, thân thiện, đúng thời lượng scene (khoảng 2-3 từ/giây)
 - onScreenText: câu chữ ngắn overlay lên màn hình (dưới 8 từ)
-- veoPrompt: mô tả cảnh quay bằng tiếng Anh, chi tiết, dùng cho AI tạo video (Google Veo). veoPrompt phải là
+- veoPrompt: mô tả cảnh quay bằng TIẾNG VIỆT, chi tiết, dùng cho AI tạo video (Google Veo). veoPrompt phải là
   1 đoạn văn liền mạch nhưng BẮT BUỘC bao phủ đủ 7 thành phần chuyên nghiệp sau (không cần ghi nhãn từng
   phần ra prompt, chỉ cần nội dung có mặt):
   (1) Subject — NẾU cảnh có người: dùng ĐÚNG mô tả "nhân vật review" đã chốt ở Bước 1.b (giữ nguyên từ ngữ,
@@ -89,8 +89,8 @@ Với mỗi cảnh tự thiết kế, xác định:
       QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm — đọc kỹ: khi tạo video thật, hệ thống LUÔN nạp
       kèm 1 khung hình khởi điểm chứa sẵn sản phẩm thật (ảnh key frame hoặc frame cuối cảnh trước). Khung
       hình đó thể hiện hình dáng sản phẩm chính xác hơn MỌI câu chữ. Vì vậy:
-      - Gọi sản phẩm bằng cụm trung tính "the exact product shown in the reference image", kèm tối đa màu
-        tổng thể và chất liệu tổng quát (VD "the exact all-white sneaker shown in the reference image").
+      - Gọi sản phẩm bằng cụm trung tính "đúng sản phẩm xuất hiện trong ảnh reference", kèm tối đa màu
+        tổng thể và chất liệu tổng quát (VD "đúng đôi sneaker trắng toàn phần trong ảnh reference").
       - TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hoặc đặc trưng cấu tạo của sản phẩm: số lỗ
         xỏ dây, số nút, số ngăn, số đường khâu, kiểu hoa văn đế, loại vân bề mặt, kiểu khớp nối, hình dạng
         logo... Chữ mô tả sai lệch dù chỉ 1 chi tiết sẽ KÉO model vẽ lệch khỏi sản phẩm thật trong ảnh —
@@ -112,8 +112,8 @@ Với mỗi cảnh tự thiết kế, xác định:
       - Với cảnh dùng image-to-video chaining, mô tả rõ ràng TƯ THẾ TAY TĨNH ổn định khi bắt đầu
         cảnh (tay đang đặt ở đâu, cầm gì) để Veo không tự "bịa thêm" 1 bàn tay thứ ba trong lúc
         tiếp nối chuyển động.
-      - Trong phần Technical của veoPrompt, thêm cụm "natural hand anatomy, exactly two hands,
-        exactly two arms, no extra limbs" để nhấn mạnh giải phẫu tay chuẩn, không thừa chi.
+      - Trong phần Technical của veoPrompt, thêm cụm "giải phẫu tay tự nhiên, đúng hai bàn tay,
+        đúng hai cánh tay, không có chi thừa" để nhấn mạnh giải phẫu tay chuẩn, không thừa chi.
   (3) Scene — bối cảnh quay chung đã xác định ở Bước 1 (không gian, ánh sáng, phong cách máy quay), PHẢI
       nhắc lại nhất quán để liền mạch với các scene khác;
   (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách ánh sáng;
@@ -121,41 +121,43 @@ Với mỗi cảnh tự thiết kế, xác định:
       tả chất giọng cố định đã chốt ở Bước 1.c (giữ nguyên từ ngữ, KHÔNG diễn đạt lại khác đi giữa các cảnh)
       ngay trước câu thoại, rồi mới đến đoạn lời thoại lấy NGUYÊN VĂN từ voiceoverVi của chính scene đó,
       dùng ĐÚNG cú pháp có dấu hai chấm trước dấu ngoặc kép (colon syntax — cú pháp đã được cộng đồng kiểm
-      chứng giúp ngăn Veo tự sinh phụ đề/subtitle đè lên video): The person has <mô tả giọng cố định>,
-      speaks in Vietnamese cheerfully and energetically with a smile, saying: "<nguyên văn voiceoverVi>".
+      chứng giúp ngăn Veo tự sinh phụ đề/subtitle đè lên video): Người này có <mô tả giọng cố định>, nói
+      tiếng Việt vui vẻ và tràn năng lượng kèm nụ cười, nói rằng: "<nguyên văn voiceoverVi>".
       Không dịch câu thoại sang tiếng Anh, không
       dùng dấu ngoặc kép mà thiếu dấu hai chấm phía trước (dễ kích hoạt phụ đề không mong muốn), không được
       bỏ qua chỉ dẫn giọng/ngôn ngữ này. Nếu scene không có voiceoverVi (cảnh im lặng) thì bỏ qua phần
       Dialogue, không bịa lời thoại;
-  (6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Audio:" mô tả rõ âm thanh nền/hiệu ứng/nhạc phù hợp bối cảnh
+  (6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Âm thanh:" mô tả rõ âm thanh nền/hiệu ứng/nhạc phù hợp bối cảnh
       để tránh Veo tự bịa âm thanh sai bối cảnh (audio hallucination) — không được bỏ qua câu Audio này ở
       bất kỳ scene nào. Chọn 2-3 yếu tố hợp diễn biến CỦA CHÍNH CẢNH ĐÓ, ưu tiên âm thanh THẬT phát sinh từ
       hành động trong cảnh (chạm/đặt sản phẩm xuống mặt bàn, bóc túi, mở nắp, xoay vật, tiếng cười nhẹ, bước
-      chân) cộng 1 lớp không khí sinh động, VD: "Audio: warm lively room tone, the reviewer's cheerful voice,
-      soft taps as the product is set down on the table, gentle rustle of packaging, faint upbeat background
-      music at low volume". TRÁNH mô tả không gian chết như "quiet room tone", "silent", "no background
-      music" — nghe rất buồn ngủ; chỉ dùng khi cảnh CỐ Ý cần tĩnh lặng (VD cận cảnh chi tiết không thoại).
+      chân) cộng 1 lớp không khí sinh động, VD: "Âm thanh: tiếng phòng ấm áp sôi động, giọng người review vui
+      tươi, tiếng chạm khẽ khi đặt sản phẩm xuống mặt bàn, tiếng sột soạt nhẹ của bao bì, nhạc nền vui tươi
+      văng vẳng ở âm lượng nhỏ". TRÁNH mô tả không gian chết như "tiếng phòng yên tĩnh", "im lặng", "không
+      có nhạc nền" — nghe rất buồn ngủ; chỉ dùng khi cảnh CỐ Ý cần tĩnh lặng (VD cận cảnh chi tiết không thoại).
       KHÔNG thêm tiếng đám đông/khán giả/tiếng chuông thông báo giả;
-  (7) Technical — luôn thêm cụm "no subtitles, no captions, no on-screen text" vào cuối veoPrompt để chặn
+  (7) Technical — luôn thêm cụm "không phụ đề, không caption, không chữ trên màn hình" vào cuối veoPrompt để chặn
       Veo tự sinh phụ đề chồng lên video (on-screen text hiển thị đã được xử lý riêng qua trường onScreenText,
       không cần và không được để Veo tự vẽ chữ).
 
   Yêu cầu bổ sung bắt buộc:
   a. Nếu cảnh quay theo góc chủ quan (POV, cầm điện thoại/selfie, handheld, over-the-shoulder), PHẢI dùng
-     đúng cú pháp "(thats where the camera is)" ngay sau vị trí camera được mô tả — kỹ thuật này giúp Veo
-     bám đúng vị trí máy quay đã yêu cầu, ví dụ: "holding the phone at arm's length (thats where the camera
-     is)" hoặc "camera held at chest height (thats where the camera is)". Nếu là dạng video selfie thực sự
-     (người nói tự cầm máy quay chính mình), áp dụng công thức: bắt đầu bằng "A selfie video of...", nêu rõ
-     tay cầm máy dài ra ("holds the camera at arm's length"), tay/cánh tay hiện rõ trong khung hình, thỉnh
-     thoảng liếc nhìn vào camera, và thêm "slightly grainy, film-like" để tránh cảm giác quá sạch/giả tạo AI.
+     đúng cú pháp "(thats where the camera is)" — giữ NGUYÊN cụm tiếng Anh này vì là cú pháp riêng của Veo —
+     ngay sau vị trí camera được mô tả, ví dụ: "cầm điện thoại dang thẳng tay (thats where the camera
+     is)" hoặc "máy quay giữ ngang tầm ngực (thats where the camera is)". Nếu là dạng video selfie thực sự
+     (người nói tự cầm máy quay chính mình), áp dụng công thức: bắt đầu bằng "Một video selfie của...", nêu rõ
+     tay cầm máy dài ra ("cầm máy dang thẳng tay"), tay/cánh tay hiện rõ trong khung hình, thỉnh
+     thoảng liếc nhìn vào camera, và thêm "hơi nhiễu hạt, giống phim nhựa" để tránh cảm giác quá sạch/giả tạo AI.
   b. Ưu tiên hình ảnh CHÂN THỰC như quay bằng máy ảnh/điện thoại thật, KHÔNG được tạo cảm giác giả tạo hay
-     lộ dấu hiệu AI-generated: mô tả kết cấu da/vật liệu tự nhiên có chi tiết nhỏ không hoàn hảo (texture,
+     lộ dấu hiệu do AI sinh: mô tả kết cấu da/vật liệu tự nhiên có chi tiết nhỏ không hoàn hảo (texture,
      lỗ chân lông, nếp nhăn vải tự nhiên), ánh sáng tự nhiên không đối xứng hoàn hảo, chuyển động camera hơi
-     có độ rung/imperfect như tay người cầm quay, tránh mọi mô tả kiểu "perfect/flawless/glossy/pristine/
-     studio-perfect/hyper-smooth/CGI/3D render/waxy skin". Dùng các từ khoá gợi chân thực: "shot on iPhone",
-     "handheld", "natural imperfections", "authentic", "unretouched", "realistic skin texture", "candid".
-  c. Dùng từ khoá kiểm soát chất lượng chuyển động phù hợp diễn biến cảnh (VD: "natural movement",
-     "confident movement", "graceful movement", "energetic movement") thay vì để chuyển động chung chung.
+     có độ rung/không hoàn hảo như tay người cầm quay, tránh mọi mô tả kiểu "hoàn hảo/không tì vết/bóng bẩy/
+     tinh khôi/chuẩn studio/mượt phi thực/CGI/render 3D/da như sáp". Dùng các từ khoá gợi chân thực: "quay bằng
+     iPhone", "cầm tay", "khiếm khuyết tự nhiên", "chân thực", "không chỉnh sửa", "kết cấu da thật", "tự nhiên
+     không dàn dựng".
+  c. Dùng từ khoá kiểm soát chất lượng chuyển động phù hợp diễn biến cảnh (VD: "chuyển động tự nhiên",
+     "chuyển động dứt khoát", "chuyển động uyển chuyển", "chuyển động đầy năng lượng") thay vì để chuyển
+     động chung chung.
 
 Cấu trúc chung bắt buộc dù theo góc kịch bản nào: cảnh đầu tiên phải là hook gây chú ý trong 3 giây đầu
 (nội dung cảnh hook do góc kịch bản quyết định — xem chỉ dẫn góc bên dưới), các cảnh giữa là nội dung chính

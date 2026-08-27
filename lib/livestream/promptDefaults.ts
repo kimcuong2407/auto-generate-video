@@ -65,27 +65,27 @@ Trả về DUY NHẤT đoạn mô tả (plain text, tiếng Việt), KHÔNG kèm
  * người dùng có thể chọn làm ref chính khi gen video. Mô tả sản phẩm (product.description) sẽ được
  * ghép vào cuối prompt này lúc gọi.
  */
-export const BACKGROUND_SYSTEM_PROMPT = `Generate a single realistic livestream frame — the presenter MUST be seated inside a proper Vietnamese TikTok Shop / Shopee Live home live-selling room (this exact fixed room every time), NEVER outdoors, NEVER an empty room, NEVER a bare studio backdrop with no livestream gear.
+export const BACKGROUND_SYSTEM_PROMPT = `Tạo MỘT khung hình livestream chân thực — người dẫn BẮT BUỘC đang NGỒI trong đúng một phòng live bán hàng tại nhà kiểu TikTok Shop / Shopee Live Việt Nam (luôn là đúng căn phòng cố định này), TUYỆT ĐỐI KHÔNG ngoài trời, KHÔNG phòng trống, KHÔNG phông nền studio trơn không có thiết bị livestream.
 
-Canonical room setup — a small (~6-8m²) home live-selling corner, keep it IDENTICAL every time this prompt runs (same backdrop, same lighting, same furniture) so different generated frames look like the same physical room:
-- Backdrop: a plain, tidy fabric curtain or flat-painted wall in a light neutral tone (white/cream/beige), about 1-1.2m behind the presenter for depth separation. Optionally a slim shelf against it holding a few neatly stacked branded product boxes — never cluttered or messy.
-- Lighting: soft, even daylight-balanced light (like a ring light or softbox just off-camera) hitting the presenter's face and the tabletop products from the front at a gentle angle on both sides, bright enough to show product detail without harsh shadows or glare — natural room light, not a flawless studio look.
-- Livestream gear cue: a phone-and-tripod rig or ring-light stand may be glimpsed at the very edge of the frame, signaling this is shot as a real phone livestream, not a professional film set.
-- Table: a low table/desk directly in front of the presenter, covered with a simple mat or cloth, at a height that keeps the products within easy reach of both hands.
+Bố trí phòng chuẩn — một góc live bán hàng tại nhà nhỏ (~6-8m²), giữ Y HỆT nhau mỗi lần chạy prompt này (cùng phông nền, cùng ánh sáng, cùng đồ đạc) để các khung hình sinh ra trông như cùng một căn phòng thật:
+- Phông nền: rèm vải trơn gọn gàng hoặc mảng tường sơn phẳng tông trung tính sáng (trắng/kem/be), cách người dẫn khoảng 1-1,2m để tạo chiều sâu. Có thể thêm một kệ mỏng dựa tường đặt vài hộp sản phẩm xếp ngay ngắn — không bao giờ bừa bộn.
+- Ánh sáng: ánh sáng mềm, đều, cân bằng ánh sáng ban ngày (như đèn ring light hoặc softbox đặt ngay ngoài khung), chiếu vào mặt người dẫn và mặt bàn từ phía trước theo góc nhẹ ở cả hai bên, đủ sáng để thấy chi tiết sản phẩm mà không có bóng gắt hay loá — ánh sáng phòng tự nhiên, không phải studio hoàn hảo.
+- Dấu hiệu thiết bị live: có thể thoáng thấy bộ điện thoại gắn tripod hoặc chân đèn ring light ở sát mép khung, cho thấy đây là buổi live quay bằng điện thoại thật, không phải phim trường chuyên nghiệp.
+- Bàn: một chiếc bàn thấp ngay trước mặt người dẫn, phủ tấm lót hoặc khăn đơn giản, độ cao vừa tầm để sản phẩm luôn trong tầm với của hai tay.
 
-Composition (frame this exactly like a real seller streaming from their phone):
-- A host/presenter SITS at the table (seated, stationary — never standing or walking), positioned OFF-CENTER toward one side of the frame (not dead center), shown from roughly the waist up, actively interacting with the product below — holding, showing, or gesturing toward it with the hands like a live seller talking to viewers.
-- If a reference model/person image is provided, the presenter's face, hairstyle, and outfit MUST match that reference exactly — keep the same person, do not invent a different one.
-- The products are laid out on the table IN FRONT of the presenter, within easy reach: several items arranged side by side (bottles, jars, tubs, boxes as appropriate), with the main product clearly the most visible and recognizable. The products stay in front of the presenter at all times.
-- Vertical portrait framing (phone-shot orientation). Keep the presenter and products within the central band of the frame, leaving comfortable empty margin at the very top and very bottom of the frame.
+Bố cục (đóng khung đúng như người bán đang live bằng điện thoại):
+- Người dẫn NGỒI tại bàn (ngồi yên tại chỗ — không bao giờ đứng hay đi lại), đặt LỆCH sang một bên khung hình (không nằm chính giữa), lấy từ khoảng ngang thắt lưng trở lên, đang tương tác với sản phẩm phía dưới — cầm, khoe, hoặc chỉ tay vào sản phẩm như người bán live đang nói với người xem.
+- Nếu có ảnh reference người mẫu, khuôn mặt, kiểu tóc và trang phục của người dẫn BẮT BUỘC khớp đúng ảnh reference đó — giữ đúng người, không được bịa ra người khác.
+- Sản phẩm bày trên bàn NGAY TRƯỚC MẶT người dẫn, trong tầm với: vài món xếp cạnh nhau (chai, hũ, lọ, hộp tuỳ loại), trong đó sản phẩm chính rõ ràng là món dễ thấy và dễ nhận ra nhất. Sản phẩm luôn nằm trước mặt người dẫn ở mọi lúc.
+- Khung dọc (đúng hướng quay bằng điện thoại). Giữ người dẫn và sản phẩm trong dải giữa khung, chừa lề trống thoải mái ở sát trên cùng và sát dưới cùng khung hình.
 
-Requirements:
-- The presenter is clearly present and interacting with the product; the product is visible and recognizable.
-- Natural, slightly imperfect lighting like a real room — not a flawless studio. Authentic, candid, shot-on-phone look with realistic skin and material textures. Avoid glossy/CGI/3D-render perfection.
-- Natural hand anatomy: exactly two hands, exactly two arms, no extra limbs. Keep hands simple and close to the body; do not depict complex multi-finger gestures.
-- No subtitles, no captions, no on-screen text, no watermark, no UI elements, no app interface, no buttons, no icons, no overlays. This must be a clean photographic scene only.
+Yêu cầu:
+- Người dẫn phải hiện diện rõ và đang tương tác với sản phẩm; sản phẩm nhìn rõ và nhận ra được.
+- Ánh sáng tự nhiên, hơi không hoàn hảo như phòng thật — không phải studio hoàn mỹ. Cảm giác chân thực, tự nhiên, quay bằng điện thoại, da và chất liệu có kết cấu thật. Tránh vẻ bóng bẩy/CGI/render 3D hoàn hảo.
+- Giải phẫu tay tự nhiên: đúng hai bàn tay, đúng hai cánh tay, không có chi thừa. Giữ tay đơn giản và gần thân người; không mô tả cử chỉ nhiều ngón phức tạp.
+- Không phụ đề, không caption, không chữ trên màn hình, không watermark, không thành phần giao diện, không giao diện ứng dụng, không nút bấm, không icon, không lớp phủ. Đây phải là một cảnh chụp thuần tuý.
 
-Product context:`;
+Bối cảnh sản phẩm:`;
 
 /**
  * Prompt cốt lõi sinh lời thoại + veoPrompt cho các đoạn ~8s của 1 sản phẩm trong video
@@ -122,10 +122,10 @@ c. TƯ THẾ & BỐ CỤC CỐ ĐỊNH cho MỌI đoạn: người dẫn NGỒI 
 d. 1 "chất giọng" (voice) DUY NHẤT cho người dẫn: chốt cố định giới tính giọng (nam/nữ), quãng
    tuổi giọng (trẻ/trung niên...), âm vực (trầm/cao/vừa), tốc độ nói, và tông cảm xúc chủ đạo.
    BẮT BUỘC là giọng VUI VẺ, TƯƠI TẮN, TRÀN NĂNG LƯỢNG như người bán hàng live đang hào hứng:
-   "cheerful, upbeat, high-energy voice with a warm smile in it, lively pacing, expressive animated
-   intonation, enthusiastic emphasis on key selling points". TUYỆT ĐỐI KHÔNG mô tả giọng là "calm",
-   "soft-spoken", "measured", "slow", "gentle", "monotone", "flat", "neutral" — giọng đều đều buồn
-   ngủ làm hỏng không khí livestream. Mô tả này PHẢI giống hệt nhau ở MỌI đoạn — Google Veo tự chọn giọng dựa theo mô tả trong prompt mỗi lần tạo video riêng
+   "giọng vui tươi, hào hứng, tràn năng lượng, có nụ cười ấm áp trong giọng, nhịp nói sôi nổi, ngữ
+   điệu lên xuống sinh động, nhấn mạnh đầy nhiệt huyết vào các điểm bán hàng". TUYỆT ĐỐI KHÔNG mô
+   tả giọng là "điềm đạm", "nhỏ nhẹ", "chậm rãi", "dịu dàng", "đều đều", "vô cảm", "trung tính" —
+   giọng đều đều buồn ngủ làm hỏng không khí livestream. Mô tả này PHẢI giống hệt nhau ở MỌI đoạn — Google Veo tự chọn giọng dựa theo mô tả trong prompt mỗi lần tạo video riêng
    biệt nên KHÔNG tự nhớ giọng đã dùng ở đoạn trước; chỉ có nhắc lại đúng 1 mô tả giọng cố định
    trong veoPrompt của mọi đoạn mới giúp Veo chọn giọng gần giống nhau xuyên suốt.
 
@@ -147,7 +147,7 @@ là mô tả đặc điểm/công dụng/giá cả/ưu đãi, cuối có lời m
 KHÔNG cần mỗi đoạn phải có cấu trúc hook/CTA riêng — coi toàn bộ các đoạn là 1 lời thoại liên tục
 được cắt theo thời lượng, câu sau tiếp nối tự nhiên câu trước.
 
-Với mỗi đoạn, veoPrompt (tiếng Anh, dùng cho AI tạo video Google Veo) phải là 1 đoạn văn liền mạch
+Với mỗi đoạn, veoPrompt (viết bằng TIẾNG VIỆT, dùng cho AI tạo video Google Veo) phải là 1 đoạn văn liền mạch
 nhưng BẮT BUỘC bao phủ đủ 7 thành phần chuyên nghiệp sau (không cần ghi nhãn từng phần, chỉ cần nội
 dung có mặt):
 (1) Subject — mô tả người dẫn livestream ĐÚNG theo mô tả cố định đã chốt ở Bước 1.b (giữ nguyên
@@ -168,8 +168,8 @@ dung có mặt):
       chéo ngón, động tác múa/ký hiệu tay...).
     - Với đoạn dùng image-to-video chaining, mô tả rõ ràng TƯ THẾ TAY TĨNH ổn định khi bắt đầu
       đoạn để Veo không tự "bịa thêm" 1 bàn tay thứ ba trong lúc tiếp nối chuyển động.
-    - Trong phần Technical của veoPrompt, thêm cụm "natural hand anatomy, exactly two hands,
-      exactly two arms, no extra limbs".
+    - Trong phần Technical của veoPrompt, thêm cụm "giải phẫu tay tự nhiên, đúng hai bàn tay, đúng
+      hai cánh tay, không có chi thừa".
     - Nếu user prompt có kèm mục "Mô tả ngoại hình sản phẩm" (đọc từ ảnh thật), PHẢI dựa vào đó để
       quyết định cầm bằng 1 tay hay 2 tay và mô tả đúng kích thước/chất liệu khi tay chạm/cầm sản
       phẩm — không tự đoán chung chung khác với mô tả này.
@@ -180,33 +180,34 @@ dung có mặt):
     nhúng mô tả chất giọng cố định đã chốt ở Bước 1.d (giữ nguyên từ ngữ, KHÔNG diễn đạt lại khác
     đi giữa các đoạn) ngay trước câu thoại, rồi mới đến đoạn lời thoại lấy NGUYÊN VĂN từ
     voiceoverVi của chính đoạn đó, dùng ĐÚNG cú pháp có dấu hai chấm trước dấu ngoặc kép (colon
-    syntax — giúp ngăn Veo tự sinh phụ đề đè lên video): The person has <mô tả giọng cố định>,
-    speaks in Vietnamese cheerfully and energetically with a smile, saying: "<nguyên văn
-    voiceoverVi>". Không dịch sang tiếng Anh, không bỏ dấu hai chấm phía trước. Trong voiceoverVi
+    syntax — giúp ngăn Veo tự sinh phụ đề đè lên video): Người này có <mô tả giọng cố định>, nói
+    tiếng Việt vui vẻ và tràn năng lượng kèm nụ cười, nói rằng: "<nguyên văn voiceoverVi>". Không
+    dịch sang tiếng Anh, không bỏ dấu hai chấm phía trước. Trong voiceoverVi
     có thể chèn dấu hiệu cảm xúc tự nhiên của live (VD "haha", "wow", "trời ơi", "á đù nha") ở chỗ
     hợp lý — nhưng KHÔNG lạm dụng, tối đa 1 lần mỗi đoạn và phải hợp ngữ cảnh;
-(6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Audio:" mô tả âm thanh nền/hiệu ứng tạo không khí
-    livestream SÔI ĐỘNG, chọn 2-3 yếu tố hợp ngữ cảnh đoạn đó, VD: "Audio: lively home livestream
-    room tone, the host's cheerful upbeat voice, a light natural laugh, soft taps as she picks the
-    product up off the table, gentle rustle of packaging, faint upbeat background music at low
-    volume". Ưu tiên âm thanh THẬT phát sinh từ hành động trong đoạn (chạm/đặt sản phẩm xuống bàn,
-    mở nắp, bóc túi, tiếng cười, tiếng vỗ tay nhẹ). KHÔNG dùng "quiet", "silent", "no background
-    music" — phòng live im lặng nghe rất buồn ngủ. KHÔNG thêm tiếng đám đông/khán giả/tiếng chuông
+(6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Âm thanh:" mô tả âm thanh nền/hiệu ứng tạo không khí
+    livestream SÔI ĐỘNG, chọn 2-3 yếu tố hợp ngữ cảnh đoạn đó, VD: "Âm thanh: tiếng phòng live tại
+    nhà sôi động, giọng người dẫn vui tươi hào hứng, một tiếng cười nhẹ tự nhiên, tiếng chạm khẽ khi
+    cầm sản phẩm lên khỏi mặt bàn, tiếng sột soạt nhẹ của bao bì, nhạc nền vui tươi văng vẳng ở âm
+    lượng nhỏ". Ưu tiên âm thanh THẬT phát sinh từ hành động trong đoạn (chạm/đặt sản phẩm xuống
+    bàn, mở nắp, bóc túi, tiếng cười, tiếng vỗ tay nhẹ). KHÔNG dùng "yên tĩnh", "im lặng", "không
+    có nhạc nền" — phòng live im lặng nghe rất buồn ngủ. KHÔNG thêm tiếng đám đông/khán giả/tiếng chuông
     thông báo giả;
-(7) Technical — luôn thêm cụm "no subtitles, no captions, no on-screen text" vào cuối veoPrompt.
+(7) Technical — luôn thêm cụm "không phụ đề, không caption, không chữ trên màn hình" vào cuối veoPrompt.
 
 Yêu cầu bổ sung bắt buộc:
-a. Nếu quay theo góc chủ quan (cầm điện thoại/selfie, handheld), dùng đúng cú pháp
-   "(thats where the camera is)" ngay sau vị trí camera, VD: "holding the phone at arm's length
-   (thats where the camera is)". Nếu là selfie video thực sự, bắt đầu bằng "A selfie video of...",
-   nêu rõ tay cầm máy dài ra, thỉnh thoảng liếc nhìn camera, thêm "slightly grainy, film-like".
-b. Ưu tiên hình ảnh CHÂN THỰC như quay bằng điện thoại thật, KHÔNG tạo cảm giác giả tạo/AI-generated:
+a. Nếu quay theo góc chủ quan (cầm điện thoại/selfie, cầm tay), dùng đúng cú pháp
+   "(thats where the camera is)" — giữ NGUYÊN cụm tiếng Anh này vì là cú pháp riêng của Veo — ngay
+   sau vị trí camera, VD: "cầm điện thoại dang thẳng tay (thats where the camera is)". Nếu là video
+   selfie thực sự, bắt đầu bằng "Một video selfie của...", nêu rõ tay cầm máy dài ra, thỉnh thoảng
+   liếc nhìn camera, thêm "hơi nhiễu hạt, giống phim nhựa".
+b. Ưu tiên hình ảnh CHÂN THỰC như quay bằng điện thoại thật, KHÔNG tạo cảm giác giả tạo/do AI sinh:
    mô tả kết cấu da/vật liệu tự nhiên có chi tiết nhỏ không hoàn hảo, ánh sáng tự nhiên không đối
-   xứng hoàn hảo, chuyển động camera hơi rung như tay người cầm quay. Tránh "perfect/flawless/
-   glossy/studio-perfect/CGI/3D render". Dùng: "shot on iPhone", "handheld", "natural imperfections",
-   "authentic", "realistic skin texture", "candid".
-c. Dùng từ khoá kiểm soát chất lượng chuyển động phù hợp diễn biến (VD: "natural movement",
-   "confident movement", "energetic movement") thay vì để chuyển động chung chung.
+   xứng hoàn hảo, chuyển động camera hơi rung như tay người cầm quay. Tránh "hoàn hảo/không tì vết/
+   bóng bẩy/chuẩn studio/CGI/render 3D". Dùng: "quay bằng iPhone", "cầm tay", "khiếm khuyết tự
+   nhiên", "chân thực", "kết cấu da thật", "tự nhiên không dàn dựng".
+c. Dùng từ khoá kiểm soát chất lượng chuyển động phù hợp diễn biến (VD: "chuyển động tự nhiên",
+   "chuyển động dứt khoát", "chuyển động đầy năng lượng") thay vì để chuyển động chung chung.
 
 Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
 {"segments":[{"voiceoverVi":"...","veoPrompt":"..."}]}`;
@@ -224,25 +225,24 @@ Buổi live này giới thiệu LẦN LƯỢT nhiều sản phẩm khác nhau, n
 đầu tới cuối — chỉ có sản phẩm trên bàn là thay đổi.
 
 Nhiệm vụ: dựa vào danh sách sản phẩm được cung cấp, hãy CHỐT một lần duy nhất các yếu tố cố định
-dưới đây (viết bằng TIẾNG ANH, dạng cụm mô tả dùng trực tiếp trong prompt Google Veo):
+dưới đây (viết bằng TIẾNG VIỆT, dạng cụm mô tả dùng trực tiếp trong prompt Google Veo):
 
 - host: mô tả người dẫn — giới tính, độ tuổi ước lượng, kiểu tóc/màu tóc, vóc dáng, trang phục
-  (kiểu dáng + màu sắc CỤ THỂ), phụ kiện/đặc điểm nhận diện, "realistic skin texture". Phải đủ chi
+  (kiểu dáng + màu sắc CỤ THỂ), phụ kiện/đặc điểm nhận diện, "kết cấu da chân thực". Phải đủ chi
   tiết để mọi lần tạo video đều ra đúng một người. Nếu có mô tả ảnh reference người mẫu, PHẢI khớp
   đúng người trong ảnh.
 - scene: mô tả bối cảnh quay — căn phòng cụ thể, đồ vật hậu cảnh, kiểu bàn, kiểu ánh sáng. Phải là
   không gian hợp lý để bày TẤT CẢ các loại sản phẩm trong danh sách.
-- camera: khung hình + góc máy + phong cách máy quay cố định (VD "medium shot, eye-level, static
-  phone camera propped on the table (thats where the camera is), slight natural handheld shake,
-  shot on iPhone, authentic candid look").
+- camera: khung hình + góc máy + phong cách máy quay cố định (VD "khung trung cảnh, ngang tầm mắt,
+  điện thoại đặt cố định dựng trên bàn (thats where the camera is), hơi rung nhẹ tự nhiên như cầm
+  tay, quay bằng iPhone, cảm giác chân thực tự nhiên").
 - voice: mô tả chất giọng cố định — giới tính giọng, quãng tuổi, âm vực, tốc độ nói, tông cảm xúc.
   BẮT BUỘC là giọng VUI VẺ, TƯƠI TẮN, TRÀN NĂNG LƯỢNG đúng kiểu người bán hàng live đang hào hứng:
-  nói nhanh vừa phải và có nhịp (upbeat, lively pacing), lên xuống ngữ điệu rõ rệt (expressive,
-  animated intonation — KHÔNG monotone/flat/deadpan), có nụ cười trong giọng (warm smiling voice),
-  nhấn nhá vào điểm bán hàng, thỉnh thoảng cười nhẹ tự nhiên. TUYỆT ĐỐI KHÔNG dùng các từ như
-  "calm", "soft-spoken", "measured", "slow", "gentle", "monotone", "neutral tone" — giọng đều đều
+  nói nhanh vừa phải và có nhịp, lên xuống ngữ điệu rõ rệt (KHÔNG đều đều, KHÔNG vô cảm), có nụ
+  cười trong giọng, nhấn nhá vào điểm bán hàng, thỉnh thoảng cười nhẹ tự nhiên. TUYỆT ĐỐI KHÔNG dùng các từ như
+  "điềm đạm", "nhỏ nhẹ", "chậm rãi", "dịu dàng", "đều đều", "trung tính" — giọng đều đều
   buồn ngủ làm hỏng không khí livestream.
-- wardrobeLock: 1 câu tiếng Anh khẳng định người dẫn KHÔNG đổi trang phục/kiểu tóc/vị trí ngồi
+- wardrobeLock: 1 câu tiếng Việt khẳng định người dẫn KHÔNG đổi trang phục/kiểu tóc/vị trí ngồi
   trong suốt buổi live, kể cả khi chuyển sang giới thiệu sản phẩm khác.
 
 Chọn phương án TRUNG TÍNH, hợp lý với TOÀN BỘ danh sách sản phẩm — không thiên về riêng 1 sản phẩm.

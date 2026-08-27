@@ -62,7 +62,7 @@ export type LivestreamJobStatus =
 /**
  * "Sân khấu" CỐ ĐỊNH của cả buổi live — chốt 1 lần ở cấp job rồi ép dùng lại y nguyên khi sinh
  * script cho MỌI sản phẩm, để nhiều sản phẩm khác nhau vẫn ra 1 buổi live thống nhất (cùng người
- * dẫn, cùng phòng, cùng góc máy, cùng giọng). Các field là cụm mô tả TIẾNG ANH dùng thẳng trong
+ * dẫn, cùng phòng, cùng góc máy, cùng giọng). Các field là cụm mô tả TIẾNG VIỆT dùng thẳng trong
  * veoPrompt. Xem lib/livestream/stageBible.ts.
  */
 export interface LivestreamStageBible {
@@ -78,6 +78,13 @@ export interface LivestreamStageBible {
    * undefined = bible chốt bởi bản code cũ (chưa ghi dấu vết) → coi như không khớp, chốt lại 1 lần.
    */
   modelImagePath?: string | null;
+  /**
+   * Dấu vết của TOÀN BỘ input đã dùng để chốt bible này (ảnh mẫu + ảnh sản phẩm đã chọn + ảnh nền
+   * + danh sách sản phẩm) — xem stageBibleFingerprint() ở refImages.ts. Lệch giá trị hiện tại =
+   * bible đang tả sai sân khấu, phải chốt lại; modelImagePath ở trên chỉ bắt được mỗi ảnh mẫu.
+   * undefined = bible chốt bởi bản code cũ (chưa ghi dấu vết).
+   */
+  inputsFingerprint?: string;
 }
 
 export interface LivestreamJob {
@@ -119,6 +126,16 @@ export interface LivestreamJob {
    * Nếu có, truyền kèm ảnh sản phẩm làm ref khi gen (r2v cho phép nhiều referenceImages).
    */
   selectedBackgroundImagePath: string | null;
+  /**
+   * Ảnh (relPath) bị TÁCH khỏi bước gen video: vẫn được AI vision đọc để mô tả vào prompt/stage
+   * bible, nhưng KHÔNG đính kèm làm reference image khi gọi Veo (xem pickRefImagePaths).
+   *
+   * Vì sao cần: Veo chỉ nhận tối đa 3 ref và bám rất sát ảnh — 1 ảnh bìa marketing hay ảnh nền quá
+   * đặc trưng vừa chiếm suất vừa ép khung hình sai. Tách ra là giữ được thông tin mô tả mà không
+   * để ảnh đó ghim hình. Chứa relPath của cả 3 loại (ảnh mẫu / ảnh sản phẩm / background).
+   */
+  detachedImagePaths: string[];
+
   /** Model ảnh dùng khi gen background bằng AI (xem lib/livestream/backgroundGenerate.ts) — 'chatgpt-web/gpt-5.5' (OmniRoute) hoặc 'flow-image' (Google Flow/Veo). */
   backgroundModel: string;
   /**

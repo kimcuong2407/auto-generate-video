@@ -36,7 +36,7 @@ export async function triggerBackgroundImageGeneration(
   // dùng làm reference lại kéo video lệch khỏi mô tả trong script.
   const bible = job.stageBible;
   const bibleBlock = bible
-    ? `\n\nMANDATORY — the frame MUST match this exact fixed livestream setup (copy these descriptions, do not invent a different host or room):\nHost: ${bible.host}\nScene: ${bible.scene}\nCamera: ${bible.camera}`
+    ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
     : '';
   const prompt = `${basePrompt}\n${product.description || product.name}${bibleBlock}`;
 
