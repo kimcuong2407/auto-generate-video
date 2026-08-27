@@ -85,12 +85,22 @@ export default function LivestreamDetailPage() {
       setScriptingAll(true);
     }
     const overlongAll: string[] = [];
+    // LỖI phải nổi lên UI. Trước đây chỉ bắt 'stage_bible_stale' và 'product_done', nên khi server
+    // gửi 'product_error'/'fatal' thì stream vẫn đóng bình thường và UI báo THÀNH CÔNG dù không có
+    // đoạn nào được sinh — đúng thứ khiến Mr.D bấm "Chốt lại sân khấu" 3 lần mà script không đổi.
+    const failures: string[] = [];
+    let fatal: string | null = null;
     let bibleRechecked = false;
     try {
       await streamScriptGeneration(jobId, productId, forceStageBible, (e) => {
         // Ảnh/mô tả sản phẩm đã đổi từ lần chốt trước → server đang chốt lại sân khấu. Báo cho
         // Mr.D biết vì sao lần này chậm hơn và vì sao người dẫn có thể khác lần trước.
         if (e.type === 'stage_bible_stale') bibleRechecked = true;
+        if (e.type === 'fatal') fatal = e.message ?? 'Sinh script dừng giữa chừng';
+        if (e.type === 'stage_bible_missing' && e.message) failures.push(e.message);
+        if (e.type === 'product_error') {
+          failures.push(`${e.productId ?? 'sản phẩm'}: ${e.message ?? 'lỗi không rõ'}`);
+        }
         // Trạng thái sản phẩm đã được server ghi vào job nên chỉ refresh() sau khi stream đóng;
         // riêng cảnh báo lời thoại quá dài không lưu vào job nên phải bắt tại đây.
         if (e.type === 'product_done' && e.overlong?.length) {
@@ -100,6 +110,15 @@ export default function LivestreamDetailPage() {
         }
       });
       await refresh();
+      // Lỗi ưu tiên hiển thị trước mọi cảnh báo khác — đây là thứ Mr.D cần biết ngay.
+      if (fatal) {
+        setActionError(`❌ ${fatal}`);
+        return;
+      }
+      if (failures.length > 0) {
+        setActionError(`❌ Sinh script thất bại ${failures.length} chỗ:\n${failures.join('\n')}`);
+        return;
+      }
       if (bibleRechecked) {
         setActionError(
           forceStageBible

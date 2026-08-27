@@ -110,10 +110,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Báo trước cho UI biết vì sao sắp tốn 1 lượt AI: bible cũ không còn khớp ảnh/mô tả hiện tại.
       if (body.forceStageBible || isStageBibleStale(job)) send({ type: 'stage_bible_stale' });
       send({ type: 'stage_bible_start' });
-      const bible = await ensureStageBible(id, {
-        visualDescription,
-        force: body.forceStageBible,
-      });
+      let bible: Awaited<ReturnType<typeof ensureStageBible>>;
+      try {
+        bible = await ensureStageBible(id, {
+          visualDescription,
+          force: body.forceStageBible,
+        });
+      } catch (err) {
+        // Chỉ tới được đây khi forceStageBible=true (ensureStageBible chỉ ném khi force).
+        // DỪNG HẲN: sinh script tiếp với prompt THIẾU khối sân khấu thì LLM tự bịa người dẫn khác
+        // và ghi đè 32 đoạn bằng nội dung sai — tệ hơn hẳn việc không làm gì.
+        send({
+          type: 'fatal',
+          message: `Chốt lại sân khấu thất bại nên KHÔNG sinh script (tránh ghi đè script bằng người dẫn bịa): ${(err as Error).message}`,
+        });
+        controller.close();
+        return;
+      }
+      // Không force mà bible null = lỗi đã được log, chạy tiếp theo hành vi best-effort cũ nhưng
+      // phải báo cho UI: script sắp sinh ra sẽ KHÔNG khớp sân khấu đã chốt.
+      if (!bible) {
+        send({
+          type: 'stage_bible_missing',
+          message: 'Không lấy được sân khấu cố định — các đoạn sinh ra có thể mô tả người dẫn/bối cảnh khác nhau.',
+        });
+      }
       const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;
       send({ type: 'stage_bible_done', stageBible: bible });
 

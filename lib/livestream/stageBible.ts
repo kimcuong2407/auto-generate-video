@@ -72,8 +72,16 @@ export async function ensureStageBible(
       j.stageBible = bible;
     });
     return bible;
-  } catch {
-    // Best-effort: lỗi mạng/AI không được chặn sinh script — chỉ mất tính nhất quán, như hành vi cũ.
+  } catch (err) {
+    // `force` = Mr.D bấm "Chốt lại sân khấu" vì sân khấu ĐANG SAI. Nuốt lỗi ở đây là hỏng nặng
+    // nhất: caller nhận null → user prompt MẤT HẲN khối sân khấu → LLM rơi về "BƯỚC 1 tự chốt
+    // người dẫn" và bịa ra người khác, trong khi UI báo thành công. Đã xảy ra 3 lần liên tiếp
+    // trên job production 825314 (bible vẫn giữ fingerprint cũ, 32/32 đoạn ra người dẫn nữ dù
+    // bible tả nam). Ném lỗi để route đánh dấu failed và hiện nguyên nhân thật.
+    if (opts.force) throw err;
+    // Không force: giữ hành vi best-effort cũ — lỗi mạng/AI không chặn luồng sinh script thường,
+    // nhưng phải LOG chứ không im lặng.
+    console.error(`[stageBible] chốt sân khấu thất bại cho job ${jobId}: ${(err as Error).message}`);
     return null;
   }
 }
@@ -125,6 +133,20 @@ async function generateStageBible(
 
   // Có ảnh đính kèm thì phải đi qua AI_VISION_MODEL (model chat mặc định không nhìn được ảnh).
   const visionModel = process.env.AI_VISION_MODEL || '';
+  // Có ảnh mẫu mà KHÔNG có vision model = chốt bible mù: model chỉ đọc được tên sản phẩm
+  // ("Túi Chạy Bộ ... Nam Nữ") rồi tự đoán người dẫn — ra bible SAI chứ không phải null, nên
+  // không nhánh nào phía trên bắt được. Ném lỗi để force dừng hẳn và nói đúng nguyên nhân,
+  // thay vì âm thầm chốt sai rồi ghi đè 32 đoạn.
+  if (job.selectedModelImagePath && refs.images.length > 0 && !visionModel) {
+    throw new Error(
+      'Job có ảnh người mẫu nhưng thiếu AI_VISION_MODEL trong .env — không đọc được ảnh để chốt đúng người dẫn. Hãy cấu hình AI_VISION_MODEL rồi chốt lại.'
+    );
+  }
+  if (job.selectedModelImagePath && refs.images.length === 0) {
+    throw new Error(
+      'Không đọc được ảnh người mẫu đã chọn (mất file local và không khôi phục được từ R2) — chốt sân khấu lúc này sẽ bịa ra người dẫn khác. Hãy tải lại ảnh mẫu.'
+    );
+  }
   const raw =
     refs.images.length > 0 && visionModel
       ? await chatCompletion(STAGE_BIBLE_SYSTEM_PROMPT, user, {
