@@ -61,6 +61,17 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   const notes: string[] = [];
+  // Ảnh mẫu bị tách khỏi gen video: bible vẫn tả ĐÚNG người (pickVisionRefEntries không lọc
+  // detached), nhưng Veo KHÔNG nhận ảnh khuôn mặt nên tự vẽ người khác. Không cảnh báo thì không
+  // có dấu hiệu nào trên UI — đúng ca job production 825314 (sai 4 lượt liên tiếp).
+  if (
+    job.selectedModelImagePath &&
+    (job.detachedImagePaths ?? []).includes(job.selectedModelImagePath)
+  ) {
+    notes.push(
+      '⚠️ Ảnh mẫu đang bị TÁCH khỏi gen video — sân khấu vẫn tả đúng người, nhưng Veo KHÔNG nhận ảnh khuôn mặt và sẽ tự vẽ người khác. Bỏ tách ở phần cấu hình ảnh đầu trang.'
+    );
+  }
   // Bible dùng cho preview là bible ĐANG cache. Nếu stale, lúc bấm gen thật ensureStageBible sẽ
   // chốt lại → prompt thật sẽ khác preview, phải nói rõ chứ không im lặng hiện bible sai.
   const bible = job.stageBible ?? null;

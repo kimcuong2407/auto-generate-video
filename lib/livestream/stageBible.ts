@@ -159,6 +159,16 @@ async function generateStageBible(
   for (const key of required) {
     if (!parsed[key]?.trim()) throw new Error(`stage bible thiếu trường "${key}"`);
   }
+  // host và voice phải CÙNG giới tính. Model hay chốt "host nam" rồi vẫn tả "voice nữ trẻ" theo
+  // quán tính mặt hàng → video ra người nam đọc giọng nữ. Chỉ chặn khi dò được RÕ cả hai và lệch
+  // nhau; dò không ra thì bỏ qua, không đoán bừa.
+  const hostGender = detectHostGender(parsed.host!);
+  const voiceGender = detectHostGender(parsed.voice!);
+  if (hostGender && voiceGender && hostGender !== voiceGender) {
+    throw new Error(
+      `Sân khấu chốt ra không nhất quán: người dẫn là ${hostGender} nhưng giọng lại là ${voiceGender}. Hãy chốt lại.`
+    );
+  }
   return {
     host: parsed.host!.trim(),
     scene: parsed.scene!.trim(),

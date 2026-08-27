@@ -400,9 +400,19 @@ export function JobImagePanel({
               </button>
               <DetachButton relPath={job.selectedModelImagePath} />
             </div>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Ảnh mẫu này sẽ đi kèm mọi đoạn khi gen video.
-            </span>
+            {detachedSet.has(job.selectedModelImagePath) ? (
+              // Cảnh báo nổi bật: ảnh mẫu bị tách gần như luôn là nhầm lẫn. Bible vẫn đọc được ảnh
+              // này nên sân khấu tả ĐÚNG người, nhưng Veo KHÔNG nhận ảnh khuôn mặt → nó tự vẽ người
+              // khác, và không có dấu hiệu nào trên UI cho biết. Đúng ca job production 825314.
+              <span style={{ fontSize: 12, color: 'var(--danger, #e5484d)', fontWeight: 600 }}>
+                ⚠️ Ảnh mẫu đang bị TÁCH khỏi gen video — Veo sẽ KHÔNG nhận được ảnh khuôn mặt và tự
+                vẽ người khác. Bấm nút 🚫 ở góc ảnh để gửi lại cho Veo.
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Ảnh mẫu này sẽ đi kèm mọi đoạn khi gen video.
+              </span>
+            )}
           </div>
         ) : (
           <input

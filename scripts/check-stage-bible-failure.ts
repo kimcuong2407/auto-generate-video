@@ -72,4 +72,25 @@ assert.ok(
   'kiểm tra lỗi phải đứng TRƯỚC thông báo thành công, nếu không lỗi bị thông báo thành công che mất'
 );
 
+// --- Tầng 5: host và voice phải cùng giới tính ---
+assert.ok(
+  stageBibleSrc.includes('không nhất quán'),
+  'phải chặn bible có host/voice lệch giới tính — nếu không video ra người nam đọc giọng nữ'
+);
+const hostG = stageBibleSrc.indexOf('const hostGender');
+const retIdx = stageBibleSrc.indexOf('return {', hostG > 0 ? hostG : 0);
+assert.ok(hostG > 0 && hostG < retIdx, 'kiểm tra giới tính phải chạy TRƯỚC khi trả bible về');
+
+// --- Tầng 6: ảnh mẫu bị detach phải được cảnh báo ---
+const previewSrc = fs.readFileSync('app/api/livestream/[id]/preview-prompt/route.ts', 'utf8');
+assert.ok(
+  previewSrc.includes('TÁCH khỏi gen video'),
+  'preview phải cảnh báo khi ảnh mẫu bị detach — bible tả đúng người nhưng Veo không nhận ảnh mặt'
+);
+const panelSrc = fs.readFileSync('components/livestream/JobImagePanel.tsx', 'utf8');
+assert.ok(
+  panelSrc.includes('detachedSet.has(job.selectedModelImagePath)'),
+  'UI phải đổi chú thích ảnh mẫu khi bị detach, không nói sai "sẽ đi kèm mọi đoạn"'
+);
+
 console.log('✓ check-stage-bible-failure: tất cả assert pass');
