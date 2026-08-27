@@ -4,6 +4,7 @@ import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { jobInputsDir, resolveWithinJob } from './paths';
 import { ensureLocalImage, uploadImageToR2 } from './imageR2';
 import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
+import { pickVisionRefEntries } from './refImages';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 
@@ -38,13 +39,24 @@ export async function triggerBackgroundImageGeneration(
   const bibleBlock = bible
     ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
     : '';
-  const prompt = `${basePrompt}\n${product.description || product.name}${bibleBlock}`;
 
-  // Reference: ảnh sản phẩm đã chọn (1..N) + ảnh mẫu (nếu có) ở BỘ ẢNH CHUNG cấp job để AI tạo
-  // cảnh có cả 2. Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow
-  // đọc file local. mediaId dùng cache job.flowMediaIds nếu có để tránh upload lại lên Flow.
-  const refRelPaths: string[] = [...(job.selectedRefImagePaths ?? [])];
-  if (job.selectedModelImagePath) refRelPaths.push(job.selectedModelImagePath);
+  // Reference: ảnh mẫu ĐỨNG ĐẦU (cùng lý do pickRefImagePaths — nhân vật là thứ model bịa sai nặng
+  // nhất), rồi ảnh sản phẩm, rồi ảnh nền. Trước đây ảnh mẫu bị push CUỐI sau N ảnh sản phẩm nên
+  // model gần như bỏ qua nó, dù người dùng đã chọn ảnh mẫu.
+  const entries = pickVisionRefEntries(job);
+  // Đánh số vai trò từng ảnh vào prompt: model nhận một chồng ảnh VÔ DANH thì không biết ảnh nào là
+  // người cần copy khuôn mặt, ảnh nào là món hàng — kết quả ra người lạ dù ảnh mẫu đã được gửi.
+  const refLegendBlock =
+    entries.length > 0
+      ? `\n\nẢNH REFERENCE ĐÍNH KÈM (theo đúng thứ tự):\n${entries
+          .map((e, i) => `  ${i + 1}. ${e.label}`)
+          .join('\n')}\nẢnh reference là NGUỒN SỰ THẬT, ưu tiên hơn MỌI mô tả bằng chữ ở trên. Khuôn mặt, giới tính, kiểu tóc, vóc dáng và trang phục của người dẫn PHẢI copy đúng ảnh NGƯỜI MẪU — nếu mô tả bằng chữ khác ảnh thì theo ẢNH. Sản phẩm trên bàn PHẢI đúng món trong ảnh SẢN PHẨM THẬT, không thay bằng món khác.`
+      : '';
+  const prompt = `${basePrompt}\n${product.description || product.name}${bibleBlock}${refLegendBlock}`;
+
+  // Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc file local.
+  // mediaId dùng cache job.flowMediaIds nếu có để tránh upload lại lên Flow.
+  const refRelPaths: string[] = entries.map((e) => e.rel);
   for (const relPath of refRelPaths) {
     await ensureLocalImage(jobId, relPath, job.imageR2Urls?.[relPath]);
   }
