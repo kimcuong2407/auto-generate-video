@@ -1,0 +1,1 @@
+ALTER TABLE `livestream_jobs` ADD `detached_image_paths` json;

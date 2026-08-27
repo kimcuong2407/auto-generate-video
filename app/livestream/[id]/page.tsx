@@ -72,8 +72,12 @@ export default function LivestreamDetailPage() {
       setScriptingAll(true);
     }
     const overlongAll: string[] = [];
+    let bibleRechecked = false;
     try {
       await streamScriptGeneration(jobId, productId, (e) => {
+        // Ảnh/mô tả sản phẩm đã đổi từ lần chốt trước → server đang chốt lại sân khấu. Báo cho
+        // Mr.D biết vì sao lần này chậm hơn và vì sao người dẫn có thể khác lần trước.
+        if (e.type === 'stage_bible_stale') bibleRechecked = true;
         // Trạng thái sản phẩm đã được server ghi vào job nên chỉ refresh() sau khi stream đóng;
         // riêng cảnh báo lời thoại quá dài không lưu vào job nên phải bắt tại đây.
         if (e.type === 'product_done' && e.overlong?.length) {
@@ -83,6 +87,11 @@ export default function LivestreamDetailPage() {
         }
       });
       await refresh();
+      if (bibleRechecked) {
+        setActionError(
+          'Ảnh hoặc mô tả sản phẩm đã đổi so với lần trước — sân khấu (người dẫn/bối cảnh/giọng) đã được chốt lại theo dữ liệu mới. Các sản phẩm đã sinh script trước đó vẫn giữ sân khấu cũ, bấm "Sinh lại script" cho từng sản phẩm nếu muốn đồng bộ.'
+        );
+      }
       if (overlongAll.length > 0) {
         setActionError(
           `Cảnh báo: ${overlongAll.length} đoạn vẫn dài hơn thời lượng cho phép sau khi đã tự rút gọn — Veo có thể đọc không kịp và cắt cụt câu. Bấm sinh lại script cho sản phẩm đó nếu cần: ${overlongAll.join('; ')}`
@@ -201,6 +210,16 @@ export default function LivestreamDetailPage() {
             </div>
           )}
           {actionError && <div className="banner">{actionError}</div>}
+          {/* Sân khấu đã chốt: hiện ra để phát hiện sai NGAY lúc sinh script (VD ảnh mẫu nam mà
+              host tả "woman"), thay vì chỉ biết sau khi gen video hỏng. Bible tự chốt lại khi ảnh
+              hoặc mô tả sản phẩm đổi — xem isStageBibleStale ở lib/livestream/stageBible.ts. */}
+          {job.stageBible && (
+            <div className="banner" style={{ background: '#f6f8fa', color: '#444' }}>
+              🎬 Sân khấu đã chốt — <b>Người dẫn:</b> {job.stageBible.host}
+              <br />
+              <b>Giọng:</b> {job.stageBible.voice}
+            </div>
+          )}
 
           <FlowGuide />
           <PromptSettingsPanel

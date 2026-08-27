@@ -29,6 +29,64 @@ export function JobImagePanel({
   const [bgPromptDraft, setBgPromptDraft] = useState(BACKGROUND_SYSTEM_PROMPT);
   const [selectingRef, setSelectingRef] = useState(false);
   const [savingBgModel, setSavingBgModel] = useState(false);
+  const [detaching, setDetaching] = useState(false);
+
+  const detachedSet = new Set(job.detachedImagePaths ?? []);
+
+  /**
+   * Bật/tắt "tách ảnh khỏi gen video": ảnh bị tách vẫn cho AI vision đọc để mô tả vào prompt,
+   * nhưng không gửi làm reference image cho Veo — xem app/api/livestream/[id]/images/detach.
+   */
+  async function handleToggleDetach(relPath: string) {
+    setDetaching(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/images/detach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: relPath }),
+      });
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Đổi trạng thái ảnh thất bại');
+      await onRefresh();
+    } finally {
+      setDetaching(false);
+    }
+  }
+
+  /** Nút toggle nhỏ nằm góc dưới-phải mỗi ảnh — dùng chung cho cả 3 loại ảnh. */
+  function DetachButton({ relPath }: { relPath: string }) {
+    const detached = detachedSet.has(relPath);
+    return (
+      <button
+        type="button"
+        onClick={() => handleToggleDetach(relPath)}
+        disabled={detaching}
+        title={
+          detached
+            ? 'Đang TÁCH khỏi gen video (chỉ dùng để mô tả vào prompt) — bấm để gửi lại cho Veo'
+            : 'Đang gửi cho Veo làm ảnh tham chiếu — bấm để tách khỏi gen video'
+        }
+        style={{
+          position: 'absolute',
+          bottom: -6,
+          right: -6,
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          border: 'none',
+          background: detached ? 'var(--surface2)' : 'var(--accent-glow)',
+          color: detached ? 'var(--text-muted)' : '#fff',
+          cursor: 'pointer',
+          fontSize: 10,
+          lineHeight: '20px',
+          padding: 0,
+          opacity: detaching ? 0.6 : 1,
+        }}
+      >
+        {detached ? '🚫' : '🎬'}
+      </button>
+    );
+  }
 
   async function handleUpdateBackgroundModel(model: string) {
     setSavingBgModel(true);
@@ -201,6 +259,11 @@ export function JobImagePanel({
         Bộ ảnh này áp cho <strong>mọi đoạn của mọi sản phẩm</strong> khi gen video: ảnh sản phẩm
         (1 hoặc nhiều, bắt buộc) + 1 ảnh mẫu/người dẫn + 1 ảnh background (tuỳ chọn). Giúp video ghép lại
         nhất quán như 1 buổi live liên tục.
+        <br />
+        Nút <strong>🎬</strong> góc dưới mỗi ảnh: bấm để <strong>tách ảnh khỏi bước gen video</strong>{' '}
+        (chuyển thành <strong>🚫</strong>). Ảnh đã tách vẫn được AI đọc để mô tả vào prompt, nhưng
+        không gửi cho Veo làm ảnh tham chiếu — dùng khi ảnh đó ép sai khung hình, hoặc để nhường
+        suất cho ảnh khác (Veo chỉ nhận tối đa 3 ảnh).
       </div>
 
       <div className="field-group">
@@ -273,6 +336,7 @@ export function JobImagePanel({
                   >
                     ✕
                   </button>
+                  <DetachButton relPath={relPath} />
                 </div>
               );
             })}
@@ -332,6 +396,7 @@ export function JobImagePanel({
               >
                 ✕
               </button>
+              <DetachButton relPath={job.selectedModelImagePath} />
             </div>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Ảnh mẫu này sẽ đi kèm mọi đoạn khi gen video.
@@ -418,6 +483,7 @@ export function JobImagePanel({
                   >
                     ✕
                   </button>
+                  <DetachButton relPath={relPath} />
                 </div>
               );
             })}

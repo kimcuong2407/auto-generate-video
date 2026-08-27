@@ -14,7 +14,11 @@ import {
 import { shortenOverlongSegments } from '@/lib/livestream/shortenVoiceover';
 import { recomputeSegmentOrder } from '@/lib/livestream/reorder';
 import { describeProductAppearance } from '@/lib/livestream/productVision';
-import { ensureStageBible, formatStageBibleBlock } from '@/lib/livestream/stageBible';
+import {
+  ensureStageBible,
+  formatStageBibleBlock,
+  isStageBibleStale,
+} from '@/lib/livestream/stageBible';
 import { ensureLocalImage } from '@/lib/livestream/imageR2';
 import { resolveWithinJob } from '@/lib/livestream/paths';
 
@@ -71,14 +75,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const systemPrompt = resolveScriptSystemPrompt(job);
 
       // Mô tả ngoại hình vật lý sản phẩm (đọc ảnh ref thật) — tính 1 lần cho cả job vì
-      // selectedRefImagePaths dùng chung cho mọi sản phẩm. Best-effort: thiếu AI_VISION_MODEL,
-      // chưa chọn ảnh ref, hay lỗi mạng đều bỏ qua, KHÔNG chặn sinh script như trước đây.
+      // selectedRefImagePaths dùng chung cho mọi sản phẩm. Đọc TẤT CẢ ảnh đã chọn, không chỉ ảnh
+      // đầu: các góc còn lại mới cho thấy mặt sau/ngăn/cách đeo. Best-effort: thiếu
+      // AI_VISION_MODEL, chưa chọn ảnh ref, hay lỗi mạng đều bỏ qua, KHÔNG chặn sinh script.
       let visualDescription: string | undefined;
-      const refPath = job.selectedRefImagePaths[0];
-      if (refPath) {
+      const refPaths = job.selectedRefImagePaths ?? [];
+      if (refPaths.length > 0) {
         try {
-          await ensureLocalImage(job.id, refPath, job.imageR2Urls?.[refPath]);
-          visualDescription = await describeProductAppearance(resolveWithinJob(job.id, refPath));
+          await Promise.all(
+            refPaths.map((rel) => ensureLocalImage(job.id, rel, job.imageR2Urls?.[rel]))
+          );
+          visualDescription = await describeProductAppearance(
+            refPaths.map((rel) => resolveWithinJob(job.id, rel))
+          );
         } catch {
           // bỏ qua — script vẫn sinh bình thường không có mô tả ngoại hình bổ sung.
         }
@@ -87,7 +96,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Sân khấu cố định cấp job (người dẫn/bối cảnh/góc máy/giọng) — chốt 1 lần rồi ép dùng lại
       // cho MỌI sản phẩm, nếu không mỗi lần gọi LLM (1 lần/sản phẩm) sẽ tự bịa 1 buổi live khác.
       // Sinh lại 1 sản phẩm lẻ vẫn dùng bible đã cache để khớp các sản phẩm đã gen trước đó —
-      // TRỪ khi bible chốt từ ảnh mẫu cũ (ensureStageBible tự phát hiện và chốt lại, xem ở đó).
+      // TRỪ khi input đã đổi (ensureStageBible tự phát hiện qua fingerprint và chốt lại, xem ở đó).
+      // Báo trước cho UI biết vì sao sắp tốn 1 lượt AI: bible cũ không còn khớp ảnh/mô tả hiện tại.
+      if (isStageBibleStale(job)) send({ type: 'stage_bible_stale' });
       send({ type: 'stage_bible_start' });
       const bible = await ensureStageBible(id, { visualDescription });
       const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;

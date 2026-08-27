@@ -69,6 +69,7 @@ export function createNewJob(input: {
     selectedModelImagePath: null,
     backgroundImagePaths: [],
     selectedBackgroundImagePath: null,
+    detachedImagePaths: [],
     backgroundModel: DEFAULT_STORYBOARD_MODEL,
     imageR2Urls: {},
     flowMediaIds: {},

@@ -9,6 +9,78 @@ import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './type
 /** Veo reference-to-video chỉ nhận TỐI ĐA 3 ảnh reference — vượt là Flow trả INVALID_ARGUMENT. */
 const MAX_REF_IMAGES = 3;
 
+/** Ảnh sản phẩm tối đa gửi cho AI vision khi chốt sân khấu — xem pickVisionRefEntries. */
+const MAX_VISION_PRODUCT_IMAGES = 3;
+
+/** 1 ảnh gửi kèm cho vision + nhãn để model biết đang nhìn cái gì. */
+export interface VisionRefEntry {
+  rel: string;
+  label: string;
+}
+
+/**
+ * Chọn ảnh gửi THẲNG cho AI vision ở bước chốt "stage bible", kèm nhãn vai trò.
+ *
+ * Khác pickRefImagePaths (chọn ảnh gửi cho VEO, trần cứng 3 vì giới hạn API): đây là lượt gọi model
+ * đọc ảnh, trần do ta tự đặt cho payload hợp lý — 1 ảnh mẫu + tối đa 3 ảnh sản phẩm + 1 ảnh nền.
+ *
+ * Ảnh mẫu đứng ĐẦU cùng lý do đã ghi ở pickRefImagePaths: nhân vật là thứ model bịa sai nặng nhất.
+ * Trước đây bước này chỉ gửi ảnh mẫu + ảnh nền nên bible tả bối cảnh/đạo cụ mà CHƯA TỪNG nhìn sản
+ * phẩm — "scene" hay ra căn phòng không bày được món hàng thật.
+ */
+export function pickVisionRefEntries(
+  job: Pick<
+    LivestreamJob,
+    'selectedRefImagePaths' | 'selectedModelImagePath' | 'selectedBackgroundImagePath'
+  >
+): VisionRefEntry[] {
+  const entries: VisionRefEntry[] = [];
+  if (job.selectedModelImagePath) {
+    entries.push({ rel: job.selectedModelImagePath, label: 'ảnh NGƯỜI MẪU/NGƯỜI DẪN' });
+  }
+  // Bỏ ảnh [0] khi dư ảnh: ảnh bìa sàn TMĐT gần như luôn là đồ hoạ marketing (badge "chính hãng",
+  // logo shop) — chiếm suất mà không thêm thông tin hình dáng nào. Cùng heuristic với
+  // extractVisualDescription() và pickReferenceEntries() bên lib/data/.
+  const all = job.selectedRefImagePaths ?? [];
+  const offset = all.length > MAX_VISION_PRODUCT_IMAGES ? 1 : 0;
+  all.slice(offset, offset + MAX_VISION_PRODUCT_IMAGES).forEach((rel, i) => {
+    entries.push({ rel, label: `ảnh SẢN PHẨM THẬT ${i + 1}` });
+  });
+  if (job.selectedBackgroundImagePath) {
+    entries.push({ rel: job.selectedBackgroundImagePath, label: 'ảnh BỐI CẢNH/BACKGROUND' });
+  }
+  return entries;
+}
+
+/**
+ * Chuỗi đại diện cho TOÀN BỘ input mà stage bible phụ thuộc — dùng để biết bible đã chốt có còn
+ * khớp dữ liệu đầu vào hiện tại hay không (xem isStageBibleStale).
+ *
+ * Vì sao cần: bible được cache cấp job để mọi sản phẩm dùng chung 1 sân khấu. Trước đây dấu vết
+ * duy nhất là modelImagePath, nên đổi ảnh nền hay sửa mô tả sản phẩm thì bible cũ vẫn được dùng
+ * lại VĨNH VIỄN dù đang tả sai phòng/sai đạo cụ, mà UI không có nút chốt lại.
+ *
+ * Sort cả 2 danh sách: bỏ chọn rồi chọn lại 1 ảnh sẽ đảo thứ tự mảng trong khi BỘ ảnh không đổi —
+ * không sort thì lần nào cũng tính là lệch rồi gọi AI lại vô ích.
+ */
+export function stageBibleFingerprint(
+  job: Pick<
+    LivestreamJob,
+    'selectedRefImagePaths' | 'selectedModelImagePath' | 'selectedBackgroundImagePath' | 'products'
+  >
+): string {
+  return JSON.stringify({
+    model: job.selectedModelImagePath ?? null,
+    refs: [...(job.selectedRefImagePaths ?? [])].sort(),
+    background: job.selectedBackgroundImagePath ?? null,
+    // Bible chốt người dẫn/bối cảnh DỰA THEO danh sách sản phẩm (xem STAGE_BIBLE_SYSTEM_PROMPT:
+    // "chọn phương án TRUNG TÍNH, hợp lý với TOÀN BỘ danh sách"), nên sửa mô tả cũng phải chốt lại.
+    products: [...job.products]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((p) => `${p.id} ${p.name} ${p.description}`),
+  });
+}
+
 /**
  * Chọn tối đa 3 ảnh reference gửi kèm khi gen video, theo thứ tự ƯU TIÊN:
  * ảnh mẫu (người dẫn) → ảnh sản phẩm → ảnh background.
@@ -26,15 +98,21 @@ export function pickRefImagePaths(
   job: Pick<
     LivestreamJob,
     'selectedRefImagePaths' | 'selectedModelImagePath' | 'selectedBackgroundImagePath'
-  >,
+  > &
+    Partial<Pick<LivestreamJob, 'detachedImagePaths'>>,
   hasPrevFrame: boolean
 ): string[] {
   const limit = hasPrevFrame ? MAX_REF_IMAGES - 1 : MAX_REF_IMAGES;
+  // Ảnh đã "tách khỏi gen video": bỏ TRƯỚC khi cắt 3, nếu không nó vừa không được gửi vừa chiếm
+  // suất của ảnh phía sau (bỏ sau khi slice thì danh sách chỉ ngắn đi chứ ảnh sau không lên thay).
+  const detached = new Set(job.detachedImagePaths ?? []);
   return [
     ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
     ...(job.selectedRefImagePaths ?? []),
     ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
-  ].slice(0, limit);
+  ]
+    .filter((rel) => !detached.has(rel))
+    .slice(0, limit);
 }
 
 /**

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chatCompletion } from '../ai/chatClient';
+import { readImagesAsBase64 } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
 
 // Re-export prompt mặc định từ module thuần (promptDefaults) để client import được mà không
@@ -51,11 +52,16 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
 }
 
 /**
- * Đọc 1 ảnh THẬT của sản phẩm (ref đã chọn, không phải ảnh chụp màn hình trang bán) và mô tả ngoại
- * hình vật lý ngắn gọn (kích thước, chất liệu, cầm 1 tay hay 2 tay...) — dùng bổ sung vào user
- * prompt của bước sinh kịch bản để veoPrompt mô tả cảnh cầm/thao tác sản phẩm chân thực hơn.
+ * Đọc các ảnh THẬT của sản phẩm (ref đã chọn, không phải ảnh chụp màn hình trang bán) và mô tả
+ * ngoại hình vật lý ngắn gọn (kích thước, chất liệu, cầm 1 tay hay 2 tay...) — dùng bổ sung vào
+ * user prompt của bước sinh kịch bản để veoPrompt mô tả cảnh cầm/thao tác sản phẩm chân thực hơn.
+ *
+ * Nhận NHIỀU ảnh (mọi ảnh Mr.D đã chọn): trước đây chỉ đọc đúng ảnh đầu tiên nên các góc chụp còn
+ * lại — thường là góc cho thấy mặt sau/các ngăn/cách đeo — không bao giờ tới được model.
+ *
+ * @throws nếu chưa cấu hình AI_VISION_MODEL hoặc không đọc được ảnh nào.
  */
-export async function describeProductAppearance(imageAbsPath: string): Promise<string> {
+export async function describeProductAppearance(imageAbsPaths: string[]): Promise<string> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   if (!visionModel) {
     throw new Error(
@@ -63,14 +69,16 @@ export async function describeProductAppearance(imageAbsPath: string): Promise<s
     );
   }
 
-  const ext = path.extname(imageAbsPath).toLowerCase();
-  const mimeType = IMAGE_MIME[ext] || 'image/jpeg';
-  const buffer = await fs.readFile(imageAbsPath);
+  const images = await readImagesAsBase64(imageAbsPaths);
+  if (images.length === 0) {
+    throw new Error('Không đọc được ảnh sản phẩm nào để mô tả ngoại hình');
+  }
 
   const raw = await chatCompletion(
     PRODUCT_VISUAL_SYSTEM_PROMPT,
-    'Mô tả ngoại hình vật lý sản phẩm trong ảnh.',
-    { model: visionModel, images: [{ mimeType, base64: buffer.toString('base64') }] }
+    // Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau.
+    'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể. Mô tả ngoại hình vật lý của sản phẩm đó.',
+    { model: visionModel, images }
   );
   return raw.trim();
 }

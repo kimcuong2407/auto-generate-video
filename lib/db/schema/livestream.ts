@@ -58,6 +58,9 @@ export const livestreamJobs = mysqlTable(
   selectedModelImagePath: varchar('selected_model_image_path', { length: 1024 }),
   backgroundImagePaths: mariaJson('background_image_paths').$type<string[]>().notNull(),
   selectedBackgroundImagePath: varchar('selected_background_image_path', { length: 1024 }),
+  // Ảnh bị tách khỏi bước gen video (vẫn cho vision đọc) — xem types.ts. Nullable để ALTER TABLE
+  // chạy được trên bảng đã có data; store đọc ra coi null = [].
+  detachedImagePaths: mariaJson('detached_image_paths').$type<string[]>(),
   // Model ảnh dùng khi gen background bằng AI — default cho ALTER TABLE trên bảng đã có data.
   backgroundModel: varchar('background_model', { length: 128 }).notNull().default('chatgpt-web/gpt-5.5'),
   imageR2Urls: mariaJson('image_r2_urls').$type<Record<string, string | null>>().notNull(),

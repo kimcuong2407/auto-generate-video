@@ -25,6 +25,7 @@
     "check:prompt-ref-images": "tsx scripts/check-prompt-ref-images.ts",
     "check:voiceover-length": "tsx scripts/check-voiceover-length.ts",
     "check:stage-bible-stale": "tsx scripts/check-stage-bible-stale.ts",
+    "check:stage-bible-inputs": "tsx scripts/check-stage-bible-inputs.ts",
     "check:ref-image-priority": "tsx scripts/check-ref-image-priority.ts",
     "check:cascade-resume": "tsx scripts/check-cascade-resume.ts",
     "check:media-url-version": "tsx scripts/check-media-url-version.ts"
