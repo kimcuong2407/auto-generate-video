@@ -45,7 +45,12 @@ b. NẾU kịch bản có người (reviewer/người dẫn) xuất hiện trong
    trong khung.
 
 c. NẾU có lời thoại (voiceoverVi khác rỗng ở bất kỳ cảnh nào): chốt cố định 1 "chất giọng" DUY NHẤT — giới
-   tính giọng, quãng tuổi giọng, âm vực (trầm/cao/vừa), tốc độ nói, và tông cảm xúc chủ đạo. Mô tả này PHẢI
+   tính giọng, quãng tuổi giọng, âm vực (trầm/cao/vừa), tốc độ nói, và tông cảm xúc chủ đạo. Tông cảm xúc
+   BẮT BUỘC là VUI VẺ, TƯƠI TẮN, CÓ NĂNG LƯỢNG như người đang thật sự hào hứng khoe sản phẩm mình thích:
+   "cheerful, upbeat voice with a warm smile in it, lively pacing, expressive animated intonation,
+   enthusiastic emphasis on key points". TUYỆT ĐỐI KHÔNG mô tả giọng là "calm", "soft-spoken", "measured",
+   "slow", "gentle", "monotone", "flat", "neutral" — giọng đều đều nghe buồn ngủ, người xem lướt qua ngay.
+   Mô tả này PHẢI
    giống hệt nhau ở MỌI cảnh có thoại — Google Veo tự chọn giọng dựa theo mô tả trong prompt mỗi lần tạo
    video riêng biệt nên KHÔNG tự nhớ giọng đã dùng ở cảnh trước; chỉ có nhắc lại đúng 1 mô tả giọng cố định
    trong veoPrompt của mọi cảnh mới giúp giọng nghe nhất quán xuyên suốt.
@@ -117,13 +122,20 @@ Với mỗi cảnh tự thiết kế, xác định:
       ngay trước câu thoại, rồi mới đến đoạn lời thoại lấy NGUYÊN VĂN từ voiceoverVi của chính scene đó,
       dùng ĐÚNG cú pháp có dấu hai chấm trước dấu ngoặc kép (colon syntax — cú pháp đã được cộng đồng kiểm
       chứng giúp ngăn Veo tự sinh phụ đề/subtitle đè lên video): The person has <mô tả giọng cố định>,
-      speaks in Vietnamese, saying: "<nguyên văn voiceoverVi>". Không dịch câu thoại sang tiếng Anh, không
+      speaks in Vietnamese cheerfully and energetically with a smile, saying: "<nguyên văn voiceoverVi>".
+      Không dịch câu thoại sang tiếng Anh, không
       dùng dấu ngoặc kép mà thiếu dấu hai chấm phía trước (dễ kích hoạt phụ đề không mong muốn), không được
       bỏ qua chỉ dẫn giọng/ngôn ngữ này. Nếu scene không có voiceoverVi (cảnh im lặng) thì bỏ qua phần
       Dialogue, không bịa lời thoại;
   (6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Audio:" mô tả rõ âm thanh nền/hiệu ứng/nhạc phù hợp bối cảnh
-      (VD: "Audio: quiet room tone, soft fabric rustling, no background music") để tránh Veo tự bịa âm thanh
-      sai bối cảnh (audio hallucination) — không được bỏ qua câu Audio này ở bất kỳ scene nào;
+      để tránh Veo tự bịa âm thanh sai bối cảnh (audio hallucination) — không được bỏ qua câu Audio này ở
+      bất kỳ scene nào. Chọn 2-3 yếu tố hợp diễn biến CỦA CHÍNH CẢNH ĐÓ, ưu tiên âm thanh THẬT phát sinh từ
+      hành động trong cảnh (chạm/đặt sản phẩm xuống mặt bàn, bóc túi, mở nắp, xoay vật, tiếng cười nhẹ, bước
+      chân) cộng 1 lớp không khí sinh động, VD: "Audio: warm lively room tone, the reviewer's cheerful voice,
+      soft taps as the product is set down on the table, gentle rustle of packaging, faint upbeat background
+      music at low volume". TRÁNH mô tả không gian chết như "quiet room tone", "silent", "no background
+      music" — nghe rất buồn ngủ; chỉ dùng khi cảnh CỐ Ý cần tĩnh lặng (VD cận cảnh chi tiết không thoại).
+      KHÔNG thêm tiếng đám đông/khán giả/tiếng chuông thông báo giả;
   (7) Technical — luôn thêm cụm "no subtitles, no captions, no on-screen text" vào cuối veoPrompt để chặn
       Veo tự sinh phụ đề chồng lên video (on-screen text hiển thị đã được xử lý riêng qua trường onScreenText,
       không cần và không được để Veo tự vẽ chữ).
