@@ -5,6 +5,7 @@ import { jobInputsDir, resolveWithinJob } from './paths';
 import { ensureLocalImage, uploadImageToR2 } from './imageR2';
 import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
 import { pickVisionRefEntries } from './refImages';
+import { ensureStageBible } from './stageBible';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 
@@ -35,7 +36,13 @@ export async function triggerBackgroundImageGeneration(
   // Nếu job đã chốt sân khấu cố định (stageBible, sinh lúc gen script), ép ảnh nền dựng đúng người
   // dẫn/bối cảnh/góc máy đó — nếu không ảnh nền và veoPrompt sẽ mô tả 2 buổi live khác nhau, ảnh nền
   // dùng làm reference lại kéo video lệch khỏi mô tả trong script.
-  const bible = job.stageBible;
+  //
+  // BẮT BUỘC qua ensureStageBible chứ KHÔNG đọc thẳng job.stageBible: bible cũ có thể đã stale
+  // (chốt khi chưa có ảnh mẫu, hoặc ảnh mẫu đã đổi). Bible stale mô tả sai người dẫn — mà bibleBlock
+  // dưới đây lại ép "copy y nguyên, KHÔNG bịa người dẫn khác", nên mô tả sai đó THẮNG cả ảnh mẫu
+  // đính kèm. Đúng ca của Mr.D: ảnh mẫu là nam đầu cua đeo kính, bible cũ tả "athletic woman... high
+  // ponytail" → ảnh nền gen ra là nữ. ensureStageBible tự phát hiện stale và chốt lại từ chính ảnh.
+  const bible = await ensureStageBible(jobId);
   const bibleBlock = bible
     ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
     : '';

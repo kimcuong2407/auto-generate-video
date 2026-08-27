@@ -46,4 +46,39 @@ assert.deepStrictEqual(
   'không có ảnh nào thì trả rỗng'
 );
 
+
+// ------------------------------------------------------------------
+// 5. Bible stale KHÔNG được dùng để gen ảnh nền.
+//
+// Ca của Mr.D: ảnh mẫu là NAM, nhưng bible cũ (chốt lúc chưa có ảnh mẫu) tả "athletic woman...
+// high ponytail". backgroundGenerate đọc thẳng job.stageBible nên ghép nguyên mô tả nữ đó vào
+// prompt kèm chỉ thị "copy y nguyên, KHÔNG bịa người dẫn khác" → mô tả chữ THẮNG ảnh mẫu, ảnh nền
+// gen ra là nữ tóc đuôi ngựa. Phải đi qua ensureStageBible để bible stale bị chốt lại trước.
+import { isStageBibleStale } from '../lib/livestream/stageBible';
+
+const staleJob = {
+  // Bible do code cũ chốt: thiếu CẢ modelImagePath lẫn inputsFingerprint.
+  stageBible: { host: 'A fit, athletic woman...', scene: '', camera: '', voice: '' } as never,
+  selectedModelImagePath: 'inputs/model-1787653526107.jpg',
+};
+assert.ok(isStageBibleStale(staleJob), 'bible chốt khi chưa có ảnh mẫu phải bị coi là stale');
+
+// Bible khớp đúng ảnh mẫu hiện tại → không stale, không gọi AI lại vô ích.
+assert.ok(
+  !isStageBibleStale({
+    stageBible: { host: 'x', scene: '', camera: '', voice: '', modelImagePath: 'inputs/m.jpg' } as never,
+    selectedModelImagePath: 'inputs/m.jpg',
+  }),
+  'bible khớp ảnh mẫu hiện tại thì không stale'
+);
+
+// Đổi ảnh mẫu sau khi chốt → stale.
+assert.ok(
+  isStageBibleStale({
+    stageBible: { host: 'x', scene: '', camera: '', voice: '', modelImagePath: 'inputs/cu.jpg' } as never,
+    selectedModelImagePath: 'inputs/moi.jpg',
+  }),
+  'đổi ảnh mẫu thì bible cũ phải stale'
+);
+
 console.log('check-background-ref-legend: OK');
