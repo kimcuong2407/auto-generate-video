@@ -9,7 +9,7 @@ import { chatCompletion } from '../ai/chatClient';
 import type { ChatEventHandler } from '../ai/chatClient';
 import type { VeoModel } from '../types';
 import { readAppSettings } from '../data/appSettingsStore';
-import { resolveActiveAccount, resolveAccessToken } from './recaptcha';
+import { resolveActiveAccount, withTokenRetry } from './recaptcha';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
 import { generateOmniImage } from '../omniroute/imageGen';
@@ -137,7 +137,6 @@ export async function generateSceneVideo(
   }
 ): Promise<GenerateVideoResult & { flowProjectId: string }> {
   const account = await resolveActiveAccount();
-  const accessToken = await resolveAccessToken(account);
 
   // Model global ở /settings/flow đè model lưu trong project/job. Ép tại đây — cửa duy nhất
   // mọi luồng gen video (product review + livestream) đi qua — nên không luồng nào lọt.
@@ -154,19 +153,21 @@ export async function generateSceneVideo(
   }
 
   const run = (projectId: string, freshUploads: boolean) =>
-    generateVideo({
-      account,
-      accessToken,
-      prompt,
-      aspect: opts.aspect,
-      model,
-      projectId,
-      duration,
-      refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
-      startImage: freshUploads ? dropCachedMediaId(opts.startImage) : opts.startImage,
-      endImage: freshUploads ? dropCachedMediaId(opts.endImage) : opts.endImage,
-      seed: opts.seed,
-    });
+    withTokenRetry(account, (accessToken) =>
+      generateVideo({
+        account,
+        accessToken,
+        prompt,
+        aspect: opts.aspect,
+        model,
+        projectId,
+        duration,
+        refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
+        startImage: freshUploads ? dropCachedMediaId(opts.startImage) : opts.startImage,
+        endImage: freshUploads ? dropCachedMediaId(opts.endImage) : opts.endImage,
+        seed: opts.seed,
+      })
+    );
 
   try {
     const result = await run(opts.flowProjectId, false);
@@ -199,9 +200,9 @@ const TMP_VIDEO_DIR = path.join(process.cwd(), 'data', 'tmp', 'flow-video');
  */
 export async function pollJobStatus(jobId: string, projectId: string): Promise<FlowJobStatusResult> {
   const account = await resolveActiveAccount();
-  const accessToken = await resolveAccessToken(account);
-
-  const result = await pollVideoStatus(accessToken, projectId, jobId);
+  const result = await withTokenRetry(account, (accessToken) =>
+    pollVideoStatus(accessToken, projectId, jobId)
+  );
 
   if (result.status === 'done') {
     const dest = path.join(TMP_VIDEO_DIR, `${jobId}-${crypto.randomBytes(4).toString('hex')}.mp4`);
@@ -276,7 +277,6 @@ export async function generateStoryboardImage(params: {
   }
 
   const account = await resolveActiveAccount();
-  const accessToken = await resolveAccessToken(account);
 
   if (!params.projectId) {
     throw new FlowApiError('Chưa có flowProjectId — cần tạo Flow project trước khi gen ảnh');
@@ -284,16 +284,18 @@ export async function generateStoryboardImage(params: {
 
   const refImages = params.refImages && params.refImages.length > 0 ? params.refImages : undefined;
   const run = (projectId: string, freshUploads: boolean) =>
-    generateImage({
-      account,
-      accessToken,
-      prompt: params.prompt,
-      aspect: params.aspect,
-      model: params.model,
-      projectId,
-      refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
-      count: 1,
-    });
+    withTokenRetry(account, (accessToken) =>
+      generateImage({
+        account,
+        accessToken,
+        prompt: params.prompt,
+        aspect: params.aspect,
+        model: params.model,
+        projectId,
+        refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
+        count: 1,
+      })
+    );
 
   let result;
   let flowProjectId: string;

@@ -179,3 +179,44 @@ export function resolveActiveAccount(): FlowAccount {
   }
   return account;
 }
+
+/**
+ * Chạy `fn` với access_token hiện tại; nếu Google trả 401 (UNAUTHENTICATED) thì refresh
+ * token rồi chạy lại ĐÚNG 1 LẦN.
+ *
+ * Vì sao cần: `resolveAccessToken` chỉ refresh theo TTL 45 phút. Khi Google thu hồi token
+ * sớm hơn hạn đó (đổi cookie ở tab khác, revoke, lệch giờ máy), mọi lượt gọi ăn 401 liên
+ * tục cho tới khi TTL trôi hết — nhìn từ UI là đoạn video "poll lỗi tạm thời" mãi không
+ * xong. Bắt đúng 401 để refresh là cách sửa ở gốc, dùng chung cho gen video/ảnh và poll.
+ */
+export async function withTokenRetry<T>(
+  account: FlowAccount,
+  fn: (accessToken: string) => Promise<T>
+): Promise<T> {
+  return runWithTokenRetry(fn, {
+    resolve: () => resolveAccessToken(account),
+    refresh: () => refreshAccessToken(account),
+  });
+}
+
+/** Chỉ nhận token 401 của Google — 401 từ nơi khác (nếu có) vẫn ném lên như cũ. */
+export function isUnauthenticated(err: unknown): boolean {
+  return err instanceof FlowApiError && err.code === 401;
+}
+
+/**
+ * Phần thuần logic của `withTokenRetry` — tách ra để self-check chạy được mà không
+ * đụng mạng (scripts/check-token-retry.ts).
+ */
+export async function runWithTokenRetry<T>(
+  fn: (accessToken: string) => Promise<T>,
+  tokens: { resolve: () => Promise<string>; refresh: () => Promise<string> }
+): Promise<T> {
+  try {
+    return await fn(await tokens.resolve());
+  } catch (err) {
+    if (!isUnauthenticated(err)) throw err;
+    // Chỉ thử lại ĐÚNG 1 lần: token mới vẫn 401 nghĩa là cookie hỏng, lặp thêm chỉ đập API.
+    return fn(await tokens.refresh());
+  }
+}
