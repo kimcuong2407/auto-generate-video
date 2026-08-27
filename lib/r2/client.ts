@@ -4,7 +4,9 @@
  * No-op an toàn khi thiếu config (R2_ENABLED = false) — call site tự fallback về local.
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import {
@@ -30,6 +32,28 @@ function client(): S3Client {
     });
   }
   return cachedClient;
+}
+
+/** md5 của 1 file, đọc theo stream để không nạp cả video vào RAM. */
+export async function md5File(absPath: string): Promise<string> {
+  const hash = crypto.createHash('md5');
+  for await (const chunk of createReadStream(absPath)) hash.update(chunk as Buffer);
+  return hash.digest('hex');
+}
+
+/**
+ * Suy ngược key R2 từ URL public đã lưu — để xoá đúng object cũ khi key mang hash nội dung
+ * và mỗi bản là một key riêng. Trả null nếu URL không thuộc bucket này (cấu hình đổi, URL
+ * ngoài) — caller bỏ qua thay vì xoá nhầm.
+ */
+export function keyFromPublicUrl(url: string | null | undefined): string | null {
+  // R2_PUBLIC_URL rỗng (chưa cấu hình) → prefix thành "/" và mọi path tương đối sẽ khớp,
+  // dẫn tới suy ra key bừa. Chặn sớm.
+  if (!url || !R2_PUBLIC_URL) return null;
+  const prefix = `${R2_PUBLIC_URL}/`;
+  if (!url.startsWith(prefix)) return null;
+  const key = url.slice(prefix.length).split('?')[0];
+  return key || null;
 }
 
 export function publicUrlFor(key: string): string {

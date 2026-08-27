@@ -8,7 +8,7 @@ import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError, isQuotaError } from '../googleFlow/errors';
 import { MAX_SEGMENT_AUTO_RETRIES } from '../constants';
-import { deleteFromR2 } from '../r2/client';
+import { deleteFromR2, keyFromPublicUrl } from '../r2/client';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
 
 // Re-export: 2 hàm thuần nay ở refImages.ts (client dùng chung), giữ đường import cũ cho caller.
@@ -246,11 +246,15 @@ export async function deleteSegmentVideo(jobId: string, segmentId: string): Prom
   if (found.segment.status === 'generating') {
     return { segmentId, ok: false, error: 'Đoạn đang generating' };
   }
-  const { videoPath } = found.segment;
+  const { videoPath, videoUrl } = found.segment;
   if (videoPath) {
     await fs.rm(resolveWithinJob(jobId, videoPath), { force: true }).catch(() => {});
-    await deleteFromR2(`livestream/${jobId}/segments/${path.basename(videoPath)}`);
   }
+  // Xoá theo videoUrl đã lưu: tên file mang hash nội dung nên chỉ URL mới biết đúng key.
+  // Fallback về basename cho video cũ (gen trước khi có hash) vẫn còn videoPath.
+  const key = keyFromPublicUrl(videoUrl) ||
+    (videoPath ? `livestream/${jobId}/segments/${path.basename(videoPath)}` : null);
+  if (key) await deleteFromR2(key);
 
   await updateJob(jobId, (j) => {
     const f = findSegment(j, segmentId);

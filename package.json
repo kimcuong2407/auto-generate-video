@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "check:token-retry": "tsx scripts/check-token-retry.ts",
     "check:segment-merge": "tsx scripts/check-segment-merge.ts",
+    "check:content-hash-key": "tsx scripts/check-content-hash-key.ts",
     "check:maria-json": "tsx scripts/check-maria-json.ts",
     "check:video-inputs": "tsx scripts/check-video-inputs.ts",
     "check:image-aspect": "tsx scripts/check-image-aspect.ts",

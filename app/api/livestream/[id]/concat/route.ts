@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { jobExists, readJob, updateJob } from '@/lib/livestream/jobStore';
 import { resolveWithinJob } from '@/lib/livestream/paths';
 import { runLivestreamConcat } from '@/lib/livestream/concat';
-import { uploadFileToR2 } from '@/lib/r2/client';
+import { uploadFileToR2, deleteFromR2, md5File, keyFromPublicUrl } from '@/lib/r2/client';
 import type { LivestreamJob } from '@/lib/livestream/types';
 
 export const runtime = 'nodejs';
@@ -95,7 +95,15 @@ async function runConcatInBackground(id: string): Promise<void> {
     // Upload final lên R2 để xem/tải online không phụ thuộc route stream local. No-op nếu R2
     // chưa cấu hình (outputUrl = null → UI fallback về route media local).
     const finalAbsPath = resolveWithinJob(id, 'outputs/final.mp4');
-    const outputUrl = await uploadFileToR2(finalAbsPath, `livestream/${id}/final.mp4`, 'video/mp4');
+    // Key R2 mang hash nội dung: ghép lại ra video khác là key mới, CDN không có gì để trả
+    // bản cũ (cùng lý do với segment — xem segmentVideoFileName).
+    const finalKey = `livestream/${id}/final.${(await md5File(finalAbsPath)).slice(0, 8)}.mp4`;
+    const previousUrl = job.concat.outputUrl;
+    const outputUrl = await uploadFileToR2(finalAbsPath, finalKey, 'video/mp4');
+    // Dọn bản final cũ trên R2 (key khác nên không bị ghi đè). Local vẫn là outputs/final.mp4
+    // duy nhất, ffmpeg đã ghi đè tại chỗ.
+    const previousKey = keyFromPublicUrl(previousUrl);
+    if (previousKey && previousKey !== finalKey) await deleteFromR2(previousKey);
     if (outputUrl) {
       await appendLog(`☁️ Đã upload final lên R2: ${outputUrl}`);
     }

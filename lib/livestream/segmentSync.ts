@@ -15,12 +15,13 @@ import { pollJobStatus } from '../googleFlow/flowJobs';
 import { triggerSegmentGeneration, findNextSegment, findPreviousSegment } from './segmentGenerate';
 import { extractLastFrame } from '../ffmpeg/frame';
 import { jobSegmentsDir, jobFramesDir, resolveWithinJob } from './paths';
-import { uploadFileToR2 } from '../r2/client';
+import { uploadFileToR2, deleteFromR2, md5File } from '../r2/client';
 import {
   FLOW_JOB_TIMEOUT_MS,
   MAX_SEGMENT_AUTO_RETRIES,
   SEGMENT_RETRY_BACKOFF_MS,
 } from '../constants';
+import { segmentVideoFileName } from './segmentSanitize';
 import type { LivestreamSegment } from './types';
 
 export interface SyncResult {
@@ -59,12 +60,24 @@ export async function syncOneSegment(
       // Nếu copy/download lỗi → GIỮ 'generating' + ghi error để lần poll sau tải lại
       // (video vẫn còn trên Flow), KHÔNG ép 'failed' làm mất video đã xong.
       if (jobStatus.video_path) {
-        const destFileName = `${segment.order.toString().padStart(3, '0')}_${segment.id}.mp4`;
+        // Tên file mang hash nội dung → mỗi bản gen là một key R2 mới, CDN không thể trả
+        // bản cũ (xem segmentVideoFileName). Hash tính từ chính file vừa tải về từ Flow.
+        const contentHash = await md5File(jobStatus.video_path);
+        const destFileName = segmentVideoFileName(segment.order, segment.id, contentHash);
         const destPath = path.join(jobSegmentsDir(jobId), destFileName);
         // fs.copyFile không tự tạo thư mục đích — đảm bảo outputs/segments có sẵn (thiếu
         // nếu job chạy trên máy khác máy tạo, share chung DB/R2).
         await fs.mkdir(path.dirname(destPath), { recursive: true });
         await fs.copyFile(jobStatus.video_path, destPath);
+
+        // Dọn bản cũ của CHÍNH đoạn này (local + R2) trước khi trỏ sang file mới — key đã
+        // đổi nên không còn bị ghi đè, không dọn thì rác tồn mãi trên đĩa và R2.
+        const previousPath = segment.videoPath;
+        if (previousPath && path.basename(previousPath) !== destFileName) {
+          await fs.rm(resolveWithinJob(jobId, previousPath), { force: true }).catch(() => {});
+          await deleteFromR2(`livestream/${jobId}/segments/${path.basename(previousPath)}`);
+        }
+
         segment.videoPath = path.join('outputs', 'segments', destFileName);
         // Upload lên R2 để preview/tải online không phụ thuộc route stream local — vẫn giữ
         // file local vì bước concat cần ffmpeg đọc trực tiếp (file local sẽ được xoá SAU

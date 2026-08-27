@@ -135,3 +135,19 @@ export function mergeSegmentsKeepingVideos(
     };
   });
 }
+
+/**
+ * Tên file video của 1 đoạn, KÈM hash nội dung: `003_seg-03.<hash8>.mp4`.
+ *
+ * Vì sao cần: trước đây tên cố định theo vai trò (`003_seg-03.mp4`) nên URL R2 không bao giờ
+ * đổi, gen lại là ghi đè tại chỗ. Đã xác minh trên production: object R2 origin đúng bản mới
+ * (etag khớp file trên VPS) nhưng CDN trước domain vẫn trả body cũ kèm `max-age=14400` — ghi
+ * đè chính `no-cache` mà lúc upload đã đặt. Người dùng xem bản cũ tới 4 tiếng.
+ *
+ * Đổi tên theo hash nội dung thì mỗi lần gen ra video khác là một KEY MỚI — CDN chưa từng
+ * thấy, không có gì để trả cũ. Gen lại ra video y hệt (hiếm) thì trùng key, vẫn đúng.
+ * Hash lấy 8 ký tự đầu md5: đủ tránh trùng ở quy mô vài chục đoạn/job, giữ tên còn đọc được.
+ */
+export function segmentVideoFileName(order: number, segmentId: string, contentHash: string): string {
+  return `${order.toString().padStart(3, '0')}_${segmentId}.${contentHash.slice(0, 8)}.mp4`;
+}
