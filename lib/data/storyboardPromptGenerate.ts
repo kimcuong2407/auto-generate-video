@@ -9,7 +9,7 @@ import type { Project, Scene } from '../types';
 
 const SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế key frame (khung hình mở đầu) cho video review sản phẩm ngắn (TikTok/Reels).
 
-Nhiệm vụ: viết 1 prompt tiếng Anh, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
+Nhiệm vụ: viết 1 prompt tiếng Việt, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
 KHUNG HÌNH DUY NHẤT — chính là khoảnh khắc MỞ ĐẦU của cảnh quay đã chốt.
 
 Ảnh này KHÔNG dùng cho người xem duyệt: nó được nạp thẳng vào model sinh video (Google Veo) làm KHUNG HÌNH
@@ -26,14 +26,13 @@ Yêu cầu:
 - Phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, có khiếm khuyết tự nhiên,
   KHÔNG phải minh hoạ/illustration/3D render/cartoon, không bóng bẩy giả tạo kiểu studio hoàn hảo.
 - QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm: ảnh sản phẩm THẬT được gửi kèm làm reference và nó là
-  nguồn đáng tin cậy DUY NHẤT về hình dáng. Hãy gọi sản phẩm bằng cụm trung tính "the exact product shown in
-  the reference image" kèm tối đa màu tổng thể. TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hay
+  nguồn đáng tin cậy DUY NHẤT về hình dáng. Hãy gọi sản phẩm bằng cụm trung tính "đúng sản phẩm trong ảnh reference" kèm tối đa màu tổng thể. TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hay
   đặc trưng cấu tạo (số lỗ xỏ dây, số nút, số ngăn, kiểu hoa văn đế, loại vân bề mặt, kiểu khớp nối...) —
   ảnh reference đã thể hiện chính xác hơn mọi câu chữ, mô tả thừa bằng chữ chỉ khiến model vẽ lệch đi so với
   sản phẩm thật. Chỉ được nêu màu/chất liệu tổng quát nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" bên dưới
   có nêu, và tuyệt đối không bịa thêm.
 - Bám sát bối cảnh, ánh sáng, góc máy, cỡ cảnh của cảnh quay đã chốt được cung cấp bên dưới.
-- Trả về DUY NHẤT đoạn prompt tiếng Anh, không kèm giải thích, không markdown, không xuống dòng thừa, không
+- Trả về DUY NHẤT đoạn prompt tiếng Việt, không kèm giải thích, không markdown, không xuống dòng thừa, không
   bọc trong dấu ngoặc kép.`;
 
 /**
@@ -178,7 +177,7 @@ function buildUserPrompt(project: Project, scene: Scene): string {
     `- Góc máy: ${scene.camera}`,
     `- On-screen text: ${scene.onScreenText || '(không có)'}`,
     `- Mô tả video (veoPrompt): ${scene.veoPrompt || '(chưa có, dựa vào tên cảnh và loại cảnh)'}`,
-    `\nViết prompt tiếng Anh cho ĐÚNG 1 khung hình tĩnh: khoảnh khắc MỞ ĐẦU của cảnh này.`,
+    `\nViết prompt tiếng Việt cho ĐÚNG 1 khung hình tĩnh: khoảnh khắc MỞ ĐẦU của cảnh này.`,
   ].join('\n');
 }
 
@@ -255,7 +254,7 @@ export async function triggerStoryboardPromptGeneration(
 
 const BACKGROUND_SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế bối cảnh (environment/background art) cho video review sản phẩm ngắn (TikTok/Reels).
 
-Nhiệm vụ: viết 1 prompt tiếng Anh, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
+Nhiệm vụ: viết 1 prompt tiếng Việt, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
 ẢNH BỐI CẢNH/MÔI TRƯỜNG THUẦN TÚY cho 1 cảnh quay trong kịch bản đã duyệt.
 
 Yêu cầu:
@@ -267,7 +266,7 @@ Yêu cầu:
 - Không mô tả chuyển động, không mô tả âm thanh/lời thoại.
 - Bám sát bối cảnh/không gian ngụ ý trong nội dung cảnh quay đã chốt (mô tả video, góc máy) được cung cấp bên
   dưới — nhưng chỉ lấy phần bối cảnh, bỏ qua mọi chi tiết mô tả sản phẩm/nhân vật.
-- Trả về DUY NHẤT đoạn prompt tiếng Anh, không kèm giải thích, không markdown, không xuống dòng thừa, không
+- Trả về DUY NHẤT đoạn prompt tiếng Việt, không kèm giải thích, không markdown, không xuống dòng thừa, không
   bọc trong dấu ngoặc kép.`;
 
 function buildBackgroundUserPrompt(scene: Scene): string {
@@ -279,7 +278,7 @@ function buildBackgroundUserPrompt(scene: Scene): string {
     `- Mô tả video (veoPrompt, chỉ lấy phần bối cảnh/không gian, bỏ qua mô tả sản phẩm/nhân vật): ${
       scene.veoPrompt || '(chưa có, dựa vào tên cảnh và loại cảnh)'
     }`,
-    `\nViết prompt ảnh bối cảnh (background-only, không có sản phẩm/người) tiếng Anh cho đúng cảnh này.`,
+    `\nViết prompt ảnh bối cảnh (background-only, không có sản phẩm/người) tiếng Việt cho đúng cảnh này.`,
   ].join('\n');
 }
 
