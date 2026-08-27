@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { LivestreamJob } from '@/lib/livestream/types';
+import { withVersion } from '@/lib/livestream/mediaUrl';
 
 function logClass(line: string): string {
   if (line.startsWith('✓') || line.startsWith('🎉')) return 'log-ok';
@@ -41,6 +42,12 @@ export function ConcatPanel({ job, onRefresh }: { job: LivestreamJob; onRefresh:
   const allSegments = job.products.flatMap((p) => p.segments);
   const notDone = allSegments.filter((s) => s.status !== 'done' || !s.videoPath);
   const ready = allSegments.filter((s) => s.status === 'done' && s.videoPath);
+  // URL final kèm mốc phiên bản: ghép lại xong thì `v` đổi, trình duyệt buộc tải bản mới thay vì
+  // phát lại bản đã cache (key R2 cố định `final.mp4` nên URL gốc không bao giờ đổi).
+  const playbackUrl = withVersion(
+    concat.outputUrl ?? (concat.outputPath ? `/api/livestream/${job.id}/media/${concat.outputPath}` : null),
+    concat.finishedAt
+  );
 
   return (
     <div className="card">
@@ -65,12 +72,8 @@ export function ConcatPanel({ job, onRefresh }: { job: LivestreamJob; onRefresh:
         <button className="btn btn-primary" onClick={handleConcat} disabled={starting || concat.status === 'running'}>
           {concat.status === 'running' ? 'Đang ghép...' : '🎬 Ghép video'}
         </button>
-        {concat.status === 'done' && (concat.outputUrl || concat.outputPath) && (
-          <a
-            className="btn"
-            href={concat.outputUrl ?? `/api/livestream/${job.id}/media/${concat.outputPath}`}
-            download
-          >
+        {concat.status === 'done' && playbackUrl && (
+          <a className="btn" href={playbackUrl} download>
             ⬇️ Tải final.mp4
           </a>
         )}
@@ -109,11 +112,14 @@ export function ConcatPanel({ job, onRefresh }: { job: LivestreamJob; onRefresh:
         </div>
       )}
 
-      {concat.status === 'done' && (concat.outputUrl || concat.outputPath) && (
+      {concat.status === 'done' && playbackUrl && (
         <div style={{ marginTop: 14 }}>
           <video
             controls
-            src={concat.outputUrl ?? `/api/livestream/${job.id}/media/${concat.outputPath}`}
+            // key ép React dựng lại thẻ <video> khi ghép lại: đổi src thôi thì trình duyệt vẫn giữ
+            // buffer của bản cũ đang phát dở.
+            key={playbackUrl}
+            src={playbackUrl}
             style={{ maxWidth: '100%', borderRadius: 10 }}
           />
         </div>

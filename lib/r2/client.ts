@@ -37,6 +37,20 @@ export function publicUrlFor(key: string): string {
 }
 
 /**
+ * Cache-control cho MỌI object upload lên R2.
+ *
+ * Vì sao cần: key ở đây CỐ ĐỊNH theo vai trò (final.mp4, segments/001_seg-01.mp4, ảnh input) và
+ * bị GHI ĐÈ mỗi lần gen/ghép lại — URL không bao giờ đổi. Không gửi cache-control thì trình duyệt
+ * tự suy heuristic từ last-modified và cache rất dai với thẻ <video>: người dùng ghép lại xong,
+ * server + R2 đều đã là bản mới, nhưng trình duyệt vẫn phát bản cũ đã tải.
+ *
+ * `no-cache` KHÔNG có nghĩa "không cache" — nó cho phép lưu nhưng bắt revalidate với server trước
+ * mỗi lần dùng. File không đổi thì trả 304 (không tốn băng thông), file đã đổi thì tải bản mới.
+ * Đúng thứ cần cho object bị ghi đè tại chỗ.
+ */
+const R2_CACHE_CONTROL = process.env.R2_CACHE_CONTROL || 'no-cache';
+
+/**
  * Upload 1 file local lên R2. Trả về URL public, hoặc null nếu R2 chưa cấu hình
  * hoặc upload thất bại (lỗi được nuốt — best-effort, không chặn flow chính gọi hàm này).
  */
@@ -54,6 +68,7 @@ export async function uploadFileToR2(
         Key: key,
         Body: body,
         ContentType: contentType,
+        CacheControl: R2_CACHE_CONTROL,
       })
     );
     return publicUrlFor(key);
