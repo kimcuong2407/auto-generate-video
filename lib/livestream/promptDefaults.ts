@@ -120,9 +120,12 @@ c. TƯ THẾ & BỐ CỤC CỐ ĐỊNH cho MỌI đoạn: người dẫn NGỒI 
    sản phẩm chuyển động.
 
 d. 1 "chất giọng" (voice) DUY NHẤT cho người dẫn: chốt cố định giới tính giọng (nam/nữ), quãng
-   tuổi giọng (trẻ/trung niên...), âm vực (trầm/cao/vừa), tốc độ nói (chậm rãi/vừa/nhanh), và tông
-   cảm xúc chủ đạo (ấm áp thân thiện/năng lượng sôi nổi/nhẹ nhàng...). Mô tả này PHẢI giống hệt
-   nhau ở MỌI đoạn — Google Veo tự chọn giọng dựa theo mô tả trong prompt mỗi lần tạo video riêng
+   tuổi giọng (trẻ/trung niên...), âm vực (trầm/cao/vừa), tốc độ nói, và tông cảm xúc chủ đạo.
+   BẮT BUỘC là giọng VUI VẺ, TƯƠI TẮN, TRÀN NĂNG LƯỢNG như người bán hàng live đang hào hứng:
+   "cheerful, upbeat, high-energy voice with a warm smile in it, lively pacing, expressive animated
+   intonation, enthusiastic emphasis on key selling points". TUYỆT ĐỐI KHÔNG mô tả giọng là "calm",
+   "soft-spoken", "measured", "slow", "gentle", "monotone", "flat", "neutral" — giọng đều đều buồn
+   ngủ làm hỏng không khí livestream. Mô tả này PHẢI giống hệt nhau ở MỌI đoạn — Google Veo tự chọn giọng dựa theo mô tả trong prompt mỗi lần tạo video riêng
    biệt nên KHÔNG tự nhớ giọng đã dùng ở đoạn trước; chỉ có nhắc lại đúng 1 mô tả giọng cố định
    trong veoPrompt của mọi đoạn mới giúp Veo chọn giọng gần giống nhau xuyên suốt.
 
@@ -178,11 +181,18 @@ dung có mặt):
     đi giữa các đoạn) ngay trước câu thoại, rồi mới đến đoạn lời thoại lấy NGUYÊN VĂN từ
     voiceoverVi của chính đoạn đó, dùng ĐÚNG cú pháp có dấu hai chấm trước dấu ngoặc kép (colon
     syntax — giúp ngăn Veo tự sinh phụ đề đè lên video): The person has <mô tả giọng cố định>,
-    speaks in Vietnamese, saying: "<nguyên văn voiceoverVi>". Không dịch sang tiếng Anh, không bỏ
-    dấu hai chấm phía trước;
-(6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Audio:" mô tả âm thanh nền/hiệu ứng phù hợp bối cảnh
-    livestream (VD: "Audio: quiet room tone, soft ambient noise, no background music") để tránh
-    Veo tự bịa âm thanh sai bối cảnh;
+    speaks in Vietnamese cheerfully and energetically with a smile, saying: "<nguyên văn
+    voiceoverVi>". Không dịch sang tiếng Anh, không bỏ dấu hai chấm phía trước. Trong voiceoverVi
+    có thể chèn dấu hiệu cảm xúc tự nhiên của live (VD "haha", "wow", "trời ơi", "á đù nha") ở chỗ
+    hợp lý — nhưng KHÔNG lạm dụng, tối đa 1 lần mỗi đoạn và phải hợp ngữ cảnh;
+(6) Sounds — BẮT BUỘC có 1 câu bắt đầu bằng "Audio:" mô tả âm thanh nền/hiệu ứng tạo không khí
+    livestream SÔI ĐỘNG, chọn 2-3 yếu tố hợp ngữ cảnh đoạn đó, VD: "Audio: lively home livestream
+    room tone, the host's cheerful upbeat voice, a light natural laugh, soft taps as she picks the
+    product up off the table, gentle rustle of packaging, faint upbeat background music at low
+    volume". Ưu tiên âm thanh THẬT phát sinh từ hành động trong đoạn (chạm/đặt sản phẩm xuống bàn,
+    mở nắp, bóc túi, tiếng cười, tiếng vỗ tay nhẹ). KHÔNG dùng "quiet", "silent", "no background
+    music" — phòng live im lặng nghe rất buồn ngủ. KHÔNG thêm tiếng đám đông/khán giả/tiếng chuông
+    thông báo giả;
 (7) Technical — luôn thêm cụm "no subtitles, no captions, no on-screen text" vào cuối veoPrompt.
 
 Yêu cầu bổ sung bắt buộc:
@@ -226,6 +236,12 @@ dưới đây (viết bằng TIẾNG ANH, dạng cụm mô tả dùng trực ti�
   phone camera propped on the table (thats where the camera is), slight natural handheld shake,
   shot on iPhone, authentic candid look").
 - voice: mô tả chất giọng cố định — giới tính giọng, quãng tuổi, âm vực, tốc độ nói, tông cảm xúc.
+  BẮT BUỘC là giọng VUI VẺ, TƯƠI TẮN, TRÀN NĂNG LƯỢNG đúng kiểu người bán hàng live đang hào hứng:
+  nói nhanh vừa phải và có nhịp (upbeat, lively pacing), lên xuống ngữ điệu rõ rệt (expressive,
+  animated intonation — KHÔNG monotone/flat/deadpan), có nụ cười trong giọng (warm smiling voice),
+  nhấn nhá vào điểm bán hàng, thỉnh thoảng cười nhẹ tự nhiên. TUYỆT ĐỐI KHÔNG dùng các từ như
+  "calm", "soft-spoken", "measured", "slow", "gentle", "monotone", "neutral tone" — giọng đều đều
+  buồn ngủ làm hỏng không khí livestream.
 - wardrobeLock: 1 câu tiếng Anh khẳng định người dẫn KHÔNG đổi trang phục/kiểu tóc/vị trí ngồi
   trong suốt buổi live, kể cả khi chuyển sang giới thiệu sản phẩm khác.
 
