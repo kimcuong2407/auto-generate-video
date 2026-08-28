@@ -4,7 +4,7 @@ import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
 import { buildLivestreamUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
 import { formatStageBibleBlock, isStageBibleStale } from '@/lib/livestream/stageBible';
-import { pickVisionRefEntries } from '@/lib/livestream/refImages';
+import { findPreviousSegment, pickRefImagePaths, pickVisionRefEntries } from '@/lib/livestream/refImages';
 import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
 
 export const runtime = 'nodejs';
@@ -38,7 +38,11 @@ export interface PreviewPromptResult {
  * Hai mảnh do AI sinh (`stageBible`, `visualDescription`) chỉ hiện khi ĐÃ có cache; thiếu thì ghi
  * vào `notes` chứ không tự gọi AI — preview phải rẻ để bấm thoải mái.
  *
- * Query: `?step=background|script` (+ `productId` tuỳ chọn, mặc định sản phẩm đầu tiên).
+ * Query: `?step=background|script|segment` (+ `productId` tuỳ chọn, mặc định sản phẩm đầu tiên;
+ * `segmentId` bắt buộc với step=segment).
+ *
+ * step=segment khác 2 bước kia: prompt đã chốt sẵn trong job (không ghép gì thêm), nhưng BỘ ẢNH
+ * mới là thứ bị biến đổi — cắt còn 3 theo trần Veo, trừ thêm 1 suất nếu đoạn nối tiếp frame trước.
  */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
@@ -47,8 +51,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
   const job = await readJob(id);
   const step = req.nextUrl.searchParams.get('step');
-  if (step !== 'background' && step !== 'script') {
-    return NextResponse.json({ error: 'step phải là "background" hoặc "script"' }, { status: 400 });
+  if (step !== 'background' && step !== 'script' && step !== 'segment') {
+    return NextResponse.json(
+      { error: 'step phải là "background", "script" hoặc "segment"' },
+      { status: 400 }
+    );
   }
   if (job.products.length === 0) {
     return NextResponse.json({ error: 'Job chưa có sản phẩm nào' }, { status: 400 });
@@ -90,6 +97,57 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       prompt: buildBackgroundPrompt(basePrompt, product.description || product.name, bible, entries),
       refImages: entries.map((e) => ({ rel: e.rel, label: e.label })),
       notes,
+    };
+    return NextResponse.json(result);
+  }
+
+  if (step === 'segment') {
+    const segmentId = req.nextUrl.searchParams.get('segmentId');
+    const segment = product.segments.find((s) => s.id === segmentId);
+    if (!segment) {
+      return NextResponse.json({ error: 'Đoạn không tồn tại' }, { status: 404 });
+    }
+    // Bước gen video KHÔNG ghép thêm mảnh nào server-side: veoPrompt đã chốt sẵn lúc sinh script.
+    // Thứ tự ảnh thì ngược lại — pickRefImagePaths cắt còn 3 và chừa 1 suất cho frame chain, nên
+    // đây mới là chỗ duy nhất thấy được ảnh nào THỰC SỰ tới Veo.
+    const prev = findPreviousSegment(job, product, segment);
+    const hasPrevFrame = prev?.status === 'done' && !!prev.lastFramePath;
+    const refPaths = pickRefImagePaths(job, hasPrevFrame);
+    // pickVisionRefEntries chỉ gán nhãn cho top-3 ảnh sản phẩm nó chọn, còn pickRefImagePaths lấy
+    // từ ĐẦU danh sách — 2 tập không trùng nhau. Suy nhãn theo vai trò thật để không rơi về
+    // "ảnh tham chiếu" chung chung đúng lúc cần biết cái nào là mẫu/nền.
+    const labelOf = (rel: string): string =>
+      rel === job.selectedModelImagePath
+        ? 'ảnh NGƯỜI MẪU/NGƯỜI DẪN'
+        : rel === job.selectedBackgroundImagePath
+          ? 'ảnh BỐI CẢNH/BACKGROUND'
+          : 'ảnh SẢN PHẨM THẬT';
+    const segNotes = [...notes];
+    if (!segment.veoPrompt.trim()) {
+      segNotes.push('❌ Đoạn này chưa có prompt video — phải sinh script trước khi gen.');
+    }
+    if (hasPrevFrame) {
+      segNotes.push(
+        `🔗 Đoạn này nối tiếp đoạn #${prev!.order}: khung hình cuối của đoạn đó chiếm 1 suất ảnh, nên chỉ còn ${refPaths.length} ảnh tham chiếu được gửi.`
+      );
+    }
+    // Ảnh bị cắt vì trần 3 của Veo: im lặng thì Mr.D tưởng đã gửi đủ. Đây đúng là bug đã sửa ở
+    // pickRefImagePaths (ảnh nền bị cắt mất), nhưng trần vẫn còn nên phải nói rõ ai bị bỏ lại.
+    const detached = new Set(job.detachedImagePaths ?? []);
+    const dropped = [
+      ...(job.selectedModelImagePath ? [job.selectedModelImagePath] : []),
+      ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
+      ...(job.selectedRefImagePaths ?? []),
+    ].filter((rel) => !detached.has(rel) && !refPaths.includes(rel));
+    if (dropped.length > 0) {
+      segNotes.push(
+        `⚠️ Veo chỉ nhận tối đa 3 ảnh — ${dropped.length} ảnh đã chọn bị BỎ LẠI: ${dropped.join(', ')}. Tách bớt ảnh (nút 🎬) để đổi thứ tự ưu tiên.`
+      );
+    }
+    const result: PreviewPromptResult = {
+      prompt: `===== LỜI THOẠI (đoạn #${segment.order}, ${segment.duration}s) =====\n${segment.voiceoverVi || '(trống)'}\n\n===== PROMPT VIDEO GỬI VEO =====\n${segment.veoPrompt || '(chưa có — cần sinh script trước)'}`,
+      refImages: refPaths.map((rel) => ({ rel, label: labelOf(rel) })),
+      notes: segNotes,
     };
     return NextResponse.json(result);
   }

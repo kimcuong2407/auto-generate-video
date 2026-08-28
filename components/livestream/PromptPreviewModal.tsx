@@ -8,38 +8,58 @@ interface PreviewData {
   notes: string[];
 }
 
+const STEP_TITLE: Record<string, string> = {
+  background: 'Bước: Gen ảnh background',
+  script: 'Bước: Sinh kịch bản',
+  segment: 'Bước: Gen video cho đoạn',
+};
+
 /**
- * Modal xem trước prompt + ảnh ref sẽ gửi cho AI ở 1 bước gen (background hoặc script).
+ * Modal xem trước prompt + ảnh ref của MỘT bước gen, và (tuỳ chọn) xác nhận chạy luôn bước đó.
  *
  * Vì sao cần: prompt thật được ghép SERVER-SIDE từ nhiều mảnh, UI chỉ cho sửa 1 mảnh. Modal này
  * gọi GET /api/livestream/[id]/preview-prompt để lấy đúng chuỗi server sẽ gửi — không tự ghép lại
  * ở client, nếu không 2 bên sẽ trôi lệch nhau như bug "prompt hiện khác prompt gửi đi" trước đây.
  *
  * Route preview KHÔNG gọi AI nên mở bao nhiêu lần cũng miễn phí; mảnh nào chưa có sẽ nằm ở `notes`.
+ *
+ * Truyền `onConfirm` để biến modal thành CỔNG XÁC NHẬN: mọi nút gen đi qua đây, Mr.D nhìn đủ
+ * prompt + ảnh rồi mới bấm chạy. Không truyền thì modal chỉ để xem.
  */
 export function PromptPreviewModal({
   jobId,
   step,
   productId,
+  segmentId,
   promptOverride,
   imageR2Urls,
+  confirmLabel,
+  onConfirm,
   onClose,
 }: {
   jobId: string;
-  step: 'background' | 'script';
+  step: 'background' | 'script' | 'segment';
   productId?: string;
+  /** Bắt buộc khi step='segment' — đoạn cần preview. */
+  segmentId?: string;
   /** Bản nháp prompt đang sửa trên UI (chỉ bước background) — để preview khớp thứ sắp gửi. */
   promptOverride?: string;
   /** job.imageR2Urls — ưu tiên URL R2 khi hiện thumbnail, file local có thể đã mất sau deploy. */
   imageR2Urls?: Record<string, string | null>;
+  /** Nhãn nút chạy thật, VD "▶ Gen đoạn này". Bỏ qua nếu modal chỉ để xem. */
+  confirmLabel?: string;
+  /** Chạy bước thật. Modal tự đóng sau khi chạy xong. */
+  onConfirm?: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     const qs = new URLSearchParams({ step });
     if (productId) qs.set('productId', productId);
+    if (segmentId) qs.set('segmentId', segmentId);
     if (promptOverride?.trim()) qs.set('prompt', promptOverride);
     fetch(`/api/livestream/${jobId}/preview-prompt?${qs}`)
       .then(async (res) => {
@@ -48,9 +68,21 @@ export function PromptPreviewModal({
         setData(json);
       })
       .catch((err: Error) => setError(err.message));
-  }, [jobId, step, productId, promptOverride]);
+  }, [jobId, step, productId, segmentId, promptOverride]);
 
-  const title = step === 'background' ? 'Prompt gen ảnh background' : 'Prompt sinh script';
+  async function handleConfirm() {
+    if (!onConfirm) return;
+    setConfirming(true);
+    try {
+      await onConfirm();
+      onClose();
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  // Cảnh báo chặn: note bắt đầu bằng ❌ nghĩa là bấm gen chắc chắn hỏng (VD chưa có veoPrompt).
+  const blocking = data?.notes.some((n) => n.startsWith('❌')) ?? false;
 
   return (
     <div className="media-modal-overlay" onClick={onClose}>
@@ -61,7 +93,7 @@ export function PromptPreviewModal({
           border: '1px solid var(--border)',
           borderRadius: 10,
           padding: 20,
-          width: 680,
+          width: 720,
           maxWidth: '92vw',
           textAlign: 'left',
         }}
@@ -70,7 +102,9 @@ export function PromptPreviewModal({
         <button className="media-modal-close" onClick={onClose} title="Đóng">
           ✕
         </button>
-        <h4 style={{ marginTop: 0 }}>👁 {title} — xem trước</h4>
+        <h4 style={{ marginTop: 0 }}>
+          👁 {STEP_TITLE[step] ?? step} — kiểm tra trước khi chạy
+        </h4>
 
         {error && <div className="banner banner-error">{error}</div>}
         {!data && !error && <div style={{ opacity: 0.7 }}>Đang tải...</div>}
@@ -78,7 +112,11 @@ export function PromptPreviewModal({
         {data && (
           <>
             {data.notes.map((n) => (
-              <div key={n} className="banner banner-info" style={{ fontSize: 12, marginBottom: 6 }}>
+              <div
+                key={n}
+                className={n.startsWith('❌') || n.startsWith('⚠️') ? 'banner' : 'banner banner-info'}
+                style={{ fontSize: 12, marginBottom: 6 }}
+              >
                 {n}
               </div>
             ))}
@@ -91,11 +129,17 @@ export function PromptPreviewModal({
                 <span style={{ opacity: 0.6, fontSize: 12 }}>Không có ảnh nào được gửi ở bước này.</span>
               )}
               {data.refImages.map((img, i) => (
-                <div key={img.rel} style={{ width: 96, textAlign: 'center' }}>
+                <div key={img.rel} style={{ width: 110, textAlign: 'center' }}>
                   <img
                     src={imageR2Urls?.[img.rel] ?? `/api/livestream/${jobId}/media/${img.rel}`}
                     alt={img.label}
-                    style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8 }}
+                    style={{
+                      width: 110,
+                      height: 110,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                    }}
                   />
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.3 }}>
                     {i + 1}. {img.label}
@@ -115,19 +159,34 @@ export function PromptPreviewModal({
                 background: 'var(--bg)',
                 padding: 10,
                 borderRadius: 8,
-                maxHeight: '48vh',
+                maxHeight: '40vh',
                 overflowY: 'auto',
               }}
             >
               {data.prompt}
             </pre>
-            <button
-              className="btn"
-              style={{ marginTop: 8 }}
-              onClick={() => navigator.clipboard?.writeText(data.prompt)}
-            >
-              📋 Copy prompt
-            </button>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+              {onConfirm && (
+                <button
+                  className="btn btn-primary"
+                  onClick={handleConfirm}
+                  disabled={confirming || blocking}
+                  title={blocking ? 'Còn lỗi chặn ở trên — sửa xong mới chạy được' : undefined}
+                >
+                  {confirming ? 'Đang chạy...' : (confirmLabel ?? '▶ Chạy bước này')}
+                </button>
+              )}
+              <button className="btn btn-ghost" onClick={onClose}>
+                Huỷ
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => navigator.clipboard?.writeText(data.prompt)}
+              >
+                📋 Copy prompt
+              </button>
+            </div>
           </>
         )}
       </div>

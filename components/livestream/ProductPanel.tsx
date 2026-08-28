@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { findPreviousSegment, pickRefImagePaths } from '@/lib/livestream/refImages';
 import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from '@/lib/livestream/types';
+import { PromptPreviewModal } from './PromptPreviewModal';
 
 function segmentStatusClass(status: LivestreamSegment['status']): string {
   if (status === 'done') return 'status-ready';
@@ -30,11 +30,15 @@ export function ProductPanel({
   const [manualDescription, setManualDescription] = useState(product.description);
   const [savingManual, setSavingManual] = useState(false);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
-  // Ảnh tham chiếu + prompt đã gửi lên veoflow cho 1 đoạn — xem nút "👁 Chi tiết" bên dưới.
-  const [detailsSegmentId, setDetailsSegmentId] = useState<string | null>(null);
-  // Ưu tiên URL R2 (bền vững qua deploy) khi hiển thị, giống JobImagePanel.
-  const imgSrc = (relPath: string) =>
-    job.imageR2Urls?.[relPath] ?? `/api/livestream/${jobId}/media/${relPath}`;
+  // Đoạn đang mở modal preview + hành động sẽ chạy khi bấm xác nhận (null = chỉ xem).
+  // MỌI nút gen video đi qua đây: Mr.D nhìn đủ prompt + ảnh thật rồi mới tốn lượt Veo.
+  const [preview, setPreview] = useState<{
+    segmentId: string;
+    action: 'generate' | 'retry' | null;
+    label: string;
+  } | null>(null);
+  // Xem trước prompt sinh script của SẢN PHẨM này trước khi bấm sinh.
+  const [previewScript, setPreviewScript] = useState(false);
 
   async function handleScreenshotUpload(file: File) {
     setUploadingScreenshot(true);
@@ -80,14 +84,14 @@ export function ProductPanel({
   }
 
   /**
-   * Bấm "Sinh script": tự lưu mô tả đang gõ lên server TRƯỚC (route sinh script đọc
-   * product.description từ job.json làm base), rồi mới gọi sinh. Nhờ vậy AI luôn lấy đúng
-   * input Mr.D vừa nhập, không cần bấm "Lưu mô tả" riêng.
+   * Mở preview sinh script: lưu mô tả đang gõ lên server TRƯỚC rồi mới mở modal — route preview
+   * đọc product.description từ job.json, không lưu thì Mr.D xem prompt của bản mô tả CŨ rồi bấm
+   * chạy trên bản mới, đúng kiểu sai lệch mà cả màn hình preview này sinh ra để chặn.
    */
-  async function handleGenerateScript() {
+  async function handleOpenScriptPreview() {
     const saved = await saveManualDescription(true);
     if (!saved) return;
-    onGenerateScript(product.id);
+    setPreviewScript(true);
   }
 
   async function callSegmentAction(segmentId: string, action: 'generate' | 'retry' | 'stop' | 'sync') {
@@ -132,20 +136,20 @@ export function ProductPanel({
       <div className="step-actions">
         <button
           className="btn btn-primary"
-          onClick={handleGenerateScript}
+          onClick={handleOpenScriptPreview}
           disabled={scriptBusy || hasGenerating || savingManual || !manualDescription.trim()}
-          title="Tự lưu mô tả đang nhập rồi sinh lời thoại + prompt video cho sản phẩm này. Chỉnh chỉ dẫn AI ở phần ⚙️ trên đầu trang."
+          title="Lưu mô tả đang nhập rồi MỞ BẢN XEM TRƯỚC prompt + ảnh — xác nhận trong đó mới thật sự sinh."
         >
           {scriptBusy
             ? 'Đang sinh script...'
             : savingManual
               ? 'Đang lưu mô tả...'
               : product.segments.length > 0
-                ? '🔄 Sinh lại script'
-                : '✍️ Sinh script'}
+                ? '👁 Xem trước → sinh lại script'
+                : '👁 Xem trước → sinh script'}
         </button>
         <span style={{ fontSize: 11, color: 'var(--text-muted)', alignSelf: 'center' }}>
-          Mô tả đang nhập được tự lưu khi bấm sinh. Muốn đổi giọng/phong cách? Chỉnh system prompt ở phần ⚙️ đầu trang.
+          Bấm sẽ mở bản xem trước prompt + ảnh; xác nhận trong đó mới tốn lượt AI. Muốn đổi giọng/phong cách? Chỉnh system prompt ở phần ⚙️ đầu trang.
         </span>
       </div>
 
@@ -226,28 +230,34 @@ export function ProductPanel({
               <div className="actions">
                 <button
                   className="retry-btn"
-                  onClick={() => setDetailsSegmentId(segment.id)}
-                  title="Xem ảnh tham chiếu + prompt đã gửi lên veoflow"
+                  onClick={() => setPreview({ segmentId: segment.id, action: null, label: '' })}
+                  title="Xem ảnh tham chiếu + prompt sẽ gửi lên Veo (không gen)"
                 >
-                  👁 Chi tiết
+                  👁 Xem prompt
                 </button>
                 {segment.status === 'idle' && (
                   <button
                     className="retry-btn"
-                    onClick={() => callSegmentAction(segment.id, 'generate')}
+                    onClick={() =>
+                      setPreview({ segmentId: segment.id, action: 'generate', label: '▶ Gen đoạn này' })
+                    }
                     disabled={busySegmentId === segment.id}
+                    title="Mở bản xem trước prompt + ảnh; xác nhận trong đó mới tốn lượt Veo"
                   >
-                    ▶ Gen
+                    👁 Xem trước → Gen
                   </button>
                 )}
                 {segment.status === 'failed' && (
                   <>
                     <button
                       className="retry-btn"
-                      onClick={() => callSegmentAction(segment.id, 'retry')}
+                      onClick={() =>
+                        setPreview({ segmentId: segment.id, action: 'retry', label: '↺ Gen lại đoạn này' })
+                      }
                       disabled={busySegmentId === segment.id}
+                      title="Mở bản xem trước prompt + ảnh; xác nhận trong đó mới tốn lượt Veo"
                     >
-                      ↺ Retry
+                      👁 Xem trước → Retry
                     </button>
                     {segment.jobId && (
                       <button
@@ -274,11 +284,17 @@ export function ProductPanel({
                   <>
                     <button
                       className="retry-btn"
-                      onClick={() => callSegmentAction(segment.id, 'retry')}
+                      onClick={() =>
+                        setPreview({
+                          segmentId: segment.id,
+                          action: 'retry',
+                          label: '🔄 Gen lại (ghi đè video hiện tại)',
+                        })
+                      }
                       disabled={busySegmentId === segment.id}
-                      title="Gen lại video cho đoạn này, ghi đè video hiện tại"
+                      title="Mở bản xem trước prompt + ảnh; xác nhận thì gen lại và ghi đè video hiện tại"
                     >
-                      🔄 Gen lại
+                      👁 Xem trước → Gen lại
                     </button>
                     <button
                       className="retry-btn"
@@ -295,62 +311,37 @@ export function ProductPanel({
           ))}
         </div>
       )}
-      {detailsSegmentId && (() => {
-        const segment = product.segments.find((s) => s.id === detailsSegmentId);
-        if (!segment) return null;
-        // Dùng chung pickRefImagePaths với server để hiển thị ĐÚNG những ảnh Veo thực sự nhận
-        // (tối đa 3). Đoạn có chain frame trước thì 1 suất dành cho frame đó, còn 2 cho ảnh.
-        const prev = findPreviousSegment(job, product, segment);
-        const hasPrevFrame = prev?.status === 'done' && !!prev.lastFramePath;
-        const refPaths = pickRefImagePaths(job, hasPrevFrame);
-        return (
-          <div className="media-modal-overlay" onClick={() => setDetailsSegmentId(null)}>
-            <div
-              className="media-modal-content"
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-                padding: 20,
-                width: 560,
-                maxWidth: '90vw',
-                textAlign: 'left',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button className="media-modal-close" onClick={() => setDetailsSegmentId(null)} title="Đóng">
-                ✕
-              </button>
-              <h4 style={{ marginTop: 0 }}>Chi tiết đoạn #{segment.order}</h4>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                {refPaths.length === 0 && <span style={{ opacity: 0.6 }}>Chưa chọn ảnh tham chiếu cho job này</span>}
-                {refPaths.map((p) => (
-                  <img
-                    key={p}
-                    src={imgSrc(p)}
-                    alt={p}
-                    style={{ width: 110, height: 110, objectFit: 'cover', borderRadius: 8 }}
-                  />
-                ))}
-              </div>
-              <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>Prompt gửi Veoflow:</div>
-              <pre
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  fontSize: 13,
-                  background: 'var(--bg)',
-                  padding: 10,
-                  borderRadius: 8,
-                  maxHeight: '40vh',
-                  overflowY: 'auto',
-                }}
-              >
-                {segment.veoPrompt || '(chưa có prompt — cần gen kịch bản trước)'}
-              </pre>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Modal preview dùng chung route /preview-prompt — KHÔNG tự ghép danh sách ảnh ở client
+          (modal cũ làm vậy nên dễ trôi lệch với server). `action` khác null thì modal có luôn nút
+          chạy thật, nên không còn đường nào gen video mà chưa nhìn prompt + ảnh. */}
+      {preview && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="segment"
+          productId={product.id}
+          segmentId={preview.segmentId}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          confirmLabel={preview.action ? preview.label : undefined}
+          onConfirm={
+            preview.action
+              ? () => callSegmentAction(preview.segmentId, preview.action!)
+              : undefined
+          }
+          onClose={() => setPreview(null)}
+        />
+      )}
+
+      {previewScript && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="script"
+          productId={product.id}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          confirmLabel={product.segments.length > 0 ? '🔄 Sinh lại script' : '✍️ Sinh script'}
+          onConfirm={() => onGenerateScript(product.id)}
+          onClose={() => setPreviewScript(false)}
+        />
+      )}
     </div>
   );
 }

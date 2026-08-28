@@ -71,6 +71,12 @@ export default function LivestreamDetailPage() {
   // Sản phẩm đang xem trước prompt sinh script (null = không mở modal). Preview theo TỪNG sản phẩm
   // vì user prompt chứa mô tả + vị trí trong buổi live riêng của sản phẩm đó.
   const [previewScriptProductId, setPreviewScriptProductId] = useState<string | null>(null);
+  // Hành động HÀNG LOẠT cũng phải qua preview: chúng chạy trên nhiều sản phẩm/đoạn nên preview chỉ
+  // hiện được payload của cái ĐẦU TIÊN — đủ để bắt lỗi sân khấu/ảnh, vì mọi sản phẩm dùng chung
+  // bible + bộ ảnh của job. Nhãn nói rõ số lượng sẽ chạy để không hiểu nhầm là chạy 1 cái.
+  const [bulkPreview, setBulkPreview] = useState<
+    null | { kind: 'script-all' | 'restage' | 'gen-all' }
+  >(null);
 
   /**
    * @param forceStageBible chốt LẠI sân khấu (người dẫn/bối cảnh/giọng) dù input chưa đổi. Cần
@@ -199,6 +205,14 @@ export default function LivestreamDetailPage() {
   const hasGeneratingSegment = job.products.some((p) => p.segments.some((s) => s.status === 'generating'));
   // Có ảnh sản phẩm trong kho CHUNG cả job nhưng chưa chọn ảnh tham chiếu → chặn "Gen tất cả".
   const jobNeedsRef = job.spokespersonImagePaths.length > 0 && job.selectedRefImagePaths.length === 0;
+  // Đoạn ĐẦU TIÊN chưa gen — đại diện cho preview "Gen tất cả". Mọi đoạn dùng chung bộ ảnh của job
+  // nên xem 1 đoạn là đủ thấy ảnh nào tới Veo; prompt thì mỗi đoạn một khác, nêu rõ ở nhãn nút.
+  const firstSegmentRef = job.products
+    .flatMap((p) => p.segments.map((s) => ({ productId: p.id, segment: s })))
+    .sort((a, b) => a.segment.order - b.segment.order)
+    .find((x) => x.segment.status === 'idle' || x.segment.status === 'failed');
+
+  const totalSegments = job.products.reduce((n, p) => n + p.segments.length, 0);
 
   return (
     <div style={{ display: 'flex', width: '100%' }}>
@@ -215,47 +229,33 @@ export default function LivestreamDetailPage() {
             </button>
             <button
               className="btn"
-              onClick={() => handleGenerateScript()}
-              disabled={scriptingAll || busy}
-              title="Sinh lời thoại + prompt video cho mọi sản phẩm đã có mô tả"
+              onClick={() => setBulkPreview({ kind: 'script-all' })}
+              disabled={scriptingAll || busy || !job.products.length}
+              title="Mở bản xem trước prompt + ảnh (sản phẩm đầu tiên); xác nhận trong đó mới sinh cho toàn bộ sản phẩm"
             >
-              {scriptingAll ? 'Đang sinh script...' : '✍️ Sinh script tất cả'}
+              {scriptingAll ? 'Đang sinh script...' : '👁 Xem trước → Sinh script tất cả'}
             </button>
             <button
               className="btn btn-ghost"
-              onClick={() => setPreviewScriptProductId(job?.products[0]?.id ?? null)}
-              disabled={!job?.products.length}
-              title="Xem system prompt + user prompt + ảnh ref server sẽ gửi cho AI khi sinh script (không tốn lượt AI)"
+              onClick={() => setBulkPreview({ kind: 'restage' })}
+              disabled={scriptingAll || busy || !job.products.length}
+              title="Dùng khi sân khấu đã chốt bị sai (VD prompt còn tiếng Anh từ bản cũ) — xem trước rồi ép AI chốt lại từ ảnh + mô tả hiện tại và sinh lại toàn bộ script"
             >
-              👁 Xem prompt sinh script
-            </button>
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                if (
-                  confirm(
-                    'Chốt lại sân khấu (người dẫn/bối cảnh/góc máy/giọng) và SINH LẠI script cho TOÀN BỘ sản phẩm?\n\nScript hiện tại sẽ bị ghi đè. Video đã gen không bị xoá nhưng sẽ lệch với script mới.'
-                  )
-                ) {
-                  handleGenerateScript(undefined, true);
-                }
-              }}
-              disabled={scriptingAll || busy}
-              title="Dùng khi sân khấu đã chốt bị sai (VD prompt còn tiếng Anh từ bản cũ) — ép AI chốt lại từ ảnh + mô tả hiện tại rồi sinh lại toàn bộ script"
-            >
-              🎬 Chốt lại sân khấu
+              🎬 Xem trước → Chốt lại sân khấu
             </button>
             <button
               className="btn btn-primary"
-              onClick={handleGenerateAllSegments}
-              disabled={actionBusy || jobNeedsRef}
+              onClick={() => setBulkPreview({ kind: 'gen-all' })}
+              disabled={actionBusy || jobNeedsRef || !firstSegmentRef}
               title={
                 jobNeedsRef
                   ? 'Chưa chọn ảnh sản phẩm tham chiếu — chọn 1 ảnh ở phần cấu hình ảnh đầu trang'
-                  : 'Tạo video cho tất cả đoạn (cần đăng nhập tài khoản Google Flow ở Cài đặt → Flow)'
+                  : !firstSegmentRef
+                    ? 'Chưa có đoạn nào — sinh script trước'
+                    : 'Mở bản xem trước prompt + ảnh của đoạn đầu; xác nhận trong đó mới gen toàn bộ đoạn'
               }
             >
-              ▶ Gen tất cả đoạn
+              👁 Xem trước → Gen tất cả đoạn
             </button>
           </div>
         </div>
@@ -279,7 +279,7 @@ export default function LivestreamDetailPage() {
             </div>
           )}
 
-          <FlowGuide />
+          <FlowGuide job={job} />
           <PromptSettingsPanel
             jobId={jobId}
             scriptSystemPromptOverride={job.scriptSystemPromptOverride}
@@ -311,6 +311,43 @@ export default function LivestreamDetailPage() {
           productId={previewScriptProductId}
           imageR2Urls={job.imageR2Urls ?? undefined}
           onClose={() => setPreviewScriptProductId(null)}
+        />
+      )}
+
+      {/* Preview cho 3 hành động hàng loạt. Payload hiện là của sản phẩm/đoạn ĐẦU TIÊN — sân khấu
+          và bộ ảnh dùng chung cả job nên đủ để bắt lỗi trước khi đốt lượt cho toàn bộ. */}
+      {bulkPreview?.kind === 'script-all' && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="script"
+          productId={job.products[0]?.id}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          confirmLabel={`✍️ Sinh script cho cả ${job.products.length} sản phẩm`}
+          onConfirm={() => handleGenerateScript()}
+          onClose={() => setBulkPreview(null)}
+        />
+      )}
+      {bulkPreview?.kind === 'restage' && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="script"
+          productId={job.products[0]?.id}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          confirmLabel={`🎬 Chốt lại sân khấu + sinh lại ${job.products.length} sản phẩm (ghi đè script)`}
+          onConfirm={() => handleGenerateScript(undefined, true)}
+          onClose={() => setBulkPreview(null)}
+        />
+      )}
+      {bulkPreview?.kind === 'gen-all' && firstSegmentRef && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step="segment"
+          productId={firstSegmentRef.productId}
+          segmentId={firstSegmentRef.segment.id}
+          imageR2Urls={job.imageR2Urls ?? undefined}
+          confirmLabel={`▶ Gen toàn bộ ${totalSegments} đoạn (prompt mỗi đoạn khác nhau)`}
+          onConfirm={handleGenerateAllSegments}
+          onClose={() => setBulkPreview(null)}
         />
       )}
     </div>
