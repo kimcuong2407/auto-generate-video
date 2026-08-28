@@ -30,11 +30,13 @@ export function FlowGuide({ job }: { job: LivestreamJob }) {
       ok: productsWithDesc === job.products.length && job.products.length > 0 && refCount > 0,
     },
     {
-      step: '2. Gen ảnh background (tuỳ chọn)',
+      step: '2. Gen ảnh background (BẮT BUỘC)',
       input: 'Prompt background + mô tả sản phẩm đầu + sân khấu đã chốt',
       images: 'ảnh mẫu → tối đa 3 ảnh sản phẩm → ảnh nền hiện tại',
-      state: job.selectedBackgroundImagePath ? 'Đã chọn 1 ảnh nền' : 'Chưa chọn ảnh nền (bỏ qua được)',
-      ok: true,
+      state: job.selectedBackgroundImagePath
+        ? 'Đã chọn 1 ảnh nền'
+        : 'Chưa chọn — gen video sẽ tự gen ảnh nền trước',
+      ok: !!job.selectedBackgroundImagePath,
     },
     {
       step: '3. Chốt sân khấu',

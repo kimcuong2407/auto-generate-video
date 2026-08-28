@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
-import { findPreviousSegment, triggerSegmentGeneration } from '@/lib/livestream/segmentGenerate';
+import {
+  ensureBackgroundImage,
+  findPreviousSegment,
+  triggerSegmentGeneration,
+} from '@/lib/livestream/segmentGenerate';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { FLOW_MAX_CONCURRENT_JOBS } from '@/lib/constants';
 
@@ -34,6 +38,16 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       const prev = findPreviousSegment(job, product, segment);
       return !prev || prev.status === 'done';
     });
+  }
+
+  // Ensure ảnh nền MỘT LẦN ở đây, trước khi fan-out: guard trong triggerSegmentGeneration chạy
+  // song song sẽ khiến N đoạn cùng thấy "chưa có ảnh nền" và cùng gen N ảnh — đốt N lượt Flow.
+  const bg = await ensureBackgroundImage(id, job);
+  if (!bg.ok) {
+    return NextResponse.json(
+      { error: `Chưa có ảnh nền và gen tự động thất bại: ${bg.error}` },
+      { status: 400 }
+    );
   }
 
   const results = await runWithConcurrency(targets, concurrency, ({ segment }) =>

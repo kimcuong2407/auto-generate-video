@@ -36,7 +36,8 @@
     "check:default-host": "tsx scripts/check-default-host.ts",
     "check:subject-anchor": "tsx scripts/check-subject-anchor.ts",
     "check:segment-preview": "tsx scripts/check-segment-preview.ts",
-    "check:vision-image-mime": "tsx scripts/check-vision-image-mime.ts"
+    "check:vision-image-mime": "tsx scripts/check-vision-image-mime.ts",
+    "check:background-required": "tsx scripts/check-background-required.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

@@ -5,6 +5,7 @@ import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
 import { findPreviousSegment, pickRefImagePaths } from './refImages';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
+import { triggerBackgroundImageGeneration } from './backgroundGenerate';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError, isQuotaError } from '../googleFlow/errors';
 import { MAX_SEGMENT_AUTO_RETRIES } from '../constants';
@@ -36,12 +37,56 @@ function findSegment(job: LivestreamJob, segmentId: string): FoundSegment | null
   return null;
 }
 
+/**
+ * Quyết định (thuần) phải làm gì để job có ảnh nền:
+ * - đã chọn rồi → 'ok', khỏi đụng gì.
+ * - kho đã có ảnh (Mr.D tự upload / gen trước đó) → 'select' ảnh MỚI NHẤT, không tốn lượt gen.
+ * - kho rỗng → 'generate'; không có sản phẩm nào thì không gen nổi (prompt cần mô tả sản phẩm).
+ */
+export function planBackgroundEnsure(job: {
+  selectedBackgroundImagePath: string | null;
+  backgroundImagePaths?: string[];
+  products: { id: string }[];
+}): { action: 'ok' } | { action: 'select'; path: string } | { action: 'generate'; productId: string } | { action: 'blocked'; error: string } {
+  if (job.selectedBackgroundImagePath) return { action: 'ok' };
+  const existing = (job.backgroundImagePaths ?? []).at(-1);
+  if (existing) return { action: 'select', path: existing };
+  if (job.products.length === 0) return { action: 'blocked', error: 'Job chưa có sản phẩm nào' };
+  return { action: 'generate', productId: job.products[0].id };
+}
+
+/**
+ * Đảm bảo job có ảnh nền đã chọn (gen nếu kho rỗng, rồi tự chọn). Quyết định nằm ở
+ * planBackgroundEnsure; hàm này chỉ thực thi (gọi AI + ghi DB).
+ */
+export async function ensureBackgroundImage(
+  jobId: string,
+  job: LivestreamJob
+): Promise<{ ok: boolean; error?: string }> {
+  const plan = planBackgroundEnsure(job);
+  if (plan.action === 'ok') return { ok: true };
+  if (plan.action === 'blocked') return { ok: false, error: plan.error };
+
+  let pick: string;
+  if (plan.action === 'select') {
+    pick = plan.path;
+  } else {
+    const gen = await triggerBackgroundImageGeneration(jobId, plan.productId);
+    if (!gen.ok || !gen.imagePath) return { ok: false, error: gen.error || 'không rõ nguyên nhân' };
+    pick = gen.imagePath;
+  }
+  await updateJob(jobId, (j) => {
+    j.selectedBackgroundImagePath = pick;
+  });
+  return { ok: true };
+}
+
 export async function triggerSegmentGeneration(
   jobId: string,
   segmentId: string,
   opts: { requireFailed?: boolean } = {}
 ): Promise<TriggerResult> {
-  const job = await readJob(jobId);
+  let job = await readJob(jobId);
   const found = findSegment(job, segmentId);
   if (!found) {
     return { segmentId, ok: false, error: 'Đoạn không tồn tại' };
@@ -60,6 +105,17 @@ export async function triggerSegmentGeneration(
   // nhầm/không nhất quán). Job không có ảnh nào vẫn cho gen t2v như cũ.
   if ((job.spokespersonImagePaths?.length ?? 0) > 0 && (job.selectedRefImagePaths?.length ?? 0) === 0) {
     return { segmentId, ok: false, error: 'Chưa chọn ảnh tham chiếu sản phẩm — hãy chọn ít nhất 1 ảnh ở phần cấu hình ảnh đầu trang' };
+  }
+  // BẮT BUỘC có ảnh nền trước khi gen video: ảnh nền là thứ khoá bối cảnh/người dẫn cho MỌI đoạn.
+  // Thiếu nó, mỗi đoạn Veo tự bịa một căn phòng khác nhau và video ghép lại thấy rõ nhảy cảnh.
+  // Chưa có thì tự gen 1 ảnh rồi tự chọn luôn (thay vì bắt Mr.D quay lại bấm tay) — gen fail thì
+  // DỪNG, không gen video, vì video gen ra sẽ hỏng đúng theo cách trên.
+  if (!job.selectedBackgroundImagePath) {
+    const bg = await ensureBackgroundImage(jobId, job);
+    if (!bg.ok) {
+      return { segmentId, ok: false, error: `Chưa có ảnh nền và gen tự động thất bại: ${bg.error}` };
+    }
+    job = await readJob(jobId);
   }
   // Bắt tuần tự: khi có chaining, không cho gen đoạn nếu đoạn liền trước (theo chế độ chaining)
   // chưa xong — tránh gen lệch thứ tự (frame cuối làm ref chưa có, hoặc 2 đoạn chạy chồng nhau)

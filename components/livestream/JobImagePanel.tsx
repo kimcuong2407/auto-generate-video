@@ -259,7 +259,7 @@ export function JobImagePanel({
 
       <div className="banner banner-info">
         Bộ ảnh này áp cho <strong>mọi đoạn của mọi sản phẩm</strong> khi gen video: ảnh sản phẩm
-        (1 hoặc nhiều, bắt buộc) + 1 ảnh mẫu/người dẫn + 1 ảnh background (tuỳ chọn). Giúp video ghép lại
+        (1 hoặc nhiều, bắt buộc) + 1 ảnh mẫu/người dẫn + 1 ảnh background (bắt buộc). Giúp video ghép lại
         nhất quán như 1 buổi live liên tục.
         <br />
         Nút <strong>🎬</strong> góc dưới mỗi ảnh: bấm để <strong>tách ảnh khỏi bước gen video</strong>{' '}
@@ -431,7 +431,14 @@ export function JobImagePanel({
       </div>
 
       <div className="field-group">
-        <label>Ảnh background (tuỳ chọn) — bấm chọn 1 ảnh làm bối cảnh khi gen video</label>
+        <label>
+          Ảnh background (BẮT BUỘC) — bấm chọn 1 ảnh làm bối cảnh khi gen video.{' '}
+          {!job.selectedBackgroundImagePath && (
+            <span style={{ color: 'var(--danger, #e5484d)' }}>
+              Chưa chọn — bấm gen video sẽ tự gen 1 ảnh nền trước (tốn thêm 1 lượt).
+            </span>
+          )}
+        </label>
         {job.backgroundImagePaths.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
             {job.backgroundImagePaths.map((relPath) => {
