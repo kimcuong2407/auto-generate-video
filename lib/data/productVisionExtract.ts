@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import { chatCompletion, type ChatImageInput } from '../ai/chatClient';
 
 /**
@@ -48,13 +47,25 @@ TUYỆT ĐỐI KHÔNG:
 - KHÔNG mô tả bối cảnh/nền/người mẫu — chỉ mô tả bản thân sản phẩm.
 - KHÔNG bọc trong markdown, KHÔNG xuống dòng thừa. Trả về DUY NHẤT 1 đoạn văn mô tả.`;
 
-const IMAGE_MIME: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-};
+/**
+ * Đoán mime type từ MAGIC BYTES của chính nội dung file, KHÔNG tin đuôi file.
+ *
+ * Vì sao: ảnh do provider gen (Google Flow, OmniRoute) luôn được lưu với đuôi `.png`
+ * hard-code, nhưng nội dung trả về thường là JPEG. Khai sai media type làm API vision
+ * trả HTTP 400 "The image was specified using the image/png media type, but the image
+ * appears to be a image/jpeg image" và cả lượt gọi hỏng.
+ *
+ * Fallback 'image/jpeg' khi không nhận ra chữ ký — giữ nguyên hành vi cũ.
+ */
+export function sniffImageMime(buf: Buffer): string {
+  if (buf.length >= 8 && buf.readUInt32BE(0) === 0x89504e47 && buf.readUInt32BE(4) === 0x0d0a1a0a)
+    return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP')
+    return 'image/webp';
+  if (buf.length >= 6 && buf.toString('ascii', 0, 6).match(/^GIF8[79]a$/)) return 'image/gif';
+  return 'image/jpeg';
+}
 
 /**
  * Số ảnh tối đa gửi cho model vision. Gửi vài ảnh đại diện là đủ để chốt màu/chất liệu;
@@ -71,8 +82,7 @@ export async function readImagesAsBase64(absPaths: string[]): Promise<ChatImageI
   for (const abs of absPaths) {
     try {
       const buffer = await fs.readFile(abs);
-      const mimeType = IMAGE_MIME[path.extname(abs).toLowerCase()] || 'image/jpeg';
-      images.push({ mimeType, base64: buffer.toString('base64') });
+      images.push({ mimeType: sniffImageMime(buffer), base64: buffer.toString('base64') });
     } catch {
       // Bỏ qua ảnh không đọc được — vẫn dùng các ảnh còn lại.
     }

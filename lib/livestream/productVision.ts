@@ -1,21 +1,12 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import { chatCompletion } from '../ai/chatClient';
-import { readImagesAsBase64 } from '../data/productVisionExtract';
+import { readImagesAsBase64, sniffImageMime } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
 
 // Re-export prompt mặc định từ module thuần (promptDefaults) để client import được mà không
 // kéo theo chatClient/node:fs server-only. Đây vẫn là 1 nguồn sự thật duy nhất.
 export { VISION_SYSTEM_PROMPT, PRODUCT_VISUAL_SYSTEM_PROMPT } from './promptDefaults';
 import { VISION_SYSTEM_PROMPT, PRODUCT_VISUAL_SYSTEM_PROMPT } from './promptDefaults';
-
-const IMAGE_MIME: Record<string, string> = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-};
 
 export interface ExtractedProduct {
   name: string;
@@ -35,9 +26,8 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
     );
   }
 
-  const ext = path.extname(imageAbsPath).toLowerCase();
-  const mimeType = IMAGE_MIME[ext] || 'image/jpeg';
   const buffer = await fs.readFile(imageAbsPath);
+  const mimeType = sniffImageMime(buffer);
 
   const raw = await chatCompletion(VISION_SYSTEM_PROMPT, 'Đọc ảnh và trích xuất thông tin sản phẩm.', {
     model: visionModel,

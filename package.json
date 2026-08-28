@@ -35,7 +35,8 @@
     "check:stage-bible-failure": "tsx scripts/check-stage-bible-failure.ts",
     "check:default-host": "tsx scripts/check-default-host.ts",
     "check:subject-anchor": "tsx scripts/check-subject-anchor.ts",
-    "check:segment-preview": "tsx scripts/check-segment-preview.ts"
+    "check:segment-preview": "tsx scripts/check-segment-preview.ts",
+    "check:vision-image-mime": "tsx scripts/check-vision-image-mime.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",
