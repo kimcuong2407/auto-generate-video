@@ -174,6 +174,14 @@ export interface LivestreamJob {
    */
   backgroundRefPaths: string[];
   /**
+   * Ảnh người dùng TỰ CHỌN gửi cho AI ở bước SINH SCRIPT — relPath, chọn trong kho ảnh của job.
+   *
+   * Lượt viết lời thoại chỉ nhận chữ; ảnh đi vào 2 lượt PHỤ quyết định nội dung script: vision đọc
+   * ngoại hình sản phẩm và chốt sân khấu (stage bible). Rỗng = để server tự chọn như cũ
+   * (pickVisionRefEntries: ảnh mẫu + tối đa 3 ảnh sản phẩm + ảnh nền đang chọn).
+   */
+  scriptRefPaths: string[];
+  /**
    * Sân khấu cố định dùng chung mọi sản phẩm (xem LivestreamStageBible). null = chưa sinh, sẽ
    * được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
    */

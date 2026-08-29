@@ -9,7 +9,7 @@ import {
   findPreviousSegment,
   pickBackgroundRefEntries,
   pickRefImagePaths,
-  pickVisionRefEntries,
+  pickScriptRefEntries,
 } from '@/lib/livestream/refImages';
 
 export const runtime = 'nodejs';
@@ -31,6 +31,19 @@ export interface PreviewPromptResult {
    * cố tình KHÔNG gọi AI để mở bao nhiêu lần cũng miễn phí, xem README của route này.
    */
   notes: string[];
+  /**
+   * Chỉ có ở step='script': dữ liệu để modal cho SỬA TẠI CHỖ trước khi chạy — system prompt đang
+   * dùng và kho ảnh có thể tick. Hai bước kia sửa ở panel riêng nên không cần.
+   */
+  editable?: {
+    systemPrompt: string;
+    /** true = systemPrompt là bản người dùng đã override, false = đang dùng mặc định. */
+    isCustomPrompt: boolean;
+    /** Ảnh đang tick (job.scriptRefPaths). Rỗng = server tự chọn. */
+    chosenRefPaths: string[];
+    /** Mọi ảnh có thể tick, kèm vai trò để hiện nhãn dưới thumbnail. */
+    candidates: { rel: string; role: string }[];
+  };
 }
 
 /**
@@ -197,11 +210,30 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     prompt: `===== SYSTEM PROMPT${v2Input ? ' (V2 — kịch bản AIDA Shopee)' : ''} =====\n${resolveScriptSystemPrompt(job, v2Input)}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`,
     // Bước sinh script KHÔNG gửi ảnh cho AI viết lời thoại — ảnh chỉ đi vào 2 lượt phụ: vision đọc
     // ngoại hình sản phẩm, và chốt sân khấu. Hiện đúng bộ ảnh của 2 lượt đó để Mr.D kiểm tra.
-    refImages: pickVisionRefEntries(job).map((e) => ({ rel: e.rel, label: e.label })),
+    refImages: pickScriptRefEntries(job).map((e) => ({ rel: e.rel, label: e.label })),
     notes: [
       ...notes,
       'Ảnh liệt kê dưới đây gửi cho AI ở 2 lượt phụ (đọc ngoại hình sản phẩm + chốt sân khấu). Lượt viết lời thoại chỉ nhận chữ.',
+      ...((job.scriptRefPaths ?? []).length === 0
+        ? ['Đang để hệ thống tự chọn ảnh. Tick ảnh bên dưới để tự quyết ảnh nào tới AI.']
+        : []),
     ],
+    editable: {
+      systemPrompt: resolveScriptSystemPrompt(job, v2Input),
+      isCustomPrompt: !!job.scriptSystemPromptOverride?.trim(),
+      chosenRefPaths: job.scriptRefPaths ?? [],
+      // Cùng tập ảnh mà route PUT images/script-refs chấp nhận — lệch nhau là tick xong báo lỗi.
+      candidates: [
+        ...(job.selectedModelImagePath
+          ? [{ rel: job.selectedModelImagePath, role: 'ảnh mẫu' }]
+          : []),
+        ...(job.spokespersonImagePaths ?? []).map((rel) => ({
+          rel,
+          role: (job.selectedRefImagePaths ?? []).includes(rel) ? 'ảnh sản phẩm (đã chọn)' : 'ảnh sản phẩm',
+        })),
+        ...(job.backgroundImagePaths ?? []).map((rel) => ({ rel, role: 'ảnh nền' })),
+      ].filter((item, i, arr) => arr.findIndex((x) => x.rel === item.rel) === i),
+    },
   };
   return NextResponse.json(result);
 }

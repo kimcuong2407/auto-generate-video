@@ -6,6 +6,13 @@ interface PreviewData {
   prompt: string;
   refImages: { rel: string; label: string }[];
   notes: string[];
+  /** Chỉ có ở step='script' — xem PreviewPromptResult ở route preview-prompt. */
+  editable?: {
+    systemPrompt: string;
+    isCustomPrompt: boolean;
+    chosenRefPaths: string[];
+    candidates: { rel: string; role: string }[];
+  };
 }
 
 const STEP_TITLE: Record<string, string> = {
@@ -35,6 +42,7 @@ export function PromptPreviewModal({
   imageR2Urls,
   confirmLabel,
   onConfirm,
+  onSaved,
   onClose,
 }: {
   jobId: string;
@@ -50,11 +58,18 @@ export function PromptPreviewModal({
   confirmLabel?: string;
   /** Chạy bước thật. Modal tự đóng sau khi chạy xong. */
   onConfirm?: () => void | Promise<void>;
+  /** Gọi sau khi sửa prompt/ảnh trong modal — để trang cha refresh job đang hiển thị. */
+  onSaved?: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // Tăng để nạp lại preview sau khi lưu prompt/ảnh — prompt cuối được ghép SERVER-SIDE nên phải
+  // hỏi lại server mới thấy đúng thứ sắp gửi, không tự vá chuỗi ở client.
+  const [reloadKey, setReloadKey] = useState(0);
+  const [promptDraft, setPromptDraft] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     const qs = new URLSearchParams({ step });
@@ -68,7 +83,35 @@ export function PromptPreviewModal({
         setData(json);
       })
       .catch((err: Error) => setError(err.message));
-  }, [jobId, step, productId, segmentId, promptOverride]);
+  }, [jobId, step, productId, segmentId, promptOverride, reloadKey]);
+
+  /** Lưu 1 thay đổi (prompt hoặc danh sách ảnh) rồi nạp lại preview để thấy prompt thật đã đổi. */
+  async function saveEdit(url: string, body: object) {
+    setSavingEdit(true);
+    try {
+      const res = await fetch(url, {
+        method: url.endsWith('/prompt') ? 'PATCH' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error || 'Lưu thất bại');
+        return;
+      }
+      await onSaved?.();
+      setPromptDraft(null);
+      setReloadKey((k) => k + 1);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function toggleRef(rel: string) {
+    const cur = data?.editable?.chosenRefPaths ?? [];
+    const next = cur.includes(rel) ? cur.filter((r) => r !== rel) : [...cur, rel];
+    saveEdit(`/api/livestream/${jobId}/images/script-refs`, { paths: next });
+  }
 
   async function handleConfirm() {
     if (!onConfirm) return;
@@ -148,6 +191,106 @@ export function PromptPreviewModal({
               ))}
             </div>
 
+            {data.editable && (
+              <details style={{ marginBottom: 12 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                  📎 Đổi ảnh gửi cho AI ({data.editable.chosenRefPaths.length === 0
+                    ? 'đang tự động'
+                    : `${data.editable.chosenRefPaths.length} ảnh đã tick`})
+                </summary>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 8px' }}>
+                  Tick để tự quyết ảnh nào tới AI (đọc ngoại hình sản phẩm + chốt sân khấu). Bỏ tick
+                  hết = quay về chế độ tự chọn. Đổi ảnh sẽ khiến sân khấu được chốt lại khi chạy.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {data.editable.candidates.map(({ rel, role }) => {
+                    const picked = data.editable!.chosenRefPaths.includes(rel);
+                    const order = data.editable!.chosenRefPaths.indexOf(rel) + 1;
+                    return (
+                      <div key={rel} style={{ position: 'relative', width: 76 }}>
+                        <img
+                          src={imageR2Urls?.[rel] ?? `/api/livestream/${jobId}/media/${rel}`}
+                          alt={role}
+                          onClick={() => !savingEdit && toggleRef(rel)}
+                          title={picked ? `Đang gửi (thứ ${order}) — bấm để bỏ` : `Bấm để gửi (${role})`}
+                          style={{
+                            width: 76,
+                            height: 76,
+                            objectFit: 'cover',
+                            borderRadius: 6,
+                            cursor: savingEdit ? 'wait' : 'pointer',
+                            outline: picked ? '2px solid var(--accent-glow)' : '1px solid var(--border)',
+                            opacity: picked ? 1 : 0.5,
+                          }}
+                        />
+                        {picked && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: -5,
+                              left: -5,
+                              minWidth: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              background: 'var(--accent-glow)',
+                              color: '#fff',
+                              fontSize: 10,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {order}
+                          </span>
+                        )}
+                        <div style={{ fontSize: 9, color: 'var(--text-muted)', textAlign: 'center' }}>
+                          {role}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            )}
+
+            {data.editable && (
+              <details style={{ marginBottom: 12 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                  ✏️ Sửa system prompt sinh kịch bản{' '}
+                  <span className={`badge ${data.editable.isCustomPrompt ? 'badge-running' : 'badge-pending'}`}>
+                    {data.editable.isCustomPrompt ? 'Đã tuỳ chỉnh' : 'Mặc định'}
+                  </span>
+                </summary>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0' }}>
+                  Lưu áp cho MỌI lần sinh script sau của job này (giống panel ⚙️ đầu trang).
+                </div>
+                <textarea
+                  rows={12}
+                  value={promptDraft ?? data.editable.systemPrompt}
+                  onChange={(e) => setPromptDraft(e.target.value)}
+                  style={{ width: '100%', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  <button
+                    className="btn"
+                    disabled={savingEdit || promptDraft === null}
+                    onClick={() =>
+                      saveEdit(`/api/livestream/${jobId}/prompt`, { scriptSystemPrompt: promptDraft })
+                    }
+                  >
+                    {savingEdit ? 'Đang lưu...' : '💾 Lưu prompt'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    disabled={savingEdit || !data.editable.isCustomPrompt}
+                    onClick={() => saveEdit(`/api/livestream/${jobId}/prompt`, { scriptSystemPrompt: null })}
+                  >
+                    ↺ Khôi phục mặc định
+                  </button>
+                </div>
+              </details>
+            )}
+
             <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>
               Prompt gửi AI ({data.prompt.length.toLocaleString('vi-VN')} ký tự):
             </div>
@@ -171,7 +314,7 @@ export function PromptPreviewModal({
                 <button
                   className="btn btn-primary"
                   onClick={handleConfirm}
-                  disabled={confirming || blocking}
+                  disabled={confirming || blocking || savingEdit}
                   title={blocking ? 'Còn lỗi chặn ở trên — sửa xong mới chạy được' : undefined}
                 >
                   {confirming ? 'Đang chạy...' : (confirmLabel ?? '▶ Chạy bước này')}

@@ -4,7 +4,7 @@ import { chatCompletion } from '../ai/chatClient';
 import { readImagesAsBase64 } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
 import { ensureLocalImage } from './imageR2';
-import { pickVisionRefEntries, stageBibleFingerprint } from './refImages';
+import { pickScriptRefEntries, stageBibleFingerprint } from './refImages';
 import { resolveWithinJob } from './paths';
 import { STAGE_BIBLE_SYSTEM_PROMPT } from './promptDefaults';
 import type { LivestreamJob, LivestreamStageBible } from './types';
@@ -26,7 +26,12 @@ import type { LivestreamJob, LivestreamStageBible } from './types';
  */
 export function isStageBibleStale(
   job: Pick<LivestreamJob, 'stageBible' | 'selectedModelImagePath'> &
-    Partial<Pick<LivestreamJob, 'selectedRefImagePaths' | 'selectedBackgroundImagePath' | 'products'>>
+    Partial<
+      Pick<
+        LivestreamJob,
+        'selectedRefImagePaths' | 'selectedBackgroundImagePath' | 'products' | 'scriptRefPaths'
+      >
+    >
 ): boolean {
   if (!job.stageBible) return false;
   if ((job.stageBible.modelImagePath ?? null) !== (job.selectedModelImagePath ?? null)) return true;
@@ -38,6 +43,7 @@ export function isStageBibleStale(
       selectedRefImagePaths: job.selectedRefImagePaths ?? [],
       selectedBackgroundImagePath: job.selectedBackgroundImagePath ?? null,
       products: job.products,
+      scriptRefPaths: job.scriptRefPaths ?? [],
     })
   );
 }
@@ -88,7 +94,7 @@ export async function ensureStageBible(
 
 /**
  * Đọc MỌI ảnh Mr.D đã chọn (ảnh mẫu/người dẫn + ảnh sản phẩm + ảnh nền) để gửi THẲNG cho model khi
- * chốt stage bible — xem pickVisionRefEntries() ở refImages.ts để biết thứ tự và trần số ảnh.
+ * chốt stage bible — xem pickScriptRefEntries() ở refImages.ts để biết thứ tự và trần số ảnh.
  *
  * Vì sao cần: trước đây bước này chỉ nhận `visualDescription` — mô tả bằng chữ do vision đọc từ ảnh
  * SẢN PHẨM, model CHƯA BAO GIỜ nhìn thấy ảnh mẫu nên tự bịa người dẫn (mặc định hay ra "woman" dù
@@ -99,7 +105,8 @@ export async function ensureStageBible(
 async function collectStageRefImages(
   job: LivestreamJob
 ): Promise<{ images: Awaited<ReturnType<typeof readImagesAsBase64>>; legend: string }> {
-  const entries = pickVisionRefEntries(job);
+  // Ưu tiên ảnh Mr.D tick trong modal sinh script (job.scriptRefPaths); rỗng thì tự chọn như cũ.
+  const entries = pickScriptRefEntries(job);
   if (entries.length === 0) return { images: [], legend: '' };
 
   await Promise.all(

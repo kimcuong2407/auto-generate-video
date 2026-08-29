@@ -75,6 +75,9 @@ export const livestreamJobs = mysqlTable(
   // Ảnh người dùng TỰ CHỌN gửi kèm khi gen background (null/[] = để server tự chọn theo
   // pickVisionRefEntries). Gồm cả ảnh trong kho job lẫn ảnh upload riêng cho bước này.
   backgroundRefPaths: mariaJson('background_ref_paths').$type<string[]>(),
+  // Ảnh người dùng TỰ CHỌN gửi cho AI ở bước SINH SCRIPT (vision đọc ngoại hình + chốt sân khấu).
+  // null/[] = để server tự chọn theo pickVisionRefEntries, giữ nguyên hành vi cũ cho job đã có.
+  scriptRefPaths: mariaJson('script_ref_paths').$type<string[]>(),
   // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
   // ổn định hơn giữa các đoạn — xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen lần nào.
   videoSeed: int('video_seed'),

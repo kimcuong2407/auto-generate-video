@@ -93,6 +93,38 @@ export function pickBackgroundRefEntries(
 }
 
 /**
+ * Ảnh gửi cho AI ở bước SINH SCRIPT (vision đọc ngoại hình sản phẩm + chốt sân khấu) — ưu tiên
+ * danh sách người dùng tự chọn (job.scriptRefPaths), rỗng thì rơi về pickVisionRefEntries.
+ *
+ * Cùng lý do với pickBackgroundRefEntries: ảnh bìa marketing hoặc ảnh nền quá đặc trưng chiếm suất
+ * mà làm nhiễu, người dùng cần quyền bỏ bớt. Nhãn suy theo vai trò thật để model biết đang nhìn gì.
+ */
+export function pickScriptRefEntries(
+  job: Pick<
+    LivestreamJob,
+    | 'selectedRefImagePaths'
+    | 'selectedModelImagePath'
+    | 'selectedBackgroundImagePath'
+    | 'scriptRefPaths'
+  >
+): VisionRefEntry[] {
+  const chosen = job.scriptRefPaths ?? [];
+  if (chosen.length === 0) return pickVisionRefEntries(job);
+
+  const productSet = new Set(job.selectedRefImagePaths ?? []);
+  let productIdx = 0;
+  return chosen.map((rel) => {
+    if (rel === job.selectedModelImagePath) return { rel, label: 'ảnh NGƯỜI MẪU/NGƯỜI DẪN' };
+    if (rel === job.selectedBackgroundImagePath) return { rel, label: 'ảnh BỐI CẢNH/BACKGROUND' };
+    if (productSet.has(rel)) {
+      productIdx += 1;
+      return { rel, label: `ảnh SẢN PHẨM THẬT ${productIdx}` };
+    }
+    return { rel, label: 'ảnh THAM CHIẾU' };
+  });
+}
+
+/**
  * Chuỗi đại diện cho TOÀN BỘ input mà stage bible phụ thuộc — dùng để biết bible đã chốt có còn
  * khớp dữ liệu đầu vào hiện tại hay không (xem isStageBibleStale).
  *
@@ -106,13 +138,20 @@ export function pickBackgroundRefEntries(
 export function stageBibleFingerprint(
   job: Pick<
     LivestreamJob,
-    'selectedRefImagePaths' | 'selectedModelImagePath' | 'selectedBackgroundImagePath' | 'products'
-  >
+    | 'selectedRefImagePaths'
+    | 'selectedModelImagePath'
+    | 'selectedBackgroundImagePath'
+    | 'products'
+  > &
+    Partial<Pick<LivestreamJob, 'scriptRefPaths'>>
 ): string {
   return JSON.stringify({
     model: job.selectedModelImagePath ?? null,
     refs: [...(job.selectedRefImagePaths ?? [])].sort(),
     background: job.selectedBackgroundImagePath ?? null,
+    // Ảnh Mr.D tick riêng cho bước script QUYẾT ĐỊNH bible nhìn thấy gì (pickScriptRefEntries) —
+    // không tính vào đây thì bỏ bớt/thêm ảnh xong bible cũ vẫn được dùng lại y nguyên.
+    scriptRefs: [...(job.scriptRefPaths ?? [])].sort(),
     // Bible chốt người dẫn/bối cảnh DỰA THEO danh sách sản phẩm (xem STAGE_BIBLE_SYSTEM_PROMPT:
     // "chọn phương án TRUNG TÍNH, hợp lý với TOÀN BỘ danh sách"), nên sửa mô tả cũng phải chốt lại.
     products: [...job.products]

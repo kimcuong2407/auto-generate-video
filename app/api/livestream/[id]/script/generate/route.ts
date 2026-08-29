@@ -93,7 +93,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // đầu: các góc còn lại mới cho thấy mặt sau/ngăn/cách đeo. Best-effort: thiếu
       // AI_VISION_MODEL, chưa chọn ảnh ref, hay lỗi mạng đều bỏ qua, KHÔNG chặn sinh script.
       let visualDescription: string | undefined;
-      const refPaths = job.selectedRefImagePaths ?? [];
+      // Mr.D tick ảnh trong modal sinh script → chỉ đọc ĐÚNG ảnh sản phẩm trong danh sách đó;
+      // rỗng = giữ hành vi cũ (đọc mọi ảnh ref đã chọn). Giao với selectedRefImagePaths vì lượt
+      // này chỉ tả NGOẠI HÌNH SẢN PHẨM — đưa ảnh mẫu/ảnh nền vào sẽ ra mô tả người/căn phòng.
+      const chosenForScript = job.scriptRefPaths ?? [];
+      const refPaths =
+        chosenForScript.length > 0
+          ? chosenForScript.filter((rel) => (job.selectedRefImagePaths ?? []).includes(rel))
+          : (job.selectedRefImagePaths ?? []);
       if (refPaths.length > 0) {
         try {
           await Promise.all(

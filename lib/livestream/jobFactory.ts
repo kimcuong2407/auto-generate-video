@@ -93,6 +93,7 @@ export function createNewJob(input: {
     scriptSystemPromptOverride: null,
     backgroundPromptOverride: null,
     backgroundRefPaths: [],
+    scriptRefPaths: [],
     videoSeed: null,
     stageBible: null,
   };

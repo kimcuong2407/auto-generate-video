@@ -337,6 +337,7 @@ export default function LivestreamDetailPage() {
           step="script"
           productId={previewScriptProductId}
           imageR2Urls={job.imageR2Urls ?? undefined}
+          onSaved={refresh}
           onClose={() => setPreviewScriptProductId(null)}
         />
       )}
@@ -351,6 +352,7 @@ export default function LivestreamDetailPage() {
           imageR2Urls={job.imageR2Urls ?? undefined}
           confirmLabel={`✍️ Sinh script cho cả ${job.products.length} sản phẩm`}
           onConfirm={() => handleGenerateScript()}
+          onSaved={refresh}
           onClose={() => setBulkPreview(null)}
         />
       )}
@@ -362,6 +364,7 @@ export default function LivestreamDetailPage() {
           imageR2Urls={job.imageR2Urls ?? undefined}
           confirmLabel={`🎬 Chốt lại sân khấu + sinh lại ${job.products.length} sản phẩm (ghi đè script)`}
           onConfirm={() => handleGenerateScript(undefined, true)}
+          onSaved={refresh}
           onClose={() => setBulkPreview(null)}
         />
       )}

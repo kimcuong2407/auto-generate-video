@@ -339,6 +339,7 @@ export function ProductPanel({
           imageR2Urls={job.imageR2Urls ?? undefined}
           confirmLabel={product.segments.length > 0 ? '🔄 Sinh lại script' : '✍️ Sinh script'}
           onConfirm={() => onGenerateScript(product.id)}
+          onSaved={onRefresh}
           onClose={() => setPreviewScript(false)}
         />
       )}
