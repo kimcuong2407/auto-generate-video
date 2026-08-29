@@ -18,6 +18,7 @@
     "check:livestream-consistency": "tsx scripts/check-livestream-consistency.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:verify": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/verify-migrations.ts",
     "db:push": "drizzle-kit push",
     "db:import": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/migrate-json-to-db.ts",
     "check:extension": "node scripts/check-poller-staleness.mjs && node scripts/check-content-handoff.mjs",

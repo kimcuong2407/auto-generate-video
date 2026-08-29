@@ -57,6 +57,11 @@ jobs:
             # bỏ qua migration đã chạy. Cần DB_* trong .env.local trên VPS (drizzle.config
             # tự nạp .env.local). Fail ở đây sẽ dừng deploy (set -e) → không reload bundle lỗi.
             npm run db:migrate
+            # drizzle-kit migrate có thể exit 0 mà KHÔNG áp gì (vào nhầm database, journal lệch,
+            # thiếu file .sql) — khi đó deploy vẫn xanh và app reload với schema thiếu bảng, lỗi
+            # chỉ lộ lúc người dùng bấm nút. So hash từng migration với __drizzle_migrations để
+            # chặn ngay tại đây; set -e dừng trước khi reload nên app cũ vẫn phục vụ bình thường.
+            npm run db:verify
             # Chỉ reload khi process đã tồn tại; nếu chưa có mới start (tránh đẻ process trùng tên).
             if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
               pm2 reload "$APP_NAME" --update-env
