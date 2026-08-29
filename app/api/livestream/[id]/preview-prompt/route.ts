@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
-import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
+import { buildBackgroundPrompt, resolveBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
 import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
 import { formatStageBibleBlock, isStageBibleStale } from '@/lib/livestream/stageBible';
-import { findPreviousSegment, pickRefImagePaths, pickVisionRefEntries } from '@/lib/livestream/refImages';
-import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
+import {
+  findPreviousSegment,
+  pickBackgroundRefEntries,
+  pickRefImagePaths,
+  pickVisionRefEntries,
+} from '@/lib/livestream/refImages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -90,14 +94,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 
   if (step === 'background') {
-    const entries = pickVisionRefEntries(job);
-    // promptOverride của UI không được lưu vào job (chỉ gửi kèm lúc bấm gen), nên preview dùng đúng
-    // mặc định; UI tự truyền bản nháp đang sửa qua ?prompt nếu muốn xem bản đã chỉnh.
-    const basePrompt = req.nextUrl.searchParams.get('prompt')?.trim() || BACKGROUND_SYSTEM_PROMPT;
+    // Đúng bộ ảnh triggerBackgroundImageGeneration sẽ gửi: ưu tiên ảnh người dùng tự chọn.
+    const entries = pickBackgroundRefEntries(job);
+    // ?prompt = bản nháp đang sửa trên UI (chưa bấm lưu); không có thì dùng bản đã lưu của job.
+    const basePrompt = req.nextUrl.searchParams.get('prompt')?.trim() || resolveBackgroundPrompt(job);
+    const bgNotes = [...notes];
+    if ((job.backgroundRefPaths ?? []).length === 0) {
+      bgNotes.push(
+        'Đang để hệ thống tự chọn ảnh tham chiếu (ảnh mẫu + tối đa 3 ảnh sản phẩm + ảnh nền đang chọn). Tick chọn ảnh ở phần "Ảnh gửi kèm khi gen background" để tự quyết.'
+      );
+    }
     const result: PreviewPromptResult = {
       prompt: buildBackgroundPrompt(basePrompt, product.description || product.name, bible, entries),
       refImages: entries.map((e) => ({ rel: e.rel, label: e.label })),
-      notes,
+      notes: bgNotes,
     };
     return NextResponse.json(result);
   }

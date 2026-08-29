@@ -91,6 +91,8 @@ export function createNewJob(input: {
     },
     flowProjectId: null,
     scriptSystemPromptOverride: null,
+    backgroundPromptOverride: null,
+    backgroundRefPaths: [],
     videoSeed: null,
     stageBible: null,
   };

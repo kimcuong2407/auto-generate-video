@@ -70,6 +70,11 @@ export const livestreamJobs = mysqlTable(
   flowStatusCache: mariaJson('flow_status_cache').$type<FlowStatusCache>().notNull(),
   flowProjectId: varchar('flow_project_id', { length: 255 }),
   scriptSystemPromptOverride: mediumtext('script_system_prompt_override'),
+  // Prompt gen ảnh background do người dùng chỉnh (null = dùng BACKGROUND_SYSTEM_PROMPT mặc định).
+  backgroundPromptOverride: mediumtext('background_prompt_override'),
+  // Ảnh người dùng TỰ CHỌN gửi kèm khi gen background (null/[] = để server tự chọn theo
+  // pickVisionRefEntries). Gồm cả ảnh trong kho job lẫn ảnh upload riêng cho bước này.
+  backgroundRefPaths: mariaJson('background_ref_paths').$type<string[]>(),
   // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
   // ổn định hơn giữa các đoạn — xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen lần nào.
   videoSeed: int('video_seed'),

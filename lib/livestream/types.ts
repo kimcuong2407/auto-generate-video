@@ -161,6 +161,19 @@ export interface LivestreamJob {
    */
   scriptSystemPromptOverride: string | null;
   /**
+   * Prompt gen ảnh background người dùng đã chỉnh cho job này. null = dùng
+   * BACKGROUND_SYSTEM_PROMPT mặc định (xem resolveBackgroundPrompt ở backgroundGenerate.ts).
+   */
+  backgroundPromptOverride: string | null;
+  /**
+   * Ảnh người dùng TỰ CHỌN gửi kèm cho AI khi gen background — relPath, gồm cả ảnh có sẵn trong
+   * kho job lẫn ảnh upload riêng cho bước này (inputs/bgref-*).
+   *
+   * Rỗng = để server tự chọn như cũ (pickVisionRefEntries: ảnh mẫu + tối đa 3 ảnh sản phẩm + ảnh
+   * nền đang chọn). Có giá trị = dùng ĐÚNG danh sách này, vì người dùng đã chủ động quyết định.
+   */
+  backgroundRefPaths: string[];
+  /**
    * Sân khấu cố định dùng chung mọi sản phẩm (xem LivestreamStageBible). null = chưa sinh, sẽ
    * được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
    */

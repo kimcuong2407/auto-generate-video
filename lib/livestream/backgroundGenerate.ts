@@ -4,12 +4,24 @@ import { readJob, updateJob, ensureJobFlowId } from './jobStore';
 import { jobInputsDir, resolveWithinJob } from './paths';
 import { ensureLocalImage, uploadImageToR2 } from './imageR2';
 import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
-import { pickVisionRefEntries } from './refImages';
+import { pickBackgroundRefEntries } from './refImages';
 import type { VisionRefEntry } from './refImages';
-import type { LivestreamStageBible } from './types';
+import type { LivestreamJob, LivestreamStageBible } from './types';
 import { ensureStageBible } from './stageBible';
 import { generateStoryboardImage } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
+
+/**
+ * Prompt gen background thực dùng cho 1 job: bản người dùng đã chỉnh và LƯU (backgroundPromptOverride)
+ * nếu có, ngược lại BACKGROUND_SYSTEM_PROMPT mặc định. Là nguồn duy nhất cho cả route gen lẫn route
+ * preview — 2 chỗ lệch nhau thì bản xem trước thành vô nghĩa.
+ */
+export function resolveBackgroundPrompt(
+  job: Pick<LivestreamJob, 'backgroundPromptOverride'>
+): string {
+  const override = job.backgroundPromptOverride;
+  return override && override.trim() ? override : BACKGROUND_SYSTEM_PROMPT;
+}
 
 export interface BackgroundGenResult {
   ok: boolean;
@@ -62,7 +74,8 @@ export async function triggerBackgroundImageGeneration(
     return { ok: false, error: 'Sản phẩm không tồn tại' };
   }
 
-  const basePrompt = promptOverride?.trim() || BACKGROUND_SYSTEM_PROMPT;
+  // promptOverride = bản nháp đang sửa trên UI (chưa lưu); không có thì dùng bản đã lưu của job.
+  const basePrompt = promptOverride?.trim() || resolveBackgroundPrompt(job);
   // Nếu job đã chốt sân khấu cố định (stageBible, sinh lúc gen script), ép ảnh nền dựng đúng người
   // dẫn/bối cảnh/góc máy đó — nếu không ảnh nền và veoPrompt sẽ mô tả 2 buổi live khác nhau, ảnh nền
   // dùng làm reference lại kéo video lệch khỏi mô tả trong script.
@@ -77,7 +90,8 @@ export async function triggerBackgroundImageGeneration(
   // Reference: ảnh mẫu ĐỨNG ĐẦU (cùng lý do pickRefImagePaths — nhân vật là thứ model bịa sai nặng
   // nhất), rồi ảnh sản phẩm, rồi ảnh nền. Trước đây ảnh mẫu bị push CUỐI sau N ảnh sản phẩm nên
   // model gần như bỏ qua nó, dù người dùng đã chọn ảnh mẫu.
-  const entries = pickVisionRefEntries(job);
+  // Ưu tiên đúng bộ ảnh người dùng đã tick chọn cho bước này; rỗng thì server tự chọn như cũ.
+  const entries = pickBackgroundRefEntries(job);
   const prompt = buildBackgroundPrompt(
     basePrompt,
     product.description || product.name,

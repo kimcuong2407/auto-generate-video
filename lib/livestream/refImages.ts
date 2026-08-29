@@ -53,6 +53,46 @@ export function pickVisionRefEntries(
 }
 
 /**
+ * Ảnh gửi cho AI ở bước GEN BACKGROUND — ưu tiên danh sách người dùng tự chọn
+ * (job.backgroundRefPaths), rỗng thì rơi về lựa chọn tự động của pickVisionRefEntries.
+ *
+ * Vì sao tách khỏi pickVisionRefEntries: bước chốt stage bible luôn cần bộ ảnh chuẩn do hệ thống
+ * quyết, còn gen background là thao tác người dùng chủ động lặp lại nhiều lần để thử bối cảnh —
+ * họ cần quyền bỏ bớt ảnh làm nhiễu và thêm ảnh phòng live mẫu.
+ *
+ * Nhãn suy theo vai trò thật của từng ảnh để prompt (refLegendBlock) nói đúng model đang nhìn gì;
+ * ảnh không thuộc vai trò nào (upload riêng cho bước này) là ảnh THAM CHIẾU BỐI CẢNH.
+ */
+export function pickBackgroundRefEntries(
+  job: Pick<
+    LivestreamJob,
+    | 'selectedRefImagePaths'
+    | 'selectedModelImagePath'
+    | 'selectedBackgroundImagePath'
+    | 'backgroundRefPaths'
+  >
+): VisionRefEntry[] {
+  const chosen = job.backgroundRefPaths ?? [];
+  if (chosen.length === 0) return pickVisionRefEntries(job);
+
+  const productSet = new Set(job.selectedRefImagePaths ?? []);
+  let productIdx = 0;
+  return chosen.map((rel) => {
+    if (rel === job.selectedModelImagePath) {
+      return { rel, label: 'ảnh NGƯỜI MẪU/NGƯỜI DẪN' };
+    }
+    if (rel === job.selectedBackgroundImagePath) {
+      return { rel, label: 'ảnh BỐI CẢNH/BACKGROUND' };
+    }
+    if (productSet.has(rel)) {
+      productIdx += 1;
+      return { rel, label: `ảnh SẢN PHẨM THẬT ${productIdx}` };
+    }
+    return { rel, label: 'ảnh THAM CHIẾU BỐI CẢNH' };
+  });
+}
+
+/**
  * Chuỗi đại diện cho TOÀN BỘ input mà stage bible phụ thuộc — dùng để biết bible đã chốt có còn
  * khớp dữ liệu đầu vào hiện tại hay không (xem isStageBibleStale).
  *

@@ -27,11 +27,17 @@ export function JobImagePanel({
   const [uploadingModel, setUploadingModel] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
   const [generatingBg, setGeneratingBg] = useState(false);
-  const [bgPromptDraft, setBgPromptDraft] = useState(BACKGROUND_SYSTEM_PROMPT);
+  const [bgPromptDraft, setBgPromptDraft] = useState(
+    job.backgroundPromptOverride ?? BACKGROUND_SYSTEM_PROMPT
+  );
   const [selectingRef, setSelectingRef] = useState(false);
   const [savingBgModel, setSavingBgModel] = useState(false);
   const [detaching, setDetaching] = useState(false);
-  const [previewingBgPrompt, setPreviewingBgPrompt] = useState(false);
+  // null = chỉ xem prompt; 'gen' = cổng xác nhận trước khi thực sự gen (tốn lượt AI).
+  const [previewingBgPrompt, setPreviewingBgPrompt] = useState<null | 'view' | 'gen'>(null);
+  const [savingBgPrompt, setSavingBgPrompt] = useState(false);
+  const [savingBgRefs, setSavingBgRefs] = useState(false);
+  const [uploadingBgRef, setUploadingBgRef] = useState(false);
 
   const detachedSet = new Set(job.detachedImagePaths ?? []);
 
@@ -193,6 +199,85 @@ export function JobImagePanel({
     }
   }
 
+  /** Lưu prompt gen background theo job (null = xoá override, về mặc định). */
+  async function handleSaveBgPrompt(value: string | null) {
+    setSavingBgPrompt(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/prompt`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backgroundPrompt: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Lưu prompt background thất bại');
+        return;
+      }
+      if (value === null) setBgPromptDraft(BACKGROUND_SYSTEM_PROMPT);
+      await onRefresh();
+    } finally {
+      setSavingBgPrompt(false);
+    }
+  }
+
+  /** Tick/bỏ tick 1 ảnh trong danh sách gửi kèm khi gen background. */
+  async function handleToggleBgRef(relPath: string) {
+    const current = job.backgroundRefPaths ?? [];
+    const next = current.includes(relPath)
+      ? current.filter((r) => r !== relPath)
+      : [...current, relPath];
+    setSavingBgRefs(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/images/background-refs`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Lưu danh sách ảnh thất bại');
+      await onRefresh();
+    } finally {
+      setSavingBgRefs(false);
+    }
+  }
+
+  async function handleUploadBgRef(files: File[]) {
+    if (files.length === 0) return;
+    setUploadingBgRef(true);
+    try {
+      const form = new FormData();
+      for (const f of files) form.append('image', f);
+      const res = await fetch(`/api/livestream/${jobId}/images/background-refs`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Upload ảnh tham chiếu thất bại');
+        return;
+      }
+      if (data.warnings?.length) alert(data.warnings.join('\n'));
+      await onRefresh();
+    } finally {
+      setUploadingBgRef(false);
+    }
+  }
+
+  async function handleRemoveBgRef(relPath: string) {
+    setUploadingBgRef(true);
+    try {
+      const res = await fetch(
+        `/api/livestream/${jobId}/images/background-refs?path=${encodeURIComponent(relPath)}`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+      if (!res.ok) alert(data.error || 'Xoá ảnh thất bại');
+      await onRefresh();
+    } finally {
+      setUploadingBgRef(false);
+    }
+  }
+
   async function handleGenerateBackground() {
     setGeneratingBg(true);
     try {
@@ -248,6 +333,23 @@ export function JobImagePanel({
       setUploadingBackground(false);
     }
   }
+
+  const bgRefPaths = job.backgroundRefPaths ?? [];
+  /**
+   * Ảnh có thể tick gửi kèm khi gen background: ảnh mẫu, ảnh sản phẩm ĐÃ CHỌN làm ref, kho ảnh
+   * background, và ảnh bgref-* upload riêng cho bước này. Không đưa cả kho ảnh sản phẩm vào —
+   * ảnh chưa chọn làm ref thì cũng không nên là nguồn sự thật cho khung hình nền.
+   */
+  const bgRefCandidates: { rel: string; role: string }[] = [
+    ...(job.selectedModelImagePath
+      ? [{ rel: job.selectedModelImagePath, role: 'ảnh mẫu' }]
+      : []),
+    ...(job.selectedRefImagePaths ?? []).map((rel) => ({ rel, role: 'ảnh sản phẩm' })),
+    ...(job.backgroundImagePaths ?? []).map((rel) => ({ rel, role: 'ảnh nền' })),
+    ...bgRefPaths
+      .filter((rel) => rel.includes('bgref-'))
+      .map((rel) => ({ rel, role: 'tham chiếu bối cảnh' })),
+  ].filter((item, i, arr) => arr.findIndex((x) => x.rel === item.rel) === i);
 
   // Bắt chọn tay: có ảnh trong kho nhưng chưa chọn ref nào → cảnh báo (chặn gen ở cấp job).
   const needsRefSelection =
@@ -522,6 +624,114 @@ export function JobImagePanel({
         />
         {uploadingBackground && <span style={{ fontSize: 12 }}>⏳ Đang xử lý...</span>}
 
+        {/* Ảnh gửi kèm cho AI khi gen background. Rỗng = server tự chọn (ảnh mẫu + tối đa 3 ảnh
+            sản phẩm + ảnh nền đang chọn) — giữ nguyên hành vi cũ cho job đã có. */}
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            📎 Ảnh gửi kèm khi gen background
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+            {bgRefPaths.length === 0 ? (
+              <>
+                Đang để hệ thống tự chọn (ảnh mẫu + tối đa 3 ảnh sản phẩm + ảnh nền đang chọn). Tick
+                ảnh bên dưới để tự quyết ảnh nào tới AI.
+              </>
+            ) : (
+              <>
+                Đang gửi ĐÚNG {bgRefPaths.length} ảnh đã tick, theo thứ tự tick. Bỏ tick hết để quay
+                về chế độ tự chọn.
+              </>
+            )}
+          </div>
+
+          <div className="image-preview-grid">
+            {bgRefCandidates.map(({ rel, role }) => {
+              const picked = bgRefPaths.includes(rel);
+              const order = bgRefPaths.indexOf(rel) + 1;
+              return (
+                <div key={rel} style={{ position: 'relative' }}>
+                  <img
+                    src={imgSrc(rel)}
+                    alt={role}
+                    className="image-preview-thumb"
+                    onClick={() => !savingBgRefs && handleToggleBgRef(rel)}
+                    title={picked ? `Đang gửi (thứ ${order}) — bấm để bỏ` : `Bấm để gửi kèm (${role})`}
+                    style={{
+                      cursor: savingBgRefs ? 'wait' : 'pointer',
+                      outline: picked ? '2px solid var(--accent-glow)' : 'none',
+                      opacity: picked ? 1 : 0.55,
+                    }}
+                  />
+                  {picked && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        left: -6,
+                        minWidth: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        background: 'var(--accent-glow)',
+                        color: '#fff',
+                        fontSize: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {order}
+                    </span>
+                  )}
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', textAlign: 'center', marginTop: 2 }}>
+                    {role}
+                  </div>
+                  {rel.includes('bgref-') && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveBgRef(rel)}
+                      disabled={uploadingBgRef}
+                      title="Xoá ảnh tham chiếu này"
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: -6,
+                        width: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: 'var(--red)',
+                        color: '#fff',
+                        fontSize: 10,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
+            Tải thêm ảnh tham chiếu bối cảnh (VD ảnh phòng live mẫu) — chỉ dùng cho bước gen
+            background, không gửi cho Veo:
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={uploadingBgRef}
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              if (files.length) handleUploadBgRef(files);
+              e.target.value = '';
+            }}
+            style={{ fontSize: 12, marginTop: 4 }}
+          />
+          {uploadingBgRef && <span style={{ fontSize: 12 }}>⏳ Đang xử lý...</span>}
+        </div>
+
         <div style={{ marginTop: 10 }} className="field-group">
           <label>Provider gen ảnh background</label>
           <select
@@ -539,24 +749,24 @@ export function JobImagePanel({
 
         <div style={{ marginTop: 10 }}>
           <button
-            className="btn"
-            onClick={handleGenerateBackground}
+            className="btn btn-primary"
+            onClick={() => setPreviewingBgPrompt('gen')}
             disabled={generatingBg || job.selectedRefImagePaths.length === 0}
             title={
               job.selectedRefImagePaths.length === 0
                 ? 'Hãy chọn ít nhất 1 ảnh sản phẩm làm tham chiếu trước khi gen background'
-                : 'Tạo 1 khung hình có mẫu đang dùng sản phẩm, thêm vào kho background'
+                : 'Mở bản xem trước prompt + ảnh; xác nhận trong đó mới thực sự gen'
             }
           >
-            {generatingBg ? '⏳ Đang gen background...' : '🎨 Gen background bằng AI'}
+            {generatingBg ? '⏳ Đang gen background...' : '👁 Xem trước → Gen background'}
           </button>
           <button
             className="btn btn-ghost"
             style={{ marginLeft: 8 }}
-            onClick={() => setPreviewingBgPrompt(true)}
-            title="Xem prompt đầy đủ + ảnh ref server sẽ gửi cho AI (không tốn lượt gen)"
+            onClick={() => setPreviewingBgPrompt('view')}
+            title="Chỉ xem prompt đầy đủ + ảnh ref server sẽ gửi cho AI (không tốn lượt gen)"
           >
-            👁 Xem prompt + ảnh ref
+            👁 Chỉ xem prompt
           </button>
           {job.selectedRefImagePaths.length === 0 && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
@@ -575,9 +785,29 @@ export function JobImagePanel({
             onChange={(e) => setBgPromptDraft(e.target.value)}
             style={{ width: '100%', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5, marginTop: 6 }}
           />
+          <div className="step-actions" style={{ marginTop: 6 }}>
+            <button
+              className="btn"
+              onClick={() => handleSaveBgPrompt(bgPromptDraft)}
+              disabled={savingBgPrompt}
+            >
+              {savingBgPrompt ? 'Đang lưu...' : '💾 Lưu prompt'}
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => handleSaveBgPrompt(null)}
+              disabled={savingBgPrompt}
+            >
+              ↺ Khôi phục mặc định
+            </button>
+            <span className={`badge ${job.backgroundPromptOverride ? 'badge-running' : 'badge-pending'}`}>
+              {job.backgroundPromptOverride ? 'Đã tuỳ chỉnh' : 'Đang dùng mặc định'}
+            </span>
+          </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
             Mô tả sản phẩm (sản phẩm đầu tiên), sân khấu đã chốt và chú giải ảnh ref sẽ được ghép tự
-            động vào prompt khi gen — bấm &quot;Xem prompt + ảnh ref&quot; để thấy chuỗi cuối cùng.
+            động vào prompt khi gen — bấm &quot;Chỉ xem prompt&quot; để thấy chuỗi cuối cùng.
+            Chưa bấm lưu thì bản sửa chỉ dùng cho lượt gen đang mở, F5 là mất.
           </div>
         </details>
       </div>
@@ -588,7 +818,9 @@ export function JobImagePanel({
           step="background"
           promptOverride={bgPromptDraft}
           imageR2Urls={job.imageR2Urls ?? undefined}
-          onClose={() => setPreviewingBgPrompt(false)}
+          confirmLabel={previewingBgPrompt === 'gen' ? '🎨 Gen background ngay' : undefined}
+          onConfirm={previewingBgPrompt === 'gen' ? handleGenerateBackground : undefined}
+          onClose={() => setPreviewingBgPrompt(null)}
         />
       )}
     </div>

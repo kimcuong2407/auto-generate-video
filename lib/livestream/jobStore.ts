@@ -142,6 +142,9 @@ function assembleJob(
     flowStatusCache: jobRow.flowStatusCache,
     flowProjectId: jobRow.flowProjectId,
     scriptSystemPromptOverride: jobRow.scriptSystemPromptOverride,
+    backgroundPromptOverride: jobRow.backgroundPromptOverride,
+    // Cột nullable (ALTER TABLE trên bảng đã có data) — null coi như "chưa chọn", để server tự chọn.
+    backgroundRefPaths: jobRow.backgroundRefPaths ?? [],
     videoSeed: jobRow.videoSeed,
     stageBible: jobRow.stageBible ?? null,
   };
@@ -174,6 +177,8 @@ function jobToRow(job: LivestreamJob): Omit<typeof livestreamJobs.$inferInsert, 
     flowStatusCache: job.flowStatusCache,
     flowProjectId: job.flowProjectId ?? null,
     scriptSystemPromptOverride: job.scriptSystemPromptOverride ?? null,
+    backgroundPromptOverride: job.backgroundPromptOverride ?? null,
+    backgroundRefPaths: job.backgroundRefPaths ?? [],
     videoSeed: job.videoSeed ?? null,
     stageBible: job.stageBible ?? null,
   };
