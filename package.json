@@ -28,6 +28,7 @@
     "check:stage-bible-stale": "tsx scripts/check-stage-bible-stale.ts",
     "check:stage-bible-inputs": "tsx scripts/check-stage-bible-inputs.ts",
     "check:script-refs": "tsx scripts/check-script-refs.ts",
+    "check:chat-timeout": "tsx scripts/check-chat-timeout.ts",
     "check:ref-image-priority": "tsx scripts/check-ref-image-priority.ts",
     "check:background-ref-legend": "tsx scripts/check-background-ref-legend.ts",
     "check:cascade-resume": "tsx scripts/check-cascade-resume.ts",

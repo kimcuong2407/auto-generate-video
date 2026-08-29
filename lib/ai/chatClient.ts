@@ -12,6 +12,21 @@ import { readAppSettings } from '../data/appSettingsStore';
 
 export class ChatApiError extends Error {}
 
+/**
+ * Quá thời gian chờ 1 lần gọi (AbortController hết hạn) — TÁCH RIÊNG khỏi ChatApiError thường để
+ * vòng retry nhận ra đây là lỗi TẠM THỜI và thử lại, giống hệt cách xử lý 524/5xx.
+ *
+ * Vì sao cần: model chậm bất thường một lượt là chuyện hay gặp; trước đây timeout không có
+ * `status` nên bị coi là lỗi vĩnh viễn, hỏng ngay từ lần thử đầu.
+ */
+export class TimeoutError extends ChatApiError {
+  constructor(public readonly timeoutMs: number) {
+    super(
+      `AI không phản hồi thêm trong ${Math.round(timeoutMs / 1000)}s liên tiếp (nghi treo giữa chừng). Vui lòng bấm sinh lại.`
+    );
+  }
+}
+
 /** Sự kiện tiến trình phát ra trong lúc gọi AI, dùng để log/forward cho client (SSE). */
 export interface ChatStreamEvent {
   type: 'start' | 'delta' | 'retry' | 'error';
@@ -74,7 +89,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function readSseContent(
   response: Response,
   onEvent?: ChatEventHandler,
-  onFirstByte?: () => void
+  onFirstByte?: () => void,
+  /** Gọi mỗi khi nhận được 1 chunk — caller dùng để gia hạn đồng hồ timeout (xem callOnce). */
+  onProgress?: () => void
 ): Promise<string> {
   if (!response.body) {
     throw new ChatApiError('AI API không trả về body để đọc stream');
@@ -110,6 +127,7 @@ async function readSseContent(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    onProgress?.();
     if (!firstByteSeen) {
       firstByteSeen = true;
       onFirstByte?.();
@@ -152,7 +170,18 @@ async function callOnce(
   images?: ChatImageInput[]
 ): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Đồng hồ đo KHOẢNG LẶNG giữa 2 chunk, không phải tổng thời gian gọi: mỗi chunk về là hẹn lại.
+  //
+  // Vì sao: lượt sinh script thật mất ~146s cho ~19k ký tự, sát trần 180s cũ — model chậm hơn
+  // thường lệ một chút là abort giữa chừng dù stream vẫn đang chảy đều (log production: TTFB
+  // 1.3s rồi bị cắt ở đúng 180s). Đo khoảng lặng thì bài dài bao lâu cũng chạy xong, mà server
+  // treo thật vẫn bị cắt sau đúng `timeoutMs` im lặng.
+  let timer: NodeJS.Timeout | undefined;
+  const armTimer = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  };
+  armTimer();
   const requestStartedAt = Date.now();
 
   let response: Response;
@@ -176,7 +205,7 @@ async function callOnce(
     });
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new ChatApiError(`Gọi AI API quá thời gian chờ (${timeoutMs}ms)`);
+      throw new TimeoutError(timeoutMs);
     }
     throw new ChatApiError(`Không kết nối được tới AI API tại ${url}: ${(err as Error).message}`);
   }
@@ -191,9 +220,14 @@ async function callOnce(
     }
 
     if (USE_STREAM) {
-      const content = await readSseContent(response, onEvent, () => {
-        console.log(`[chatClient] TTFB sau ${Date.now() - requestStartedAt}ms`);
-      });
+      const content = await readSseContent(
+        response,
+        onEvent,
+        () => {
+          console.log(`[chatClient] TTFB sau ${Date.now() - requestStartedAt}ms`);
+        },
+        armTimer
+      );
       if (!content) {
         throw new ChatApiError('AI API không trả về nội dung hợp lệ (stream rỗng)');
       }
@@ -210,6 +244,15 @@ async function callOnce(
     }
     console.log(`[chatClient] attempt hoàn tất sau ${Date.now() - requestStartedAt}ms (${content.length} ký tự)`);
     return content;
+  } catch (err) {
+    // Khi stream, header về sớm nên `fetch` đã resolve — quá hạn thì abort rơi vào ĐÂY (lúc đang
+    // đọc body), không phải catch của fetch ở trên. Trước đây khối này chỉ có `finally` nên lỗi
+    // thô "This operation was aborted" lọt thẳng ra UI, và vì không mang `status` nên vòng retry
+    // coi là lỗi vĩnh viễn → bỏ luôn 2 lần thử còn lại dù log vẫn ghi "3 lần thử".
+    if (controller.signal.aborted) {
+      throw new TimeoutError(timeoutMs);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -238,7 +281,10 @@ export async function chatCompletion(
       const e = err as ChatApiError & { status?: number };
       lastError = e;
       // Chỉ retry với lỗi HTTP tạm thời (524/5xx). Lỗi khác (4xx, parse...) ném ngay.
-      const retriable = typeof e.status === 'number' && isRetriableStatus(e.status);
+      // Timeout cũng là lỗi tạm thời (model chậm 1 lượt) — phải retry như 524/5xx, nếu không
+      // 1 lượt chậm là hỏng hẳn dù 2 lần thử còn lại chưa dùng tới.
+      const retriable =
+        e instanceof TimeoutError || (typeof e.status === 'number' && isRetriableStatus(e.status));
       console.error(`[chatClient] lần thử ${attempt + 1}/${maxAttempts} lỗi: ${e.message}`);
       if (!retriable || attempt === MAX_RETRIES) break;
       opts.onEvent?.({ type: 'retry', attempt: attempt + 2, maxAttempts, message: e.message });
