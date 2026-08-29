@@ -5,7 +5,20 @@ import { usePathname } from 'next/navigation';
 
 const TABS = [
   { href: '/', label: 'Video Review', icon: '🎬', match: (p: string) => p === '/' },
-  { href: '/livestream', label: 'Livestream Script', icon: '📡', match: (p: string) => p.startsWith('/livestream') },
+  {
+    href: '/livestream',
+    label: 'Livestream Script',
+    icon: '📡',
+    // Loại trừ /livestream-v2 vì startsWith('/livestream') cũng khớp nó — nếu không, mở tab V2 sẽ
+    // thấy CẢ HAI tab cùng sáng.
+    match: (p: string) => p.startsWith('/livestream') && !p.startsWith('/livestream-v2'),
+  },
+  {
+    href: '/livestream-v2',
+    label: 'Livestream Shopee V2',
+    icon: '🛒',
+    match: (p: string) => p.startsWith('/livestream-v2'),
+  },
   { href: '/shopee-crawl', label: 'Shopee Crawl', icon: '🛍️', match: (p: string) => p.startsWith('/shopee-crawl') },
   { href: '/settings/ai', label: 'Cài đặt AI', icon: '⚙️', match: (p: string) => p === '/settings/ai' },
   { href: '/settings/flow', label: 'Tài khoản Veo', icon: '🔑', match: (p: string) => p === '/settings/flow' },

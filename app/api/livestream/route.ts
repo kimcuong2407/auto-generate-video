@@ -7,15 +7,22 @@ import { ingestEntry, type EntryInput } from '@/lib/livestream/ingestEntry';
 import { uploadImageToR2 } from '@/lib/livestream/imageR2';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { INGEST_CONCURRENCY } from '@/lib/livestream/constants';
-import type { LivestreamChaining } from '@/lib/livestream/types';
+import { filterV2JobSlugs, writeV2Input } from '@/lib/livestream/v2Store';
+import type { LivestreamChaining, LivestreamV2Input } from '@/lib/livestream/types';
 import type { VeoModel } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+/**
+ * `?variant=v2` trả job của tab Livestream V2, mặc định trả job V1. Hai tab dùng chung bảng job
+ * nên phải lọc, nếu không mỗi tab hiện luôn cả job của tab kia.
+ */
+export async function GET(req: NextRequest) {
   const jobs = await listJobs();
-  return NextResponse.json({ jobs });
+  const wantV2 = req.nextUrl.searchParams.get('variant') === 'v2';
+  const v2Slugs = await filterV2JobSlugs(jobs.map((j) => j.id));
+  return NextResponse.json({ jobs: jobs.filter((j) => v2Slugs.has(j.id) === wantV2) });
 }
 
 export async function POST(req: NextRequest) {
@@ -81,6 +88,18 @@ export async function POST(req: NextRequest) {
   // Gán sẵn flowProjectId ngay khi tạo — xem giải thích tương ứng ở app/api/projects/route.ts.
   job.flowProjectId = await resolveFlowProjectIdSafe(name);
   await writeJob(job);
+
+  // Form gửi kèm `v2Input` = tạo job cho tab Livestream V2: ghi bản ghi input Shopee NGAY trong
+  // lượt tạo. Ghi ở đây (không để client PUT riêng sau) vì nếu lượt PUT đó lỗi, job sẽ nằm lại ở
+  // tab V1 với prompt V1 — sai tab và sai cả kịch bản, rất khó nhận ra.
+  const v2Raw = String(form.get('v2Input') || '').trim();
+  if (v2Raw) {
+    try {
+      await writeV2Input(slug, JSON.parse(v2Raw) as LivestreamV2Input);
+    } catch (err) {
+      warnings.push(`Không lưu được thông tin buổi live V2: ${(err as Error).message}`);
+    }
+  }
 
   return NextResponse.json({ id: slug, job, warnings }, { status: 201 });
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLivestreamPolling } from '@/hooks/useLivestreamPolling';
@@ -10,6 +10,9 @@ import { FlowGuide } from '@/components/livestream/FlowGuide';
 import { PromptSettingsPanel } from '@/components/livestream/PromptSettingsPanel';
 import { JobImagePanel } from '@/components/livestream/JobImagePanel';
 import { PromptPreviewModal } from '@/components/livestream/PromptPreviewModal';
+import { V2InputPanel } from '@/components/livestream/V2InputPanel';
+import { LIVESTREAM_V2_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaultsV2';
+import type { LivestreamV2Input } from '@/lib/livestream/types';
 
 /** Đọc SSE response của route script/generate (fetch thường, không dùng EventSource vì cần POST). */
 async function streamScriptGeneration(
@@ -77,6 +80,24 @@ export default function LivestreamDetailPage() {
   const [bulkPreview, setBulkPreview] = useState<
     null | { kind: 'script-all' | 'restage' | 'gen-all' }
   >(null);
+  // Input Shopee của job V2 — null = job V1 (tab Livestream Script cũ), khi đó không hiện panel V2
+  // và mọi thứ giữ nguyên hành vi cũ. undefined = chưa tải xong.
+  const [v2Input, setV2Input] = useState<LivestreamV2Input | null | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/livestream/${jobId}/v2-input`)
+      .then((r) => (r.ok ? r.json() : { input: null }))
+      .then((data) => {
+        if (alive) setV2Input(data.input ?? null);
+      })
+      .catch(() => {
+        if (alive) setV2Input(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [jobId]);
 
   /**
    * @param forceStageBible chốt LẠI sân khấu (người dẫn/bối cảnh/giọng) dù input chưa đổi. Cần
@@ -220,7 +241,9 @@ export default function LivestreamDetailPage() {
         <div className="topbar">
           <h1>{job.name}</h1>
           <div className="topbar-actions">
-            <Link href="/livestream" className="btn btn-ghost">← Danh sách</Link>
+            <Link href={v2Input ? '/livestream-v2' : '/livestream'} className="btn btn-ghost">
+              ← Danh sách
+            </Link>
             <button className="btn btn-ghost" onClick={handleDeleteJob} disabled={hasGeneratingSegment}>
               🗑 Xoá job
             </button>
@@ -280,11 +303,15 @@ export default function LivestreamDetailPage() {
           )}
 
           <FlowGuide job={job} />
+          {v2Input && (
+            <V2InputPanel jobId={jobId} input={v2Input} busy={busy} onRefresh={refresh} />
+          )}
           <PromptSettingsPanel
             jobId={jobId}
             scriptSystemPromptOverride={job.scriptSystemPromptOverride}
             busy={busy}
             onRefresh={refresh}
+            defaultScriptPrompt={v2Input ? LIVESTREAM_V2_SYSTEM_PROMPT : undefined}
           />
           <JobImagePanel job={job} onRefresh={refresh} />
 

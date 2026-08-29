@@ -203,3 +203,43 @@ export interface LivestreamMergeSummary {
   status: ConcatStatus;
   jobCount: number;
 }
+
+// ------------------------------------------------------------------
+// Livestream V2 (tab "Livestream Shopee") — xem docs/shopee-livestream-script-generator-SKILL.md
+// ------------------------------------------------------------------
+
+/** Nền tảng/phong cách live (INPUT_9 của SKILL) — mở rộng bằng string tự do ở form. */
+export const LIVESTREAM_V2_PLATFORMS = [
+  'Shopee Live',
+  'TikTok Shop Live',
+  'Studio chuyên nghiệp',
+  'Livestream tại nhà',
+  'Livestream mỹ phẩm',
+  'Livestream đồ gia dụng',
+  'Livestream mẹ và bé',
+] as const;
+
+/**
+ * Input riêng của job V2 (form nhập nhanh Shopee). Job V2 dùng CHUNG toàn bộ LivestreamJob của V1
+ * (ảnh, segment, Veo, ghép video) — bản ghi này chỉ bổ sung các trường SKILL cần để viết kịch bản
+ * AIDA đúng chất livestream Shopee. Job không có bản ghi này = job V1.
+ */
+export interface LivestreamV2Input {
+  /** Ưu điểm sản phẩm user liệt kê (INPUT_2) — nguồn chốt USP. */
+  advantages: string[];
+  /** INPUT_9 — mặc định 'Shopee Live'. */
+  platform: string;
+  /** INPUT_10..12 — hiển thị trên UI livestream trong video, rỗng = không nhắc tới. */
+  channelName: string;
+  followerCount: string;
+  viewerCount: string;
+  /** INPUT_14 — rỗng = KHÔNG được bịa khuyến mãi/giá (STEP 10 của SKILL). */
+  promotion: string;
+  /** INPUT_13 — rỗng = tự tạo CTA hợp Shopee Live. */
+  cta: string;
+  /** INPUT_8 — số câu thoại MC mỗi cảnh, mặc định 3. */
+  dialoguesPerScene: number;
+}
+
+/** Giai đoạn AIDA của 1 cảnh — dùng để gán nhãn cảnh trong kịch bản V2. */
+export type AidaStage = 'attention' | 'interest' | 'desire' | 'action';

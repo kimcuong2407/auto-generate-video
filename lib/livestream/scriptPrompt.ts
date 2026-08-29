@@ -1,5 +1,7 @@
 import { maxWordsFor } from './segmentSanitize';
-import type { LivestreamJob } from './types';
+import { LIVESTREAM_V2_SYSTEM_PROMPT } from './promptDefaultsV2';
+import { buildLivestreamV2UserPrompt } from './scriptPromptV2';
+import type { LivestreamJob, LivestreamV2Input } from './types';
 
 
 // Re-export prompt mặc định từ module thuần (promptDefaults) để giữ 1 nguồn sự thật duy nhất.
@@ -12,10 +14,40 @@ import { LIVESTREAM_SYSTEM_PROMPT } from './promptDefaults';
  * định. Là nguồn duy nhất cho cả server (route generate) lẫn client ("Khôi phục mặc định").
  */
 export function resolveScriptSystemPrompt(
-  job: Pick<LivestreamJob, 'scriptSystemPromptOverride'>
+  job: Pick<LivestreamJob, 'scriptSystemPromptOverride'>,
+  /** Có = job V2 (tab Livestream Shopee) → dùng prompt AIDA theo skill thay cho prompt V1. */
+  v2Input?: LivestreamV2Input | null
 ): string {
   const override = job.scriptSystemPromptOverride;
-  return override && override.trim() ? override : LIVESTREAM_SYSTEM_PROMPT;
+  if (override && override.trim()) return override;
+  return v2Input ? LIVESTREAM_V2_SYSTEM_PROMPT : LIVESTREAM_SYSTEM_PROMPT;
+}
+
+/**
+ * Chọn đúng bộ user prompt cho job: V2 (AIDA + form Shopee) nếu có v2Input, ngược lại V1.
+ *
+ * Gom vào 1 hàm để mọi call-site (route sinh script, route preview) chỉ có MỘT nhánh rẽ — preview
+ * mà lệch prompt thật thì bản xem trước thành vô nghĩa, đúng thứ nó sinh ra để chặn.
+ */
+export function buildScriptUserPrompt(args: {
+  description: string;
+  durations: number[];
+  v2Input?: LivestreamV2Input | null;
+  visualDescription?: string;
+  stageBibleBlock?: string;
+  position?: { index: number; total: number; prevProductName?: string };
+}): string {
+  const { description, durations, v2Input, visualDescription, stageBibleBlock, position } = args;
+  return v2Input
+    ? buildLivestreamV2UserPrompt(
+        description,
+        durations,
+        v2Input,
+        visualDescription,
+        stageBibleBlock,
+        position
+      )
+    : buildLivestreamUserPrompt(description, durations, visualDescription, stageBibleBlock, position);
 }
 
 export function buildLivestreamUserPrompt(

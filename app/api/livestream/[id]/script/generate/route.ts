@@ -4,7 +4,8 @@ import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';
-import { buildLivestreamUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { readV2Input } from '@/lib/livestream/v2Store';
 import {
   computeSegmentDurations,
   findOverlongSegments,
@@ -81,8 +82,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
+      // Job V2 (tab Livestream Shopee) có bản ghi input riêng → dùng bộ prompt AIDA theo skill.
+      // Đọc 1 lần cho cả lượt chạy; null = job V1, mọi thứ giữ nguyên như cũ.
+      const v2Input = await readV2Input(id).catch(() => null);
       // Prompt override không đổi trong 1 lần chạy — resolve 1 lần từ job đã đọc ở đầu route.
-      const systemPrompt = resolveScriptSystemPrompt(job);
+      const systemPrompt = resolveScriptSystemPrompt(job, v2Input);
 
       // Mô tả ngoại hình vật lý sản phẩm (đọc ảnh ref thật) — tính 1 lần cho cả job vì
       // selectedRefImagePaths dùng chung cho mọi sản phẩm. Đọc TẤT CẢ ảnh đã chọn, không chỉ ảnh
@@ -150,17 +154,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           // Vị trí tính trên TOÀN BỘ sản phẩm của job (không phải trong `targets`) — gen lại 1 sản
           // phẩm lẻ vẫn phải biết nó nằm giữa buổi live để viết câu chuyển tiếp, không chào lại.
           const index = job.products.findIndex((p) => p.id === product.id);
-          const userPrompt = buildLivestreamUserPrompt(
-            product.description,
+          const userPrompt = buildScriptUserPrompt({
+            description: product.description,
             durations,
+            v2Input,
             visualDescription,
             stageBibleBlock,
-            {
+            position: {
               index,
               total: job.products.length,
               prevProductName: index > 0 ? job.products[index - 1].name : undefined,
-            }
-          );
+            },
+          });
 
           const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
             if (e.type === 'start' || e.type === 'retry') {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
 import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
-import { buildLivestreamUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { readV2Input } from '@/lib/livestream/v2Store';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
 import { formatStageBibleBlock, isStageBibleStale } from '@/lib/livestream/stageBible';
 import { findPreviousSegment, pickRefImagePaths, pickVisionRefEntries } from '@/lib/livestream/refImages';
@@ -165,22 +166,25 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     notes.push('Mô tả ngoại hình sản phẩm được AI vision sinh mới mỗi lần sinh script — preview chỉ đánh dấu vị trí.');
   }
 
-  const userPrompt = buildLivestreamUserPrompt(
-    product.description,
+  // Phải khớp CHÍNH XÁC nhánh prompt route generate sẽ dùng, nếu không bản xem trước vô nghĩa.
+  const v2Input = await readV2Input(id).catch(() => null);
+  const userPrompt = buildScriptUserPrompt({
+    description: product.description,
     durations,
-    visualPlaceholder,
-    bible ? formatStageBibleBlock(bible) : undefined,
-    {
+    v2Input,
+    visualDescription: visualPlaceholder,
+    stageBibleBlock: bible ? formatStageBibleBlock(bible) : undefined,
+    position: {
       index,
       total: job.products.length,
       prevProductName: index > 0 ? job.products[index - 1].name : undefined,
-    }
-  );
+    },
+  });
 
   const result: PreviewPromptResult = {
     // Sinh script gửi system prompt + user prompt TÁCH RIÊNG cho AI; nối lại có nhãn để Mr.D thấy
     // trọn vẹn payload trong 1 khung, đúng thứ tự AI đọc.
-    prompt: `===== SYSTEM PROMPT =====\n${resolveScriptSystemPrompt(job)}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`,
+    prompt: `===== SYSTEM PROMPT${v2Input ? ' (V2 — kịch bản AIDA Shopee)' : ''} =====\n${resolveScriptSystemPrompt(job, v2Input)}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`,
     // Bước sinh script KHÔNG gửi ảnh cho AI viết lời thoại — ảnh chỉ đi vào 2 lượt phụ: vision đọc
     // ngoại hình sản phẩm, và chốt sân khấu. Hiện đúng bộ ảnh của 2 lượt đó để Mr.D kiểm tra.
     refImages: pickVisionRefEntries(job).map((e) => ({ rel: e.rel, label: e.label })),

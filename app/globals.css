@@ -382,7 +382,8 @@ main {
 /* Form fields dùng chung */
 .field-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .field-group label { font-size: 12px; color: var(--text-muted); }
-.field-group input[type="text"], .field-group textarea {
+.field-group input[type="text"], .field-group input[type="number"],
+.field-group select, .field-group textarea {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 7px;

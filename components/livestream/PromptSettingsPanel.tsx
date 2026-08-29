@@ -40,13 +40,17 @@ export function PromptSettingsPanel({
   scriptSystemPromptOverride,
   busy,
   onRefresh,
+  /** Prompt mặc định của job này — job V2 dùng bộ prompt AIDA Shopee, không phải bộ V1. Sai giá
+   *  trị ở đây thì nút "Khôi phục mặc định" sẽ hiện prompt của phiên bản kia. */
+  defaultScriptPrompt = LIVESTREAM_SYSTEM_PROMPT,
 }: {
   jobId: string;
   scriptSystemPromptOverride: string | null;
   busy: boolean;
   onRefresh: () => Promise<void>;
+  defaultScriptPrompt?: string;
 }) {
-  const [draft, setDraft] = useState(scriptSystemPromptOverride ?? LIVESTREAM_SYSTEM_PROMPT);
+  const [draft, setDraft] = useState(scriptSystemPromptOverride ?? defaultScriptPrompt);
   const [saving, setSaving] = useState(false);
   const isCustom = scriptSystemPromptOverride != null && scriptSystemPromptOverride.trim() !== '';
 
@@ -70,7 +74,7 @@ export function PromptSettingsPanel({
   }
 
   function handleReset() {
-    setDraft(LIVESTREAM_SYSTEM_PROMPT);
+    setDraft(defaultScriptPrompt);
     patchPrompt(null);
   }
 

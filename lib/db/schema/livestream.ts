@@ -164,3 +164,29 @@ export const livestreamMerges = mysqlTable(
 );
 
 export type VeoModelType = VeoModel;
+
+/**
+ * Input Shopee của tab Livestream V2 — 1 row / job, gắn theo `job_id` của `livestream_jobs`.
+ *
+ * Vì sao KHÔNG tạo bộ bảng job/product/segment riêng cho V2: V2 chỉ khác V1 ở CÁCH VIẾT kịch
+ * bản (AIDA + form Shopee), còn ảnh/Veo/segment/ghép video dùng lại y nguyên pipeline V1. Nhân
+ * đôi 3 bảng chỉ để chứa thêm mấy field form là rác. Job nào có row ở đây = job V2.
+ */
+export const livestreamV2Inputs = mysqlTable(
+  'livestream_v2_inputs',
+  {
+    jobId: bigint('job_id', { mode: 'number', unsigned: true }).primaryKey(),
+    platform: varchar('platform', { length: 128 }).notNull(),
+    channelName: varchar('channel_name', { length: 255 }).notNull(),
+    followerCount: varchar('follower_count', { length: 64 }).notNull(),
+    viewerCount: varchar('viewer_count', { length: 64 }).notNull(),
+    promotion: text('promotion').notNull(),
+    cta: text('cta').notNull(),
+    // Ưu điểm sản phẩm do user liệt kê (mỗi phần tử 1 dòng) — nguồn để chốt USP ở STEP 2.
+    advantages: mariaJson('advantages').$type<string[]>().notNull(),
+    // Số câu thoại MC mỗi cảnh (SKILL mặc định 3).
+    dialoguesPerScene: int('dialogues_per_scene').notNull(),
+    createdAt: datetime('created_at', { fsp: 3, mode: 'string' }).notNull(),
+    updatedAt: datetime('updated_at', { fsp: 3, mode: 'string' }).notNull(),
+  }
+);
