@@ -243,3 +243,20 @@ export interface LivestreamV2Input {
 
 /** Giai đoạn AIDA của 1 cảnh — dùng để gán nhãn cảnh trong kịch bản V2. */
 export type AidaStage = 'attention' | 'interest' | 'desire' | 'action';
+
+/**
+ * Kết quả bóc tách dữ liệu sản phẩm (VD từ Shopee crawl) thành đúng các ô của form
+ * /livestream-v2/new — xem lib/livestream/v2FieldExtract.ts. Trường không suy ra được để chuỗi
+ * rỗng; UI prefill ô nào có dữ liệu và để Mr.D tự điền phần còn lại.
+ */
+export interface LivestreamV2Fields {
+  name: string;
+  advantages: string[];
+  usage: string;
+  material: string;
+  size: string;
+  colors: string;
+  audience: string;
+  howToUse: string;
+  storage: string;
+}

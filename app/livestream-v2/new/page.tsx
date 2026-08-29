@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { TopNav } from '@/components/TopNav';
 import { LIVESTREAM_V2_PLATFORMS } from '@/lib/livestream/types';
+import { SHOPEE_V2_PREFILL_KEY, type ShopeeV2Prefill } from '@/lib/shopee/toProjectPayload';
 
 /** Gợi ý số cảnh theo thời lượng — bảng INPUT_7 của skill (chỉ để hiện chú thích, không ép). */
 function suggestSceneCount(durationSec: number): string {
@@ -77,10 +78,58 @@ export default function NewLivestreamV2Page() {
 
   const [productFiles, setProductFiles] = useState<File[]>([]);
   const [modelFiles, setModelFiles] = useState<File[]>([]);
+  // Ảnh sản phẩm dạng URL lấy từ trang crawl (không phải file trên máy) — gửi qua entry.imageUrls
+  // để server tự tải về, giống hệt luồng "Tạo job Livestream" của trang crawl.
+  const [prefillImageUrls, setPrefillImageUrls] = useState<string[]>([]);
+  const [prefilled, setPrefilled] = useState<string[] | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+
+  // Đọc dữ liệu trang shopee-crawl vừa đẩy sang (1 lần, rồi xoá để F5 không prefill lại đè lên
+  // những gì Mr.D đã sửa).
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(SHOPEE_V2_PREFILL_KEY);
+      if (raw) sessionStorage.removeItem(SHOPEE_V2_PREFILL_KEY);
+    } catch {
+      return; // sessionStorage bị chặn — mở form trống bình thường.
+    }
+    if (!raw) return;
+    try {
+      const p = JSON.parse(raw) as ShopeeV2Prefill;
+      const done: string[] = [];
+      const put = (label: string, value: string, setter: (v: string) => void) => {
+        if (value && value.trim()) {
+          setter(value.trim());
+          done.push(label);
+        }
+      };
+      put('tên sản phẩm', p.name, setName);
+      put('công dụng', p.usage, setUsage);
+      put('chất liệu', p.material, setMaterial);
+      put('kích thước', p.size, setSize);
+      put('màu sắc', p.colors, setColors);
+      put('đối tượng', p.audience, setAudience);
+      put('cách dùng', p.howToUse, setHowToUse);
+      put('bảo quản', p.storage, setStorage);
+      put('tên kênh', p.channelName, setChannelName);
+      put('khuyến mãi', p.promotion, setPromotion);
+      if (p.advantages?.length) {
+        setAdvantagesText(p.advantages.join('\n'));
+        done.push(`${p.advantages.length} ưu điểm`);
+      }
+      if (p.imageUrls?.length) {
+        setPrefillImageUrls(p.imageUrls);
+        done.push(`${p.imageUrls.length} ảnh sản phẩm`);
+      }
+      setPrefilled(done);
+    } catch {
+      // JSON hỏng — bỏ qua, mở form trống.
+    }
+  }, []);
 
   const advantages = advantagesText
     .split('\n')
@@ -120,6 +169,8 @@ export default function NewLivestreamV2Page() {
               advantages,
             }),
             targetDurationSec: durationSec,
+            // Ảnh URL từ trang crawl — server tự tải về kho ảnh của job.
+            ...(prefillImageUrls.length > 0 ? { imageUrls: prefillImageUrls } : {}),
           },
         ])
       );
@@ -166,6 +217,18 @@ export default function NewLivestreamV2Page() {
           <Link href="/livestream-v2" className="btn btn-ghost">← Danh sách</Link>
         </div>
 
+        {prefilled && (
+          <div className="banner banner-info" style={{ marginBottom: 12 }}>
+            {prefilled.length > 0 ? (
+              <>
+                ✅ Đã điền sẵn từ Shopee: {prefilled.join(', ')}. Kiểm tra lại rồi bổ sung các ô còn
+                trống (follower, người xem, CTA) — Shopee không có những thông tin này.
+              </>
+            ) : (
+              <>⚠️ Không lấy được thông tin nào từ dữ liệu Shopee — vui lòng điền tay.</>
+            )}
+          </div>
+        )}
         {error && <div className="banner" style={{ marginBottom: 12 }}>❌ {error}</div>}
         {warnings.length > 0 && (
           <div className="banner" style={{ marginBottom: 12 }}>⚠️ {warnings.join(' · ')}</div>
@@ -265,6 +328,20 @@ export default function NewLivestreamV2Page() {
               )}
             </div>
           </div>
+
+          {prefillImageUrls.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                {prefillImageUrls.length} ảnh lấy từ Shopee (server sẽ tự tải về khi tạo job):
+              </div>
+              <div className="image-preview-grid">
+                {prefillImageUrls.map((url) => (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img key={url} src={url} alt="" className="image-preview-thumb" />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ marginBottom: 16 }}>

@@ -148,3 +148,41 @@ từ "hoàn hảo", "không tì vết", "bóng bẩy", "chuẩn studio", "CGI", 
 
 Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
 {"segments":[{"voiceoverVi":"...","veoPrompt":"..."}]}`;
+
+/**
+ * Prompt tách thông tin sản phẩm Shopee thành ĐÚNG các ô của form /livestream-v2/new.
+ *
+ * Khác EXTRACT_SYSTEM_PROMPT (chỉ trả name + description gộp): ở đây cần từng ô riêng để prefill
+ * form, và quan trọng nhất là `advantages` phải là ƯU ĐIỂM BÁN HÀNG thật — không phải thông số kỹ
+ * thuật. Map thô description thành ưu điểm sẽ cho ra "Kích thước 12cm" làm USP, mà prompt V2 bắt
+ * MỖI USP phải có một cảnh demo chứng minh bằng hình → cảnh demo vô nghĩa.
+ */
+export const V2_FIELD_EXTRACT_SYSTEM_PROMPT = `Bạn là trợ lý bóc tách thông tin sản phẩm từ dữ liệu thô của sàn TMĐT (Shopee/Lazada/TikTok Shop)
+để điền vào form tạo kịch bản livestream bán hàng.
+
+Đọc dữ liệu được cung cấp rồi trả về các trường sau. CHỈ dùng thông tin CÓ THẬT trong dữ liệu gốc —
+trường nào không suy ra được thì để chuỗi rỗng "", TUYỆT ĐỐI KHÔNG bịa.
+
+- name: tên sản phẩm, rút gọn cho dễ đọc khi lên hình (bỏ bớt các cụm nhồi từ khoá, emoji, mã SKU,
+  cụm khuyến mãi kiểu "FREESHIP", "GIÁ SỐC"). Giữ đúng bản chất sản phẩm.
+
+- advantages: mảng 3-5 chuỗi, là ƯU ĐIỂM BÁN HÀNG có thể DEMO ĐƯỢC BẰNG HÌNH trong livestream.
+  Mỗi ưu điểm là một cụm ngắn, nói LỢI ÍCH hoặc tính năng người xem THẤY được.
+  ĐÚNG: "Tạo bọt nhanh và nhiều", "Bề mặt mềm không xước da", "Có dây treo tiện lợi".
+  SAI (đây là thông số, KHÔNG phải ưu điểm): "Kích thước 12cm", "Chất liệu lưới PE", "Màu hồng",
+  "Xuất xứ Trung Quốc", "Trọng lượng 50g" — những thứ này thuộc các trường riêng bên dưới.
+  Nếu dữ liệu gốc quá nghèo, trả mảng rỗng [] thay vì bịa ưu điểm.
+
+- usage: công dụng chính, 1 câu ngắn (VD "Làm sạch và massage cơ thể khi tắm").
+- material: chất liệu (VD "Lưới PE mềm"). Không có thì "".
+- size: kích thước/khối lượng (VD "Đường kính khoảng 12cm"). Không có thì "".
+- colors: các màu/phân loại, ngăn bằng dấu phẩy (VD "Hồng, Xanh"). Không có thì "".
+- audience: đối tượng sử dụng (VD "Cả nam và nữ, mọi lứa tuổi"). Không có thì "".
+- howToUse: cách sử dụng ngắn gọn. Không có thì "".
+- storage: cách bảo quản. Không có thì "".
+
+Lưu ý về claim: nếu dữ liệu gốc có claim y tế mạnh ("trị mụn", "diệt khuẩn 100%", "chữa..."), hãy
+diễn đạt lại theo hướng an toàn ("hỗ trợ làm sạch", "giúp da sạch thoáng") khi đưa vào advantages.
+
+Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
+{"name":"...","advantages":["..."],"usage":"...","material":"...","size":"...","colors":"...","audience":"...","howToUse":"...","storage":"..."}`;

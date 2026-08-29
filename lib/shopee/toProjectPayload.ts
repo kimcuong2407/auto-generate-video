@@ -72,3 +72,58 @@ export function shopeeToProductInfo(p: ShopeeProductInfo): ProductInfo {
     visualDescription: '',
   };
 }
+
+/**
+ * Bộ dữ liệu prefill cho form /livestream-v2/new, chuyển qua sessionStorage khi bấm "Tạo kịch bản
+ * Shopee V2" ở trang crawl. Các ô AI tách được (usage/material/size/...) nằm ở `fields`, do route
+ * /api/livestream/v2-extract điền — xem lib/livestream/v2FieldExtract.ts.
+ */
+export interface ShopeeV2Prefill {
+  name: string;
+  advantages: string[];
+  usage: string;
+  material: string;
+  size: string;
+  colors: string;
+  audience: string;
+  howToUse: string;
+  storage: string;
+  channelName: string;
+  promotion: string;
+  imageUrls: string[];
+  /** Text thô gửi kèm để form còn nguồn đối chiếu nếu cần tách lại. */
+  rawText: string;
+}
+
+/**
+ * Map data crawl Shopee sang prefill form V2, phần KHÔNG cần AI.
+ *
+ * Chỉ suy được các ô có field tương ứng rõ ràng ở Shopee: tên, màu (models), tên kênh (shopName),
+ * khuyến mãi (discountPercent + freeShipping). Các ô còn lại (công dụng, chất liệu, kích thước,
+ * đối tượng, cách dùng, bảo quản) nằm lẫn trong description dạng văn xuôi nên để rỗng ở đây và
+ * được lấp bằng 1 lượt AI. `advantages` cũng vậy: map thô sẽ lẫn thông số kỹ thuật.
+ */
+export function shopeeToV2Prefill(p: ShopeeProductInfo): ShopeeV2Prefill {
+  const promoParts: string[] = [];
+  if (p.discountPercent > 0) promoParts.push(`Giảm ${p.discountPercent}%`);
+  if (p.freeShipping) promoParts.push('Freeship');
+
+  return {
+    name: p.name,
+    advantages: [],
+    usage: '',
+    material: '',
+    size: '',
+    colors: p.models.map((m) => m.name).filter(Boolean).join(', '),
+    audience: '',
+    howToUse: '',
+    storage: '',
+    channelName: p.shopName,
+    promotion: promoParts.join(', '),
+    imageUrls: p.images,
+    rawText: shopeeToLivestreamText(p),
+  };
+}
+
+/** Key sessionStorage dùng chung giữa trang crawl (ghi) và form V2 (đọc rồi xoá). */
+export const SHOPEE_V2_PREFILL_KEY = 'shopee-v2-prefill';

@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { TopNav } from '@/components/TopNav';
 import type { ShopeeProductInfo } from '@/lib/shopee/types';
-import { shopeeToLivestreamText, shopeeToProductInfo } from '@/lib/shopee/toProjectPayload';
+import {
+  shopeeToLivestreamText,
+  shopeeToProductInfo,
+  shopeeToV2Prefill,
+  SHOPEE_V2_PREFILL_KEY,
+} from '@/lib/shopee/toProjectPayload';
 import { MediaModal } from '@/components/MediaModal';
 
 // Số ảnh tối đa gửi lên /api/projects (khớp MAX_IMAGE_COUNT server-side). Không import từ
@@ -37,6 +43,7 @@ function revokeFileUrls(items: ImageItem[]): void {
 }
 
 export default function ShopeeCrawlPage() {
+  const router = useRouter();
   const [itemIdFilter, setItemIdFilter] = useState('');
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +53,7 @@ export default function ShopeeCrawlPage() {
   const [receivedAt, setReceivedAt] = useState<string | null>(null);
 
   // Trạng thái khởi tạo project từ data crawl.
-  const [creating, setCreating] = useState<'livestream' | 'project' | null>(null);
+  const [creating, setCreating] = useState<'livestream' | 'v2' | 'project' | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdLivestreamId, setCreatedLivestreamId] = useState<string | null>(null);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
@@ -164,6 +171,58 @@ export default function ShopeeCrawlPage() {
         return;
       }
       setCreatedLivestreamId(data.id);
+    } catch (err) {
+      setCreateError((err as Error).message);
+    } finally {
+      setCreating(null);
+    }
+  }
+
+  /**
+   * Sang form kịch bản Shopee V2 với dữ liệu đã điền sẵn.
+   *
+   * Crawl chỉ cho sẵn được tên/màu/tên kênh/khuyến mãi; công dụng, chất liệu, kích thước, đối
+   * tượng nằm lẫn trong mô tả dạng văn xuôi nên cần 1 lượt AI tách. Lượt AI này best-effort —
+   * hỏng thì vẫn chuyển trang với phần map thô, Mr.D tự điền nốt, hơn là nút bấm không làm gì.
+   */
+  async function goToV2Form() {
+    if (!product) return;
+    setCreating('v2');
+    setCreateError(null);
+    try {
+      const prefill = shopeeToV2Prefill(product);
+      // Ảnh người dùng tự dán thêm ở danh sách trên cũng đưa sang (chỉ ảnh URL — file từ máy không
+      // qua được sessionStorage, Mr.D chọn lại ở form).
+      const extraUrls = imageItems.filter((it) => it.kind === 'url').map((it) => it.url.trim()).filter(Boolean);
+      if (extraUrls.length > 0) prefill.imageUrls = extraUrls;
+
+      try {
+        const res = await fetch('/api/livestream/v2-extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: prefill.rawText }),
+        });
+        if (res.ok) {
+          const { fields } = await res.json();
+          if (fields) {
+            // AI chỉ ĐẮP vào ô còn trống, không ghi đè dữ liệu Shopee chắc chắn đúng (tên, màu).
+            prefill.name = prefill.name || fields.name || '';
+            prefill.colors = prefill.colors || fields.colors || '';
+            prefill.advantages = fields.advantages || [];
+            prefill.usage = fields.usage || '';
+            prefill.material = fields.material || '';
+            prefill.size = fields.size || '';
+            prefill.audience = fields.audience || '';
+            prefill.howToUse = fields.howToUse || '';
+            prefill.storage = fields.storage || '';
+          }
+        }
+      } catch {
+        // bỏ qua — chuyển trang với phần map thô.
+      }
+
+      sessionStorage.setItem(SHOPEE_V2_PREFILL_KEY, JSON.stringify(prefill));
+      router.push('/livestream-v2/new');
     } catch (err) {
       setCreateError((err as Error).message);
     } finally {
@@ -428,13 +487,18 @@ export default function ShopeeCrawlPage() {
               <button className="btn btn-primary" onClick={createLivestream} disabled={creating !== null}>
                 {creating === 'livestream' ? 'Đang tạo...' : '📡 Tạo job Livestream'}
               </button>
+              <button className="btn btn-primary" onClick={goToV2Form} disabled={creating !== null}>
+                {creating === 'v2' ? 'Đang tách thông tin...' : '🛒 Tạo kịch bản Shopee V2'}
+              </button>
               <button className="btn btn-primary" onClick={createProject} disabled={creating !== null}>
                 {creating === 'project' ? 'Đang tạo...' : '🎬 Tạo project Video Review'}
               </button>
             </div>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 8 }}>
-              Cả hai đều tải danh sách ảnh phía trên về làm kho ảnh sản phẩm. Với Livestream, vào màn chi tiết chọn 1
+              Cả ba đều tải danh sách ảnh phía trên về làm kho ảnh sản phẩm. Với Livestream, vào màn chi tiết chọn 1
               ảnh làm tham chiếu rồi gen video. Video Review dùng template mặc định (chỉnh lại ở Bước 1 nếu cần).
+              Kịch bản Shopee V2 mở form đã điền sẵn (AI tách công dụng/chất liệu/kích thước từ mô tả) để bạn
+              bổ sung follower, người xem và CTA trước khi tạo job.
             </span>
 
             {createError && (
