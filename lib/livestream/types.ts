@@ -87,6 +87,39 @@ export interface LivestreamStageBible {
   inputsFingerprint?: string;
 }
 
+/**
+ * "Khoá sản phẩm" — mô tả NGOẠI HÌNH VẬT LÝ cố định của sản phẩm, chốt 1 lần từ ảnh thật rồi ép
+ * dùng lại y nguyên ở mọi cảnh. Đối xứng với LivestreamStageBible (khoá người dẫn/bối cảnh).
+ *
+ * Vì sao cần: trước đây bước này chỉ có `visualDescription` — một chuỗi tự do, gọi vision lại từ
+ * đầu MỖI LẦN sinh script và không lưu ở đâu. Hai hệ quả: (1) sinh lại 1 sản phẩm lẻ ra mô tả
+ * khác lần trước → cùng món hàng nhưng veoPrompt tả khác nhau giữa các sản phẩm đã gen;
+ * (2) không có field cố định nên LLM tự chọn nhắc gì bỏ gì, sản phẩm đổi màu/mọc thêm bộ phận
+ * giữa các cảnh — lỗi tốn tiền nhất vì phải gen lại video.
+ *
+ * Các field là cụm mô tả TIẾNG VIỆT dùng thẳng trong veoPrompt. Xem lib/livestream/productLock.ts.
+ */
+export interface LivestreamProductLock {
+  /** Hình dạng tổng thể + tỷ lệ (VD "khối tròn dẹt, đường kính ~12cm, dày ~4cm"). */
+  shape: string;
+  /** Màu sắc chính xác, kể cả các biến thể màu nhìn thấy trong ảnh. */
+  color: string;
+  /** Chất liệu + kết cấu bề mặt (VD "lưới nilon xốp, sợi mảnh, bề mặt gợn"). */
+  material: string;
+  /** Kích thước ước lượng so với bàn tay — quyết định cầm 1 tay hay 2 tay. */
+  size: string;
+  /** Các bộ phận cố định NHÌN THẤY được (tay cầm, dây treo, nắp, vòi...). Không có thì "". */
+  components: string;
+  /** Câu khẳng định những gì TUYỆT ĐỐI không được đổi — dùng làm negative constraint. */
+  neverChange: string;
+  /**
+   * Dấu vết input đã dùng để chốt lock này (ảnh sản phẩm đã chọn + ảnh tick riêng cho script).
+   * Lệch giá trị hiện tại = lock đang tả sai món hàng, phải chốt lại; xem productLockFingerprint().
+   * undefined = lock chốt bởi bản code cũ (chưa ghi dấu vết) → coi như không khớp, chốt lại 1 lần.
+   */
+  inputsFingerprint?: string;
+}
+
 export interface LivestreamJob {
   /** Định danh public (URL, route param) — luôn bằng `slug`. PK bigint thật chỉ dùng nội bộ DB layer. */
   id: string;
@@ -194,6 +227,15 @@ export interface LivestreamJob {
    * được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
    */
   stageBible: LivestreamStageBible | null;
+
+  /**
+   * Khoá ngoại hình sản phẩm dùng chung mọi cảnh (xem LivestreamProductLock). null = chưa chốt,
+   * sẽ được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
+   *
+   * Cấp JOB chứ không cấp sản phẩm vì `selectedRefImagePaths` vốn dùng chung cho cả job — đúng
+   * cùng lý do visualDescription trước đây cũng chỉ tính 1 lần cho cả lượt chạy.
+   */
+  productLock: LivestreamProductLock | null;
 
   /**
    * Seed cố định dùng chung cho MỌI lần gen video của job (thay vì random mỗi đoạn) — giúp Veo ổn

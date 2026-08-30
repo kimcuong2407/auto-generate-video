@@ -24,6 +24,13 @@ async function streamScriptGeneration(
     productId?: string;
     message?: string;
     overlong?: Array<{ id: string; words: number; duration: number; maxWords: number }>;
+    qaIssues?: Array<{
+      scene: number;
+      group: string;
+      severity: string;
+      reason: string;
+      fix: string;
+    }>;
   }) => void
 ): Promise<void> {
   const res = await fetch(`/api/livestream/${jobId}/script/generate`, {
@@ -112,6 +119,7 @@ export default function LivestreamDetailPage() {
       setScriptingAll(true);
     }
     const overlongAll: string[] = [];
+    const qaAll: string[] = [];
     // LỖI phải nổi lên UI. Trước đây chỉ bắt 'stage_bible_stale' và 'product_done', nên khi server
     // gửi 'product_error'/'fatal' thì stream vẫn đóng bình thường và UI báo THÀNH CÔNG dù không có
     // đoạn nào được sinh — đúng thứ khiến Mr.D bấm "Chốt lại sân khấu" 3 lần mà script không đổi.
@@ -135,6 +143,16 @@ export default function LivestreamDetailPage() {
             ...e.overlong.map((o) => `${o.id}: ${o.words}/${o.maxWords} từ (${o.duration}s)`)
           );
         }
+        // Cảnh báo QA (lỗi vật lý/claim) cũng không lưu vào job — bắt tại đây như overlong.
+        // Chỉ hiện lỗi mức "cao": mức "thấp" chỉ là nguy cơ tuỳ cách Veo diễn giải, đẩy hết lên
+        // thì cảnh báo dài tới mức không ai đọc, mà đọc không hết thì bằng không có.
+        if (e.type === 'product_done' && e.qaIssues?.length) {
+          qaAll.push(
+            ...e.qaIssues
+              .filter((q) => q.severity === 'cao')
+              .map((q) => `Cảnh ${q.scene} (${q.group}): ${q.reason}${q.fix ? ` → ${q.fix}` : ''}`)
+          );
+        }
       });
       await refresh();
       // Lỗi ưu tiên hiển thị trước mọi cảnh báo khác — đây là thứ Mr.D cần biết ngay.
@@ -146,18 +164,28 @@ export default function LivestreamDetailPage() {
         setActionError(`❌ Sinh script thất bại ${failures.length} chỗ:\n${failures.join('\n')}`);
         return;
       }
+      // Gom MỌI cảnh báo vào 1 lần setActionError. Trước đây mỗi loại gọi setActionError riêng
+      // nên loại sau ghi đè loại trước — chốt lại sân khấu mà đồng thời có đoạn quá dài thì
+      // Mr.D chỉ thấy đúng cảnh báo cuối cùng.
+      const warnings: string[] = [];
       if (bibleRechecked) {
-        setActionError(
+        warnings.push(
           forceStageBible
             ? 'Đã chốt lại sân khấu (người dẫn/bối cảnh/giọng) và sinh lại script cho toàn bộ sản phẩm. Video đã gen trước đó vẫn theo sân khấu cũ — gen lại đoạn nếu muốn đồng bộ.'
             : 'Ảnh hoặc mô tả sản phẩm đã đổi so với lần trước — sân khấu (người dẫn/bối cảnh/giọng) đã được chốt lại theo dữ liệu mới. Các sản phẩm đã sinh script trước đó vẫn giữ sân khấu cũ, bấm "Sinh lại script" cho từng sản phẩm nếu muốn đồng bộ.'
         );
       }
       if (overlongAll.length > 0) {
-        setActionError(
+        warnings.push(
           `Cảnh báo: ${overlongAll.length} đoạn vẫn dài hơn thời lượng cho phép sau khi đã tự rút gọn — Veo có thể đọc không kịp và cắt cụt câu. Bấm sinh lại script cho sản phẩm đó nếu cần: ${overlongAll.join('; ')}`
         );
       }
+      if (qaAll.length > 0) {
+        warnings.push(
+          `⚠️ Soát kịch bản thấy ${qaAll.length} chỗ nên sửa TRƯỚC khi gen video:\n${qaAll.join('\n')}`
+        );
+      }
+      if (warnings.length > 0) setActionError(warnings.join('\n\n'));
     } catch (err) {
       setActionError((err as Error).message);
     } finally {

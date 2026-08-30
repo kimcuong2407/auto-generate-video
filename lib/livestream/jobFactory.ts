@@ -97,5 +97,6 @@ export function createNewJob(input: {
     videoRefPaths: [],
     videoSeed: null,
     stageBible: null,
+    productLock: null,
   };
 }

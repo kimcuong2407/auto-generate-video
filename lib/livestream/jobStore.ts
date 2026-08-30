@@ -149,6 +149,7 @@ function assembleJob(
     videoRefPaths: jobRow.videoRefPaths ?? [],
     videoSeed: jobRow.videoSeed,
     stageBible: jobRow.stageBible ?? null,
+    productLock: jobRow.productLock ?? null,
   };
 }
 
@@ -185,6 +186,7 @@ function jobToRow(job: LivestreamJob): Omit<typeof livestreamJobs.$inferInsert, 
     videoRefPaths: job.videoRefPaths ?? [],
     videoSeed: job.videoSeed ?? null,
     stageBible: job.stageBible ?? null,
+    productLock: job.productLock ?? null,
   };
 }
 

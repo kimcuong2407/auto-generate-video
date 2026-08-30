@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
 import { buildBackgroundPrompt, resolveBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
 import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { formatProductLockBlock, pickProductLockRefPaths } from '@/lib/livestream/productLock';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
 import { formatStageBibleBlock, isStageBibleStale } from '@/lib/livestream/stageBible';
@@ -213,6 +214,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   // Phải khớp CHÍNH XÁC nhánh prompt route generate sẽ dùng, nếu không bản xem trước vô nghĩa.
   const v2Input = await readV2Input(id).catch(() => null);
+  // Khoá ngoại hình sản phẩm: KHÁC visualDescription ở trên, lock được cache trong job nên preview
+  // hiện được bản THẬT mà không phải gọi AI. Chưa chốt lần nào (job mới) thì báo chỗ nó sẽ chèn.
+  const productLockBlock =
+    v2Input && job.productLock ? formatProductLockBlock(job.productLock) : undefined;
+  if (v2Input && !job.productLock && pickProductLockRefPaths(job).length > 0) {
+    notes.push(
+      'Khoá ngoại hình sản phẩm chưa được chốt — sẽ được AI vision chốt từ ảnh sản phẩm ở lần sinh script đầu tiên rồi chèn vào đúng vị trí này.'
+    );
+  }
   const userPrompt = buildScriptUserPrompt({
     description: product.description,
     durations,
@@ -224,6 +234,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       total: job.products.length,
       prevProductName: index > 0 ? job.products[index - 1].name : undefined,
     },
+    productLockBlock,
   });
 
   const result: PreviewPromptResult = {

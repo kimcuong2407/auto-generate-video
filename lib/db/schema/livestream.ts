@@ -27,7 +27,7 @@ import type {
   VeoModel,
 } from '../../types';
 import { VEO_MODELS } from '../../types';
-import type { LivestreamStageBible } from '../../livestream/types';
+import type { LivestreamProductLock, LivestreamStageBible } from '../../livestream/types';
 import { mariaJson } from './mariaJson';
 
 const ASPECT_RATIOS = ['9:16', '16:9'] as const;
@@ -87,6 +87,10 @@ export const livestreamJobs = mysqlTable(
   // Sân khấu cố định (người dẫn/bối cảnh/góc máy/giọng) dùng chung MỌI sản phẩm trong job — chốt
   // 1 lần để nhiều sản phẩm vẫn ra 1 buổi live thống nhất, xem lib/livestream/stageBible.ts.
   stageBible: mariaJson('stage_bible').$type<LivestreamStageBible | null>(),
+  // Khoá ngoại hình sản phẩm (hình dạng/màu/chất liệu/kích thước/bộ phận) dùng chung MỌI cảnh —
+  // chốt 1 lần từ ảnh thật, xem lib/livestream/productLock.ts. Nullable để ALTER TABLE chạy được
+  // trên bảng đã có data; job cũ đọc ra null rồi tự chốt ở lần sinh script kế tiếp.
+  productLock: mariaJson('product_lock').$type<LivestreamProductLock | null>(),
   },
   (t) => ({
     slugUnique: uniqueIndex('uq_jobs_slug').on(t.slug),

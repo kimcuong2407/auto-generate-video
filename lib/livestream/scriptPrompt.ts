@@ -36,8 +36,18 @@ export function buildScriptUserPrompt(args: {
   visualDescription?: string;
   stageBibleBlock?: string;
   position?: { index: number; total: number; prevProductName?: string };
+  /** Khối khoá ngoại hình sản phẩm (formatProductLockBlock) — chỉ job V2 dùng. */
+  productLockBlock?: string;
 }): string {
-  const { description, durations, v2Input, visualDescription, stageBibleBlock, position } = args;
+  const {
+    description,
+    durations,
+    v2Input,
+    visualDescription,
+    stageBibleBlock,
+    position,
+    productLockBlock,
+  } = args;
   return v2Input
     ? buildLivestreamV2UserPrompt(
         description,
@@ -45,7 +55,8 @@ export function buildScriptUserPrompt(args: {
         v2Input,
         visualDescription,
         stageBibleBlock,
-        position
+        position,
+        productLockBlock
       )
     : buildLivestreamUserPrompt(description, durations, visualDescription, stageBibleBlock, position);
 }

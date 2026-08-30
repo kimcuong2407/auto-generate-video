@@ -71,6 +71,42 @@ export function allocateAidaStages(sceneCount: number): AidaStage[] {
   return STAGE_RATIO.flatMap(([stage], i) => Array.from({ length: counts[i] }, () => stage));
 }
 
+/**
+ * Gán mỗi USP cho đúng MỘT cảnh phải demo nó bằng hình (STEP 5 của skill).
+ *
+ * Vì sao cần: prompt vẫn dặn "mỗi USP phải có cảnh demo chứng minh bằng hình" nhưng không có gì
+ * ràng buộc, nên LLM hay dồn 4 USP vào một câu thoại rồi các cảnh còn lại tả chung chung. Chia
+ * sẵn bằng code thì mỗi cảnh biết đích danh mình phải cho thấy điều gì, không tốn thêm lượt AI.
+ *
+ * Chỉ rải vào cảnh Interest và Desire: Attention là hook (sản phẩm vừa xuất hiện, chưa demo được)
+ * và Action là chốt đơn (đang đẩy CTA, chen demo vào là loãng). Nhiều USP hơn số cảnh khả dụng
+ * thì phần dư bị bỏ — trả về `dropped` để caller nói thẳng cho LLM biết còn USP nào chưa có chỗ,
+ * thay vì im lặng cắt.
+ */
+export function assignUspToScenes(
+  stages: AidaStage[],
+  advantages: string[]
+): { byScene: Array<string | null>; dropped: string[] } {
+  const byScene: Array<string | null> = stages.map(() => null);
+  const slots = stages
+    .map((stage, i) => ({ stage, i }))
+    .filter(({ stage }) => stage === 'interest' || stage === 'desire')
+    .map(({ i }) => i);
+
+  if (slots.length === 0 || advantages.length === 0) {
+    return { byScene, dropped: advantages.length > slots.length ? advantages.slice(slots.length) : [] };
+  }
+
+  // Rải đều thay vì dồn vào các cảnh đầu: 2 USP trên 6 cảnh demo mà dồn hết vào cảnh 3-4 thì
+  // nửa sau của phần thân không còn gì để cho thấy.
+  const step = slots.length / Math.min(advantages.length, slots.length);
+  advantages.slice(0, slots.length).forEach((usp, k) => {
+    byScene[slots[Math.floor(k * step)]] = usp;
+  });
+
+  return { byScene, dropped: advantages.slice(slots.length) };
+}
+
 /** Mốc thời gian tích luỹ của từng cảnh, dùng để ghi "0-8s" như format output của skill. */
 export function sceneTimeRanges(durations: number[]): Array<{ from: number; to: number }> {
   let acc = 0;
@@ -113,10 +149,13 @@ export function buildLivestreamV2UserPrompt(
   visualDescription?: string,
   /** Khối "sân khấu cố định" (formatStageBibleBlock) — bỏ trống nếu chưa chốt được. */
   stageBibleBlock?: string,
-  position?: { index: number; total: number; prevProductName?: string }
+  position?: { index: number; total: number; prevProductName?: string },
+  /** Khối "khoá ngoại hình sản phẩm" (formatProductLockBlock) — bỏ trống nếu chưa chốt được. */
+  productLockBlock?: string
 ): string {
   const stages = allocateAidaStages(durations.length);
   const ranges = sceneTimeRanges(durations);
+  const { byScene: uspByScene, dropped: uspDropped } = assignUspToScenes(stages, input.advantages);
 
   const bibleBlock = stageBibleBlock ? `${stageBibleBlock}\n\n` : '';
 
@@ -133,22 +172,32 @@ export function buildLivestreamV2UserPrompt(
     : '';
 
   const advantagesBlock = input.advantages.length
-    ? `\n\nƯU ĐIỂM SẢN PHẨM (do người bán cung cấp — chọn 3-5 cái mạnh nhất làm USP, mỗi USP phải có cảnh demo chứng minh bằng hình):\n${input.advantages
+    ? `\n\nƯU ĐIỂM SẢN PHẨM (do người bán cung cấp):\n${input.advantages
         .map((a) => `- ${a}`)
-        .join('\n')}`
+        .join('\n')}\nMỗi ưu điểm ĐÃ ĐƯỢC GÁN SẴN cho một cảnh cụ thể ở bảng cảnh bên dưới — cảnh nào có ghi "USP phải demo" thì hành động trong veoPrompt PHẢI cho THẤY RÕ điều đó bằng hình, không được chỉ nói suông.${
+        uspDropped.length
+          ? `\nCác ưu điểm sau KHÔNG đủ cảnh để demo riêng, chỉ nhắc thoáng qua trong lời thoại, KHÔNG dựng cảnh demo cho chúng: ${uspDropped.join('; ')}.`
+          : ''
+      }`
     : '';
 
-  const visualBlock = visualDescription
-    ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
-    : '';
+  // Product lock THAY THẾ visualDescription khi có: cùng nguồn (ảnh thật) nhưng lock là bản đã
+  // chốt cố định, đưa cả hai vào là cho LLM hai mô tả cùng món hàng để tự chọn — đúng thứ khoá
+  // sản phẩm sinh ra để loại bỏ.
+  const lockBlock = productLockBlock ? `\n\n${productLockBlock}` : '';
+  const visualBlock =
+    !productLockBlock && visualDescription
+      ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
+      : '';
 
   // Bảng cảnh: giai đoạn AIDA + mốc thời gian + trần số từ, gộp 1 dòng/cảnh cho LLM dễ bám.
   const scenePlan = durations
     .map((d, i) => {
       const stage = stages[i];
-      return `  - Cảnh ${i + 1} — ${STAGE_LABEL[stage]} | ${ranges[i].from}-${ranges[i].to}s | ${d}s | mục tiêu: ${STAGE_GOAL[stage]} | tối đa ${maxWordsFor(d)} từ (lý tưởng ${Math.round(maxWordsFor(d) * 0.9)} từ)`;
+      const usp = uspByScene[i] ? ` | USP phải demo bằng hình: ${uspByScene[i]}` : '';
+      return `  - Cảnh ${i + 1} — ${STAGE_LABEL[stage]} | ${ranges[i].from}-${ranges[i].to}s | ${d}s | mục tiêu: ${STAGE_GOAL[stage]}${usp} | tối đa ${maxWordsFor(d)} từ (lý tưởng ${Math.round(maxWordsFor(d) * 0.9)} từ)`;
     })
     .join('\n');
 
-  return `${bibleBlock}${positionBlock}${formatV2InputBlock(input)}\n\nMô tả sản phẩm:\n${description}${advantagesBlock}${visualBlock}\n\nKỊCH BẢN GỒM ĐÚNG ${durations.length} CẢNH, phân bổ AIDA và thời lượng như sau (BÁM ĐÚNG, không tự đổi giai đoạn của cảnh):\n${scenePlan}\n\nMỗi cảnh viết ĐÚNG ${input.dialoguesPerScene} câu thoại MC trong voiceoverVi (câu 1 hook/nối tiếp, câu giữa thông tin chính, câu cuối lợi ích/tương tác/dẫn sang cảnh sau), viết liền thành một đoạn văn nói tự nhiên.\n\nGIỚI HẠN SỐ TỪ BẮT BUỘC cho voiceoverVi từng cảnh đã ghi ở bảng trên — đếm từ, KHÔNG được vượt (vượt là video bị cắt cụt câu). Thà thiếu vài từ còn hơn thừa: ưu tiên câu ngắn, mỗi câu khoảng 5-10 từ.\n\nTrả về đúng ${durations.length} phần tử trong "segments", đúng thứ tự tương ứng bảng cảnh ở trên.`;
+  return `${bibleBlock}${positionBlock}${formatV2InputBlock(input)}\n\nMô tả sản phẩm:\n${description}${lockBlock}${advantagesBlock}${visualBlock}\n\nKỊCH BẢN GỒM ĐÚNG ${durations.length} CẢNH, phân bổ AIDA và thời lượng như sau (BÁM ĐÚNG, không tự đổi giai đoạn của cảnh):\n${scenePlan}\n\nMỗi cảnh viết ĐÚNG ${input.dialoguesPerScene} câu thoại MC trong voiceoverVi (câu 1 hook/nối tiếp, câu giữa thông tin chính, câu cuối lợi ích/tương tác/dẫn sang cảnh sau), viết liền thành một đoạn văn nói tự nhiên.\n\nGIỚI HẠN SỐ TỪ BẮT BUỘC cho voiceoverVi từng cảnh đã ghi ở bảng trên — đếm từ, KHÔNG được vượt (vượt là video bị cắt cụt câu). Thà thiếu vài từ còn hơn thừa: ưu tiên câu ngắn, mỗi câu khoảng 5-10 từ.\n\nTrả về đúng ${durations.length} phần tử trong "segments", đúng thứ tự tương ứng bảng cảnh ở trên.`;
 }

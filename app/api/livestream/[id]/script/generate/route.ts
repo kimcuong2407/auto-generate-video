@@ -20,6 +20,8 @@ import {
   formatStageBibleBlock,
   isStageBibleStale,
 } from '@/lib/livestream/stageBible';
+import { ensureProductLock, formatProductLockBlock } from '@/lib/livestream/productLock';
+import { reviewScriptQuality } from '@/lib/livestream/scriptQa';
 import { ensureLocalImage } from '@/lib/livestream/imageR2';
 import { resolveWithinJob } from '@/lib/livestream/paths';
 
@@ -114,6 +116,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       }
 
+      // Khoá ngoại hình sản phẩm cấp job — chốt 1 lần từ ảnh thật rồi ép mọi cảnh tả đúng món
+      // hàng đó. Chỉ áp cho job V2: prompt V1 không có chỗ nhận khối này, và V1 đang chạy
+      // production với override theo job nên không đổi hành vi.
+      // Best-effort: null (chưa chọn ảnh / thiếu AI_VISION_MODEL / lỗi) thì user prompt rơi về
+      // dùng visualDescription như cũ, không chặn sinh script.
+      let productLockBlock: string | undefined;
+      if (v2Input) {
+        const lock = await ensureProductLock(id);
+        if (lock) {
+          productLockBlock = formatProductLockBlock(lock);
+          send({ type: 'product_lock_done', productLock: lock });
+        }
+      }
+
       // Sân khấu cố định cấp job (người dẫn/bối cảnh/góc máy/giọng) — chốt 1 lần rồi ép dùng lại
       // cho MỌI sản phẩm, nếu không mỗi lần gọi LLM (1 lần/sản phẩm) sẽ tự bịa 1 buổi live khác.
       // Sinh lại 1 sản phẩm lẻ vẫn dùng bible đã cache để khớp các sản phẩm đã gen trước đó —
@@ -172,6 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               total: job.products.length,
               prevProductName: index > 0 ? job.products[index - 1].name : undefined,
             },
+            productLockBlock,
           });
 
           const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
@@ -222,7 +239,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           // Phần còn sót sau khi đã tự rút gọn (AI lỗi / viết lại vẫn dư) — chỉ cảnh báo, không
           // chặn: video vẫn gen được, người dùng tự sửa tay hoặc bấm sinh lại.
           const overlong = findOverlongSegments(segments);
-          send({ type: 'product_done', productId: product.id, segments, overlong });
+
+          // QA lỗi vật lý + claim. CHỈ CẢNH BÁO: kịch bản đã ghi vào job ở trên rồi, đây là lớp
+          // soát cuối để Mr.D biết cảnh nào đáng sửa TRƯỚC khi đốt quota Veo — chặn đúng chỗ tốn
+          // tiền nhất. Chỉ chạy cho job V2; best-effort, lỗi thì trả mảng rỗng.
+          const qaIssues = v2Input ? await reviewScriptQuality(segments) : [];
+          send({ type: 'product_done', productId: product.id, segments, overlong, qaIssues });
         } catch (err) {
           const message =
             err instanceof ChatApiError

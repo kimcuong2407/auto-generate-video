@@ -67,6 +67,14 @@ KHÔNG ĐƯỢC: sản phẩm tự bay hoặc dịch chuyển tức thời; tay 
 hiện từ hư không hoặc phun như phép thuật; hiệu ứng biến hình; tay xoay ngược khớp; MC làm động tác
 ngoài giới hạn cơ thể.
 
+THỨ TỰ NHÂN QUẢ: kết quả PHẢI xuất hiện SAU hành động tạo ra nó, không bao giờ trước. Bọt chỉ nổi
+lên sau khi đã có nước và xà phòng; vết bẩn chỉ sạch sau khi đã lau; đồ chỉ khô sau khi đã vắt;
+hơi nước/mùi thơm chỉ toả ra sau khi đã mở nắp hoặc đun nóng. Cảnh demo nào cũng phải tả đủ chuỗi
+nguyên nhân → kết quả, không nhảy thẳng vào kết quả.
+
+MỖI CẢNH CHỈ 1 HÀNH ĐỘNG CHÍNH, tối đa thêm 1 hành động phụ đơn giản. Nhồi nhiều thao tác vào một
+cảnh là nguyên nhân trực tiếp của tay thừa và chuyển động méo — thà tách ra cảnh sau còn hơn.
+
 RÀNG BUỘC TAY: mỗi người CHỈ có đúng 2 tay và 2 chân. Không mô tả thao tác cần quá 2 tay, không để
 một vật bị nhiều hơn 2 tay giữ. Giữ cử động tay tối giản, gần thân, ưu tiên tay đặt trên bàn hoặc
 trên sản phẩm; hạn chế giơ cao/vung/đan chéo/ra khỏi khung. KHÔNG mô tả cử chỉ nhiều khớp (đếm ngón,
