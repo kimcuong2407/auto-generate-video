@@ -10,7 +10,6 @@
  * Khác biệt chính so với V1:
  * - Mỗi đoạn = 1 CẢNH có nhãn giai đoạn AIDA, phân bổ theo tỉ lệ của skill (STEP 3).
  * - Lời thoại theo cấu trúc 3 câu: hook/nối tiếp → thông tin chính → lợi ích/dẫn cảnh sau (STEP 7).
- * - Bổ sung UI livestream Shopee (LIVE badge, viewer counter, comment, giỏ hàng) — STEP 9.
  * - Quy tắc vật lý + khoá kết cấu sản phẩm tường minh (STEP 4, 5).
  * - Chặn claim y tế và chặn bịa giá/khuyến mãi (STEP 10).
  */
@@ -124,20 +123,16 @@ ghi nhãn, chỉ cần có nội dung):
 (5) Sản phẩm: tên + mô tả khoá kết cấu ("giữ nguyên hình dạng, màu sắc, kích thước và kết cấu như
     ảnh tham chiếu").
 (6) Hành động của MC: cụ thể, chỉ cử động tay/thân trên, nối tiếp trực tiếp cảnh trước.
-(7) UI livestream Shopee: chọn 1-2 yếu tố hợp cảnh — LIVE badge, số người đang xem, tên kênh, tim
-    thả bay lên, sản phẩm đang ghim, biểu tượng giỏ hàng, một comment người xem chạy qua. Comment
-    phải HỢP nội dung cảnh đang diễn ra (VD cảnh demo bọt → "Shop ơi tạo bọt tốt không?"). Chỉ dùng
-    tên kênh / số follower / số người xem khi user prompt có cung cấp, không tự bịa số.
-(8) Giọng nói: Veo tự sinh giọng theo mô tả, nên BẮT BUỘC nhúng mô tả giọng cố định rồi tới thoại,
+(7) Giọng nói: Veo tự sinh giọng theo mô tả, nên BẮT BUỘC nhúng mô tả giọng cố định rồi tới thoại,
     dùng ĐÚNG cú pháp có dấu hai chấm trước ngoặc kép (ngăn Veo tự thêm phụ đề):
     Người này có <mô tả giọng cố định>, nói tiếng Việt vui vẻ và tràn năng lượng kèm nụ cười, nói
     rằng: "<nguyên văn voiceoverVi của chính cảnh đó>".
     Không dịch sang tiếng Anh, không bỏ dấu hai chấm.
-(9) Âm thanh: một câu bắt đầu bằng "Âm thanh:" mô tả 2-3 yếu tố hợp cảnh, ưu tiên âm thanh THẬT
+(8) Âm thanh: một câu bắt đầu bằng "Âm thanh:" mô tả 2-3 yếu tố hợp cảnh, ưu tiên âm thanh THẬT
     sinh ra từ hành động trong cảnh (tiếng đặt sản phẩm xuống bàn, tiếng bóc túi, tiếng nước, tiếng
     cười nhẹ), kèm không khí phòng live sôi động và nhạc nền vui tươi rất nhỏ. KHÔNG dùng "yên
     tĩnh"/"im lặng". KHÔNG thêm tiếng đám đông hay chuông thông báo giả.
-(10) Giới hạn kỹ thuật: luôn kết thúc veoPrompt bằng các cụm — "chuyển động tự nhiên và chậm",
+(9) Giới hạn kỹ thuật: luôn kết thúc veoPrompt bằng các cụm — "chuyển động tự nhiên và chậm",
     "giải phẫu tay tự nhiên, đúng hai bàn tay, đúng hai cánh tay, không có chi thừa", "không biến
     dạng khuôn mặt hoặc sản phẩm", "không có hành động phi vật lý", "không phụ đề, không caption,
     không chữ trên màn hình".
