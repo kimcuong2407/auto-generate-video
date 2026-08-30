@@ -5,3 +5,4 @@
  */
 export * from './livestream';
 export * from './projects';
+export * from './chatgptImage';

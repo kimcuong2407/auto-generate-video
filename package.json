@@ -43,7 +43,9 @@
     "check:background-required": "tsx scripts/check-background-required.ts",
     "check:aida-allocation": "tsx scripts/check-aida-allocation.ts",
     "check:shopee-v2-prefill": "tsx scripts/check-shopee-v2-prefill.ts",
-    "check:background-refs": "tsx scripts/check-background-refs.ts"
+    "check:background-refs": "tsx scripts/check-background-refs.ts",
+    "check:chatgpt-image-filter": "tsx scripts/check-chatgpt-image-filter.ts",
+    "chatgpt:login": "tsx scripts/chatgpt-login.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

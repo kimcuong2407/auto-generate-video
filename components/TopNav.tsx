@@ -22,6 +22,7 @@ const TABS = [
   { href: '/shopee-crawl', label: 'Shopee Crawl', icon: '🛍️', match: (p: string) => p.startsWith('/shopee-crawl') },
   { href: '/settings/ai', label: 'Cài đặt AI', icon: '⚙️', match: (p: string) => p === '/settings/ai' },
   { href: '/settings/flow', label: 'Tài khoản Veo', icon: '🔑', match: (p: string) => p === '/settings/flow' },
+  { href: '/settings/chatgpt', label: 'Tài khoản ChatGPT', icon: '🖼️', match: (p: string) => p === '/settings/chatgpt' },
 ];
 
 export function TopNav() {

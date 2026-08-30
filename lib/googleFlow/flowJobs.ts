@@ -13,6 +13,8 @@ import { resolveActiveAccount, withTokenRetry } from './recaptcha';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
 import { generateOmniImage } from '../omniroute/imageGen';
+import { generateChatgptImage } from '../chatgptImage/imageGen';
+import { CHATGPT_LOCAL_MODEL } from '../imageModels';
 import { generateVideo, pollVideoStatus } from './videoGen';
 import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
@@ -259,6 +261,24 @@ export async function generateStoryboardImage(params: {
   // Model OmniRoute (vd "chatgpt-web/gpt-5.5", chứa "/") → rẽ sang provider khác, không đụng
   // Google Flow (không cần flowProjectId/account thật). Model Google Flow (flow-image,
   // HARBOR_SEAL, GEM_PIX_2, NARWHAL) không chứa "/" nên rơi xuống nhánh cũ như trước.
+  // Model ChatGPT web (browser automation tự chạy, xem lib/chatgptImage/) — kiểm TRƯỚC nhánh
+  // "/" vì 'chatgpt-local' không chứa "/" và cũng không phải model Google Flow.
+  if (params.model === CHATGPT_LOCAL_MODEL) {
+    const paths = await generateChatgptImage({
+      prompt: params.prompt,
+      aspect: params.aspect,
+      refImagePaths: (params.refImages || []).map((r) => r.path),
+      timeoutMs: params.timeoutMs,
+    });
+    return {
+      job_id: '',
+      dir: path.dirname(paths[0]),
+      paths,
+      uploadedMediaIds: {},
+      flowProjectId: params.projectId || '',
+    };
+  }
+
   if (params.model?.includes('/')) {
     const paths = await generateOmniImage({
       prompt: params.prompt,

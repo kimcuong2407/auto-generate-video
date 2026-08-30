@@ -41,8 +41,13 @@ mkdir -p ~/apps && cd ~/apps
 git clone <URL_REPO_GIT> auto-generate-review-product
 cd auto-generate-review-product
 
-# 5) Chromium cho Playwright (fetch link render JS)
+# 5) Chromium cho Playwright (fetch link render JS + gen ảnh ChatGPT)
 npx playwright install --with-deps chromium
+
+# 5b) Xvfb — màn hình ảo, BẮT BUỘC nếu dùng gen ảnh qua ChatGPT
+# ChatGPT phát hiện được Chromium chạy headless và sẽ chặn/đòi verify. Nên automation gen ảnh
+# chạy headful, cần một DISPLAY ảo. (Fetch link ở tier 2 vẫn headless, không liên quan.)
+sudo apt install -y xvfb
 
 # 6) Tạo .env.local trên VPS (KHÔNG commit) — copy từ .env.example rồi điền giá trị thật
 cp .env.example .env.local
@@ -51,12 +56,50 @@ nano .env.local     # điền AI_CHAT_API_*, các timeout, R2_*, v.v.
 # 7) Build + chạy lần đầu bằng PM2
 npm ci
 npm run build
+# Dùng gen ảnh ChatGPT thì chạy dòng có xvfb-run (xem mục "Xvfb" bên dưới); không dùng thì
+# dòng pm2 thường là đủ.
 pm2 start npm --name review-app -- start
+# pm2 start "xvfb-run -a npm start" --name review-app     # bản có Xvfb
 pm2 save
 pm2 startup          # chạy dòng lệnh nó in ra để PM2 tự khởi động lại sau reboot
 ```
 
 App chạy ở `http://127.0.0.1:3000`. `PM2_APP_NAME` ở bước trên là `review-app`.
+
+### Xvfb cho gen ảnh ChatGPT
+
+Muốn dùng model **ChatGPT (tài khoản riêng)** thì process phải có `DISPLAY`. Cách gọn nhất là
+bọc lệnh start bằng `xvfb-run`:
+
+```bash
+pm2 delete review-app 2>/dev/null
+pm2 start "xvfb-run -a npm start" --name review-app
+pm2 save
+```
+
+`xvfb-run -a` tự chọn số display còn trống, nên `pm2 reload` sau mỗi lần deploy không bị đụng
+display cũ.
+
+### Đăng nhập tài khoản ChatGPT
+
+VPS không có màn hình nên **không đăng nhập trực tiếp trên VPS được**. Làm trên máy có màn hình:
+
+```bash
+# Trên máy Mac (trong repo)
+npm run chatgpt:login "Tài khoản chính"     # mở Chromium, đăng nhập bằng tay
+tar czf profile.tgz -C data/chatgpt-profiles <account-id>
+
+# Copy lên VPS
+scp profile.tgz deploy@<VPS>:~/apps/auto-generate-review-product/data/chatgpt-profiles/
+scp data/chatgpt-auth/accounts.json deploy@<VPS>:~/apps/auto-generate-review-product/data/chatgpt-auth/
+
+# Trên VPS
+cd ~/apps/auto-generate-review-product/data/chatgpt-profiles && tar xzf profile.tgz && rm profile.tgz
+```
+
+Kiểm tra ở **Cài đặt → Tài khoản ChatGPT**: trạng thái phải là "sẵn sàng". Nếu báo
+"cần đăng nhập lại" thì ChatGPT đã đá phiên ra — thường do IP VPS khác IP máy login. Lúc đó
+phải đăng nhập trực tiếp trên VPS qua X11 forwarding (`ssh -X` rồi chạy `npm run chatgpt:login`).
 
 > **`data/` là dữ liệu bền** — nằm trong app-dir, đã `.gitignore` nên `git reset --hard` khi deploy **không xoá** nó. Session/token/project giữ nguyên qua mỗi lần deploy.
 

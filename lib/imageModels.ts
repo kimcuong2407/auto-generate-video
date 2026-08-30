@@ -9,10 +9,20 @@
 // lỗi 401 "Authentication failed for all eligible image-provider accounts".)
 export const DEFAULT_STORYBOARD_MODEL = 'flow-image';
 
+/**
+ * Model gen ảnh qua ChatGPT web CHẠY TRÊN CHÍNH SERVER NÀY (Playwright điều khiển Chromium
+ * đã đăng nhập — xem lib/chatgptImage/). Khác hẳn 'chatgpt-web/gpt-5.5' vốn đi qua pool
+ * account của OmniRoute; pool đó đã lỗi 401 nên có bản tự chạy này để không phụ thuộc bên thứ ba.
+ *
+ * KHÔNG chứa "/" — nhánh rẽ provider ở flowJobs.ts kiểm hằng này TRƯỚC khi kiểm dấu "/".
+ */
+export const CHATGPT_LOCAL_MODEL = 'chatgpt-local';
+
 // 2 option provider gen ảnh hiển thị ở UI (StoryboardStep, JobImagePanel) — value là chuỗi
 // `model` thực gửi xuống generateStoryboardImage(): có "/" → OmniRoute, không có → Google Flow.
 export const IMAGE_MODEL_OPTIONS = [
-  { value: 'chatgpt-web/gpt-5.5', label: 'ChatGPT' },
+  { value: 'chatgpt-web/gpt-5.5', label: 'ChatGPT (OmniRoute)' },
+  { value: CHATGPT_LOCAL_MODEL, label: 'ChatGPT (tài khoản riêng)' },
   { value: 'flow-image', label: 'Veo model' },
 ] as const;
 

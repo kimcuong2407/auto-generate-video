@@ -4,6 +4,7 @@
  * UI mở:
  * - livestream (xem lib/livestream/backgroundPoller.ts)
  * - project video review (xem lib/data/backgroundPoller.ts)
+ * Kèm worker gen ảnh ChatGPT (xem lib/chatgptImage/worker.ts).
  */
 export async function register() {
   // Chỉ chạy trong Node.js runtime (bỏ qua edge runtime).
@@ -25,5 +26,10 @@ export async function register() {
 
     const { startProjectPoller } = await import('./lib/data/backgroundPoller');
     startProjectPoller();
+
+    // Worker gen ảnh qua ChatGPT web (queue chatgpt_image_jobs). Tự no-op nếu chưa cấu hình
+    // DB hoặc chưa có account ChatGPT nào đăng nhập.
+    const { startChatgptImageWorker } = await import('./lib/chatgptImage/worker');
+    startChatgptImageWorker();
   }
 }
