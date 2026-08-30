@@ -146,6 +146,7 @@ function assembleJob(
     // Cột nullable (ALTER TABLE trên bảng đã có data) — null coi như "chưa chọn", để server tự chọn.
     backgroundRefPaths: jobRow.backgroundRefPaths ?? [],
     scriptRefPaths: jobRow.scriptRefPaths ?? [],
+    videoRefPaths: jobRow.videoRefPaths ?? [],
     videoSeed: jobRow.videoSeed,
     stageBible: jobRow.stageBible ?? null,
   };
@@ -181,6 +182,7 @@ function jobToRow(job: LivestreamJob): Omit<typeof livestreamJobs.$inferInsert, 
     backgroundPromptOverride: job.backgroundPromptOverride ?? null,
     backgroundRefPaths: job.backgroundRefPaths ?? [],
     scriptRefPaths: job.scriptRefPaths ?? [],
+    videoRefPaths: job.videoRefPaths ?? [],
     videoSeed: job.videoSeed ?? null,
     stageBible: job.stageBible ?? null,
   };

@@ -182,6 +182,14 @@ export interface LivestreamJob {
    */
   scriptRefPaths: string[];
   /**
+   * Ảnh người dùng TỰ CHỌN gửi cho Veo khi gen video — relPath, theo ĐÚNG thứ tự tick.
+   *
+   * Rỗng = để pickRefImagePaths tự xếp ưu tiên (ảnh mẫu → ảnh nền → ảnh sản phẩm). Có giá trị =
+   * dùng đúng danh sách này. Trần 3 ảnh của Veo VẪN áp dụng, nhưng người dùng tự quyết ảnh nào
+   * nằm trong 3 suất đó thay vì bị hệ thống cắt theo thứ tự cố định.
+   */
+  videoRefPaths: string[];
+  /**
    * Sân khấu cố định dùng chung mọi sản phẩm (xem LivestreamStageBible). null = chưa sinh, sẽ
    * được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
    */

@@ -11,6 +11,7 @@
  */
 import assert from 'node:assert';
 import {
+  pickRefImagePaths,
   pickScriptRefEntries,
   pickVisionRefEntries,
   stageBibleFingerprint,
@@ -25,6 +26,7 @@ const base = {
   selectedRefImagePaths: ['inputs/p1.jpg', 'inputs/p2.jpg'],
   selectedBackgroundImagePath: 'inputs/bg.jpg',
   scriptRefPaths: [] as string[],
+  videoRefPaths: [] as string[],
   products: [product('a')],
 };
 const job = (over: Partial<typeof base> = {}) => ({ ...base, ...over }) as unknown as LivestreamJob;
@@ -99,4 +101,42 @@ assert.deepStrictEqual(
   'chưa tick gì → vision đọc mọi ảnh sản phẩm đã chọn như cũ'
 );
 
-console.log('✓ check-script-refs: 8/8 pass');
+// ─── videoRefPaths: ảnh tick cho bước GEN VIDEO (gửi thẳng Veo, trần cứng 3 ảnh) ─────────────
+
+// 8. Rỗng = giữ thứ tự ưu tiên cũ: ảnh mẫu → ảnh nền → ảnh sản phẩm.
+assert.deepStrictEqual(
+  pickRefImagePaths(job(), false),
+  ['inputs/model.jpg', 'inputs/bg.jpg', 'inputs/p1.jpg'],
+  'chưa tick → giữ nguyên thứ tự ưu tiên mặc định'
+);
+
+// 9. CA CỦA MR.D: ảnh sản phẩm bị thứ tự mặc định cắt mất, tick tay phải đưa được nó vào.
+assert.deepStrictEqual(
+  pickRefImagePaths(job({ videoRefPaths: ['inputs/p2.jpg', 'inputs/model.jpg'] }), false),
+  ['inputs/p2.jpg', 'inputs/model.jpg'],
+  'tick tay phải thắng thứ tự ưu tiên mặc định'
+);
+
+// 10. Trần 3 ảnh của Veo VẪN áp — tick 5 ảnh thì chỉ 3 ảnh ĐẦU được gửi, không phải cả 5.
+assert.deepStrictEqual(
+  pickRefImagePaths(
+    job({
+      videoRefPaths: ['inputs/p1.jpg', 'inputs/p2.jpg', 'inputs/bg.jpg', 'inputs/model.jpg'],
+    }),
+    false
+  ),
+  ['inputs/p1.jpg', 'inputs/p2.jpg', 'inputs/bg.jpg'],
+  'tick nhiều hơn 3 vẫn bị cắt còn 3 theo trần Veo'
+);
+
+// 11. Có frame chain thì chừa 1 suất → chỉ còn 2 ảnh tick đầu.
+assert.deepStrictEqual(
+  pickRefImagePaths(
+    job({ videoRefPaths: ['inputs/p1.jpg', 'inputs/p2.jpg', 'inputs/bg.jpg'] }),
+    true
+  ),
+  ['inputs/p1.jpg', 'inputs/p2.jpg'],
+  'nối frame đoạn trước thì chỉ còn 2 suất cho ảnh tick'
+);
+
+console.log('✓ check-script-refs: 12/12 pass');

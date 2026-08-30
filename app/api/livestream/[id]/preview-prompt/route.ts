@@ -32,13 +32,15 @@ export interface PreviewPromptResult {
    */
   notes: string[];
   /**
-   * Chỉ có ở step='script': dữ liệu để modal cho SỬA TẠI CHỖ trước khi chạy — system prompt đang
-   * dùng và kho ảnh có thể tick. Hai bước kia sửa ở panel riêng nên không cần.
+   * Dữ liệu để modal cho SỬA TẠI CHỖ trước khi chạy. step='script' có cả prompt lẫn ảnh;
+   * step='segment' chỉ có ảnh (veoPrompt đã chốt sẵn trong đoạn, sửa ở ô "Xem prompt").
    */
   editable?: {
-    systemPrompt: string;
+    /** Bước nào đang sửa — modal gửi lại field này khi lưu danh sách ảnh. */
+    step: 'script' | 'video';
+    systemPrompt?: string;
     /** true = systemPrompt là bản người dùng đã override, false = đang dùng mặc định. */
-    isCustomPrompt: boolean;
+    isCustomPrompt?: boolean;
     /** Ảnh đang tick (job.scriptRefPaths). Rỗng = server tự chọn. */
     chosenRefPaths: string[];
     /** Mọi ảnh có thể tick, kèm vai trò để hiện nhãn dưới thumbnail. */
@@ -163,15 +165,35 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       ...(job.selectedBackgroundImagePath ? [job.selectedBackgroundImagePath] : []),
       ...(job.selectedRefImagePaths ?? []),
     ].filter((rel) => !detached.has(rel) && !refPaths.includes(rel));
-    if (dropped.length > 0) {
+    if (dropped.length > 0 && (job.videoRefPaths ?? []).length === 0) {
       segNotes.push(
-        `⚠️ Veo chỉ nhận tối đa 3 ảnh — ${dropped.length} ảnh đã chọn bị BỎ LẠI: ${dropped.join(', ')}. Tách bớt ảnh (nút 🎬) để đổi thứ tự ưu tiên.`
+        `⚠️ Veo chỉ nhận tối đa 3 ảnh — ${dropped.length} ảnh đã chọn bị BỎ LẠI: ${dropped.join(', ')}. Tick ảnh ở "📎 Đổi ảnh gửi cho Veo" bên dưới để tự quyết ảnh nào được gửi.`
       );
+    }
+    if ((job.videoRefPaths ?? []).length === 0) {
+      segNotes.push('Đang để hệ thống tự xếp ưu tiên ảnh. Tick ảnh bên dưới để tự quyết.');
     }
     const result: PreviewPromptResult = {
       prompt: `===== LỜI THOẠI (đoạn #${segment.order}, ${segment.duration}s) =====\n${segment.voiceoverVi || '(trống)'}\n\n===== PROMPT VIDEO GỬI VEO =====\n${segment.veoPrompt || '(chưa có — cần sinh script trước)'}`,
       refImages: refPaths.map((rel) => ({ rel, label: labelOf(rel) })),
       notes: segNotes,
+      editable: {
+        step: 'video',
+        chosenRefPaths: job.videoRefPaths ?? [],
+        // Cùng tập ảnh mà route PUT images/script-refs chấp nhận — lệch nhau là tick xong báo lỗi.
+        candidates: [
+          ...(job.selectedModelImagePath
+            ? [{ rel: job.selectedModelImagePath, role: 'ảnh mẫu' }]
+            : []),
+          ...(job.spokespersonImagePaths ?? []).map((rel) => ({
+            rel,
+            role: (job.selectedRefImagePaths ?? []).includes(rel)
+              ? 'ảnh sản phẩm (đã chọn)'
+              : 'ảnh sản phẩm',
+          })),
+          ...(job.backgroundImagePaths ?? []).map((rel) => ({ rel, role: 'ảnh nền' })),
+        ].filter((item, i, arr) => arr.findIndex((x) => x.rel === item.rel) === i),
+      },
     };
     return NextResponse.json(result);
   }
@@ -219,6 +241,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         : []),
     ],
     editable: {
+      step: 'script',
       systemPrompt: resolveScriptSystemPrompt(job, v2Input),
       isCustomPrompt: !!job.scriptSystemPromptOverride?.trim(),
       chosenRefPaths: job.scriptRefPaths ?? [],

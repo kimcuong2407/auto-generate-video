@@ -377,6 +377,7 @@ export default function LivestreamDetailPage() {
           imageR2Urls={job.imageR2Urls ?? undefined}
           confirmLabel={`▶ Gen toàn bộ ${totalSegments} đoạn (prompt mỗi đoạn khác nhau)`}
           onConfirm={handleGenerateAllSegments}
+          onSaved={refresh}
           onClose={() => setBulkPreview(null)}
         />
       )}

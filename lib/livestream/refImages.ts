@@ -179,10 +179,17 @@ export function pickRefImagePaths(
     LivestreamJob,
     'selectedRefImagePaths' | 'selectedModelImagePath' | 'selectedBackgroundImagePath'
   > &
-    Partial<Pick<LivestreamJob, 'detachedImagePaths'>>,
+    Partial<Pick<LivestreamJob, 'detachedImagePaths' | 'videoRefPaths'>>,
   hasPrevFrame: boolean
 ): string[] {
   const limit = hasPrevFrame ? MAX_REF_IMAGES - 1 : MAX_REF_IMAGES;
+  // Người dùng đã tự tick ảnh cho bước gen video → dùng ĐÚNG thứ tự đó, bỏ qua thứ tự ưu tiên
+  // mặc định bên dưới. Vẫn cắt theo `limit` vì trần 3 ảnh là giới hạn cứng của Veo, nhưng giờ
+  // người dùng tự quyết ảnh nào chiếm 3 suất thay vì bị hệ thống cắt mất ảnh mình cần.
+  const chosen = job.videoRefPaths ?? [];
+  // Tick tay là chỉ thị TRỰC TIẾP và mới hơn, nên nó thắng cả nút "tách khỏi gen video" — người
+  // dùng vừa tick đúng ảnh đó thì không có lý do gì lọc nó ra rồi im lặng gửi thiếu.
+  if (chosen.length > 0) return chosen.slice(0, limit);
   // Ảnh đã "tách khỏi gen video": bỏ TRƯỚC khi cắt 3, nếu không nó vừa không được gửi vừa chiếm
   // suất của ảnh phía sau (bỏ sau khi slice thì danh sách chỉ ngắn đi chứ ảnh sau không lên thay).
   const detached = new Set(job.detachedImagePaths ?? []);

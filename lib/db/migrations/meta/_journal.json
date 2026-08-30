@@ -92,6 +92,13 @@
       "when": 1788064276686,
       "tag": "0012_script_ref_paths",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1788150676686,
+      "tag": "0013_video_ref_paths",
+      "breakpoints": true
     }
   ]
 }

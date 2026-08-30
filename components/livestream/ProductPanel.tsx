@@ -327,6 +327,7 @@ export function ProductPanel({
               ? () => callSegmentAction(preview.segmentId, preview.action!)
               : undefined
           }
+          onSaved={onRefresh}
           onClose={() => setPreview(null)}
         />
       )}

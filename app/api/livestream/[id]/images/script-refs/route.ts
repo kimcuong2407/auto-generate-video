@@ -5,11 +5,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Đặt danh sách ảnh gửi cho AI ở bước SINH SCRIPT (job.scriptRefPaths).
+ * Đặt danh sách ảnh người dùng tự chọn cho 1 bước gen: `step='script'` (job.scriptRefPaths — ảnh
+ * cho vision + chốt sân khấu) hoặc `step='video'` (job.videoRefPaths — ảnh gửi thẳng cho Veo).
  *
- * Mảng rỗng = trả quyền chọn lại cho server (pickVisionRefEntries). Khác background-refs: KHÔNG
- * cho upload ảnh mới ở đây — bước script chỉ suy luận từ ảnh đã có trong job, thêm ảnh lạ vào
- * lượt chốt sân khấu là mở đường cho bible tả một buổi live không liên quan gì tới hàng đang bán.
+ * Mảng rỗng = trả quyền chọn lại cho server (pickVisionRefEntries / thứ tự ưu tiên mặc định của
+ * pickRefImagePaths). KHÔNG cho upload ảnh mới ở đây — 2 bước này chỉ dùng ảnh đã có trong job.
  */
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
@@ -17,8 +17,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Job không tồn tại' }, { status: 404 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { paths?: string[] };
+  const body = (await req.json().catch(() => ({}))) as { paths?: string[]; step?: string };
   const paths = Array.isArray(body.paths) ? body.paths.map(String) : [];
+  const step = body.step === 'video' ? 'video' : 'script';
 
   const job = await readJob(id);
   const known = new Set<string>([
@@ -37,7 +38,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   // Bỏ trùng, giữ thứ tự tick — thứ tự là thứ AI nhận, ảnh mẫu nên đứng đầu.
   const unique = [...new Set(paths)];
   const { job: updatedJob } = await updateJob(id, (j) => {
-    j.scriptRefPaths = unique;
+    if (step === 'video') j.videoRefPaths = unique;
+    else j.scriptRefPaths = unique;
   });
   return NextResponse.json({ job: updatedJob });
 }

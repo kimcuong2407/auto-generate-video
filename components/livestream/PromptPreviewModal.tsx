@@ -6,10 +6,11 @@ interface PreviewData {
   prompt: string;
   refImages: { rel: string; label: string }[];
   notes: string[];
-  /** Chỉ có ở step='script' — xem PreviewPromptResult ở route preview-prompt. */
+  /** Xem PreviewPromptResult ở route preview-prompt. */
   editable?: {
-    systemPrompt: string;
-    isCustomPrompt: boolean;
+    step: 'script' | 'video';
+    systemPrompt?: string;
+    isCustomPrompt?: boolean;
     chosenRefPaths: string[];
     candidates: { rel: string; role: string }[];
   };
@@ -110,7 +111,10 @@ export function PromptPreviewModal({
   function toggleRef(rel: string) {
     const cur = data?.editable?.chosenRefPaths ?? [];
     const next = cur.includes(rel) ? cur.filter((r) => r !== rel) : [...cur, rel];
-    saveEdit(`/api/livestream/${jobId}/images/script-refs`, { paths: next });
+    saveEdit(`/api/livestream/${jobId}/images/script-refs`, {
+      paths: next,
+      step: data?.editable?.step ?? 'script',
+    });
   }
 
   async function handleConfirm() {
@@ -194,13 +198,23 @@ export function PromptPreviewModal({
             {data.editable && (
               <details style={{ marginBottom: 12 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                  📎 Đổi ảnh gửi cho AI ({data.editable.chosenRefPaths.length === 0
+                  📎 Đổi ảnh gửi cho {data.editable.step === 'video' ? 'Veo' : 'AI'} (
+                  {data.editable.chosenRefPaths.length === 0
                     ? 'đang tự động'
                     : `${data.editable.chosenRefPaths.length} ảnh đã tick`})
                 </summary>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 8px' }}>
-                  Tick để tự quyết ảnh nào tới AI (đọc ngoại hình sản phẩm + chốt sân khấu). Bỏ tick
-                  hết = quay về chế độ tự chọn. Đổi ảnh sẽ khiến sân khấu được chốt lại khi chạy.
+                  {data.editable.step === 'video' ? (
+                    <>
+                      Tick theo ĐÚNG thứ tự ưu tiên — Veo chỉ nhận 3 ảnh đầu, ảnh tick sau sẽ bị bỏ.
+                      Bỏ tick hết = quay về thứ tự tự động (ảnh mẫu → ảnh nền → ảnh sản phẩm).
+                    </>
+                  ) : (
+                    <>
+                      Tick để tự quyết ảnh nào tới AI (đọc ngoại hình sản phẩm + chốt sân khấu). Bỏ
+                      tick hết = quay về chế độ tự chọn. Đổi ảnh sẽ khiến sân khấu được chốt lại.
+                    </>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {data.editable.candidates.map(({ rel, role }) => {
@@ -253,7 +267,7 @@ export function PromptPreviewModal({
               </details>
             )}
 
-            {data.editable && (
+            {data.editable?.systemPrompt !== undefined && (
               <details style={{ marginBottom: 12 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
                   ✏️ Sửa system prompt sinh kịch bản{' '}
