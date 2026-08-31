@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'node:fs';
 import {
   listAccounts,
   updateAccount,
   deleteAccount,
-  profileDir,
+  hasProfileData,
 } from '@/lib/chatgptImage/accountStore';
 
 export const runtime = 'nodejs';
@@ -18,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const accounts = listAccounts().map((a) => ({
     ...a,
-    hasProfile: fs.existsSync(profileDir(a.id)),
+    hasProfile: hasProfileData(a.id),
   }));
   return NextResponse.json({ accounts });
 }

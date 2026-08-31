@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'node:fs';
 import {
   listAccounts,
   createAccount,
   updateAccount,
   markNeedsLogin,
-  profileDir,
+  hasProfileData,
 } from '@/lib/chatgptImage/accountStore';
 import { hasSessionCookie } from '@/lib/chatgptImage/sessionCookie';
 
@@ -61,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   // Cookie hợp lệ nhưng profile automation chưa có thì vẫn CHƯA gen được — nói rõ ra thay vì
   // bật connected rồi để worker chết lúc chạy thật.
-  const hasProfile = fs.existsSync(profileDir(account.id));
+  const hasProfile = hasProfileData(account.id);
   updateAccount(account.id, {
     connected: hasProfile,
     lastError: hasProfile ? null : 'Đã đăng nhập trong Chrome nhưng chưa có profile automation',

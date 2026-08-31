@@ -6,6 +6,9 @@
  * chờ composer mà log không nói được lý do (doc mục 3).
  */
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { hasSessionCookie } from '../lib/chatgptImage/sessionCookie';
 
 // Chưa đăng nhập: ghé chatgpt.com vẫn được set cookie Cloudflare/analytics.
@@ -27,5 +30,22 @@ assert.equal(hasSessionCookie('oai-did=my-session-value'), false, 'chữ session
 
 // Khoảng trắng thừa và chữ hoa vẫn phải nhận ra.
 assert.equal(hasSessionCookie('  __Secure-next-auth.Session-Token = abc  '), true, 'chữ hoa + khoảng trắng thừa');
+
+// hasProfileData: thư mục rỗng KHÔNG phải đã login. createAccount() tạo sẵn thư mục rỗng
+// nên existsSync luôn đúng — dùng nhầm sẽ báo connected cho profile chưa đăng nhập bao giờ.
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cgpt-check-'));
+const prevCwd = process.cwd();
+try {
+  process.chdir(tmpRoot);
+  const { createAccount, hasProfileData, profileDir } = require('../lib/chatgptImage/accountStore');
+  const acc = createAccount('Test');
+  assert.equal(hasProfileData(acc.id), false, 'thư mục vừa tạo còn rỗng → chưa có phiên');
+  fs.writeFileSync(path.join(profileDir(acc.id), 'Local State'), '{}', 'utf-8');
+  assert.equal(hasProfileData(acc.id), true, 'có file bên trong → đã có dữ liệu phiên');
+  assert.equal(hasProfileData('khong-ton-tai'), false, 'thư mục không tồn tại → false, không ném lỗi');
+} finally {
+  process.chdir(prevCwd);
+  fs.rmSync(tmpRoot, { recursive: true, force: true });
+}
 
 console.log('✓ check-chatgpt-session-cookie: tất cả assert pass');

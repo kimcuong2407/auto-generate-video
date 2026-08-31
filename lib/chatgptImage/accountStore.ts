@@ -64,12 +64,28 @@ export function getAccount(id: string): ChatgptAccount | null {
 }
 
 /**
- * Account dùng để gen: chỉ xét account còn `connected` VÀ profile còn tồn tại trên đĩa
+ * Profile có phiên THẬT hay không.
+ *
+ * KHÔNG dùng existsSync: createAccount() tạo sẵn thư mục rỗng, nên "thư mục tồn tại" luôn
+ * đúng kể cả khi chưa đăng nhập lần nào. Phải xét thư mục có nội dung — Chromium chỉ ghi
+ * Default/, Local State... sau khi thực sự mở profile. Nhầm chỗ này sẽ báo connected cho
+ * profile rỗng, rồi Playwright mở lên và chết ở bước chờ composer mà không rõ lý do.
+ */
+export function hasProfileData(accountId: string): boolean {
+  try {
+    return fs.readdirSync(profileDir(accountId)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Account dùng để gen: chỉ xét account còn `connected` VÀ profile còn dữ liệu trên đĩa
  * (deploy sang VPS mới mà quên copy profile → thư mục trống, phải coi như chưa login chứ
  * không để Playwright mở profile rỗng rồi chết ở bước chờ composer).
  */
 export function getActiveAccount(): ChatgptAccount | null {
-  const usable = readAll().filter((a) => a.connected && fs.existsSync(profileDir(a.id)));
+  const usable = readAll().filter((a) => a.connected && hasProfileData(a.id));
   if (usable.length === 0) return null;
   return usable.find((a) => a.isDefault) || usable[0];
 }
