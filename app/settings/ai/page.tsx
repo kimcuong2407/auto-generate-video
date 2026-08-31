@@ -18,6 +18,13 @@ export default function AiSettingsPage() {
   const [selected, setSelected] = useState<string>('');
   const [loadingSettings, setLoadingSettings] = useState(true);
 
+  const [imageModel, setImageModel] = useState<string | null>(null);
+  const [imageOptions, setImageOptions] = useState<{ value: string; label: string }[]>([]);
+  const [defaultImageModel, setDefaultImageModel] = useState<string>('');
+  const [savingImage, setSavingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageOk, setImageOk] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
@@ -50,6 +57,9 @@ export default function AiSettingsPage() {
       setDefaultModel(data.defaultModel || null);
       setChatModel(data.chatModel || null);
       setSelected(data.chatModel || '');
+      setImageModel(data.imageModel || null);
+      setImageOptions(data.imageModelOptions || []);
+      setDefaultImageModel(data.defaultImageModel || '');
     } finally {
       setLoadingSettings(false);
     }
@@ -107,7 +117,34 @@ export default function AiSettingsPage() {
     }
   }
 
+  async function handleSaveImageModel(next: string) {
+    setSavingImage(true);
+    setImageError(null);
+    setImageOk(false);
+    try {
+      const res = await fetch('/api/ai-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageModel: next || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImageError(data.error || 'Lưu provider gen ảnh thất bại');
+        return;
+      }
+      setImageModel(data.imageModel || null);
+      setImageOk(true);
+    } catch (err) {
+      setImageError((err as Error).message);
+    } finally {
+      setSavingImage(false);
+    }
+  }
+
   const effectiveModel = chatModel || defaultModel;
+  const effectiveImageModel = imageModel || defaultImageModel;
+  const imageLabel =
+    imageOptions.find((o) => o.value === effectiveImageModel)?.label || effectiveImageModel;
 
   return (
     <div className="page-shell">
@@ -193,6 +230,69 @@ export default function AiSettingsPage() {
             {saving ? 'Đang lưu...' : '💾 Lưu cấu hình'}
           </button>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          🖼️ <span>Provider gen ảnh (áp dụng toàn hệ thống)</span>
+        </div>
+
+        <div className="banner banner-info">
+          Ép provider cho <strong>mọi luồng gen ảnh</strong> — storyboard, background project,
+          background livestream — đè lên lựa chọn trong từng project/job. Không chọn gì = tôn trọng
+          cấu hình riêng của từng job như trước.
+        </div>
+
+        <div className="field-group">
+          <label>Provider đang dùng</label>
+          <div style={{ fontSize: 13 }}>
+            {loadingSettings ? (
+              'Đang tải...'
+            ) : (
+              <>
+                <code>{imageLabel || '(chưa cấu hình)'}</code>{' '}
+                {!imageModel && (
+                  <span style={{ color: 'var(--text-muted)' }}>(mặc định, job tự chọn)</span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="field-group">
+          <label>Ép provider cho mọi luồng gen ảnh</label>
+          <select
+            value={imageModel || ''}
+            disabled={savingImage || loadingSettings}
+            onChange={(e) => handleSaveImageModel(e.target.value)}
+            style={{
+              background: 'var(--surface2)',
+              border: '1px solid var(--border)',
+              borderRadius: 7,
+              color: 'var(--text)',
+              fontFamily: 'var(--font)',
+              fontSize: 13,
+              padding: '8px 12px',
+            }}
+          >
+            <option value="">— Không ép (mỗi job tự chọn) —</option>
+            {imageOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {imageModel === 'chatgpt-local' && (
+          <div className="banner">
+            ⚠️ &quot;ChatGPT (tài khoản riêng)&quot; cần server có profile Chrome đã đăng nhập ChatGPT
+            tại <code>data/chatgpt-profiles/</code>. Kiểm tra ở tab{' '}
+            <strong>Tài khoản ChatGPT</strong> — chưa có profile thì gen sẽ lỗi.
+          </div>
+        )}
+        {imageError && <div className="banner">{imageError}</div>}
+        {imageOk && !imageError && <div className="banner banner-info">✅ Đã lưu provider gen ảnh.</div>}
       </div>
       </div>
     </div>

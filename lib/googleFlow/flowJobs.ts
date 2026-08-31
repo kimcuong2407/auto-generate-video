@@ -258,12 +258,17 @@ export async function generateStoryboardImage(params: {
   projectTitle?: string;
   timeoutMs?: number;
 }): Promise<GenerateStoryboardImageResult & { flowProjectId: string }> {
+  // Model global ở /settings/ai đè model lưu trong project/job — cùng cơ chế veoModel. Ép
+  // NGAY ĐẦU hàm, trước mọi nhánh rẽ provider, vì đây là cửa duy nhất mọi luồng gen ảnh đi
+  // qua; ép sau nhánh rẽ thì chọn provider ở UI vẫn thắng và cấu hình global thành vô nghĩa.
+  const model = readAppSettings().imageModel || params.model;
+
   // Model OmniRoute (vd "chatgpt-web/gpt-5.5", chứa "/") → rẽ sang provider khác, không đụng
   // Google Flow (không cần flowProjectId/account thật). Model Google Flow (flow-image,
   // HARBOR_SEAL, GEM_PIX_2, NARWHAL) không chứa "/" nên rơi xuống nhánh cũ như trước.
   // Model ChatGPT web (browser automation tự chạy, xem lib/chatgptImage/) — kiểm TRƯỚC nhánh
   // "/" vì 'chatgpt-local' không chứa "/" và cũng không phải model Google Flow.
-  if (params.model === CHATGPT_LOCAL_MODEL) {
+  if (model === CHATGPT_LOCAL_MODEL) {
     const paths = await generateChatgptImage({
       prompt: params.prompt,
       aspect: params.aspect,
@@ -279,10 +284,10 @@ export async function generateStoryboardImage(params: {
     };
   }
 
-  if (params.model?.includes('/')) {
+  if (model?.includes('/')) {
     const paths = await generateOmniImage({
       prompt: params.prompt,
-      model: params.model,
+      model,
       aspect: params.aspect,
       refImagePaths: (params.refImages || []).map((r) => r.path),
       timeoutMs: params.timeoutMs,
@@ -310,7 +315,7 @@ export async function generateStoryboardImage(params: {
         accessToken,
         prompt: params.prompt,
         aspect: params.aspect,
-        model: params.model,
+        model,
         projectId,
         refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
         count: 1,

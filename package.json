@@ -23,6 +23,7 @@
     "db:import": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/migrate-json-to-db.ts",
     "check:extension": "node scripts/check-poller-staleness.mjs && node scripts/check-content-handoff.mjs",
     "check:global-veo-model": "tsx scripts/check-global-veo-model.ts",
+    "check:global-image-model": "tsx scripts/check-global-image-model.ts",
     "check:prompt-ref-images": "tsx scripts/check-prompt-ref-images.ts",
     "check:voiceover-length": "tsx scripts/check-voiceover-length.ts",
     "check:stage-bible-stale": "tsx scripts/check-stage-bible-stale.ts",
