@@ -1,12 +1,12 @@
 /**
- * Self-check cho hasSessionCookie (app/api/chatgpt-auth/session/route.ts).
+ * Self-check cho hasSessionCookie (lib/chatgptImage/sessionCookie.ts).
  *
  * Vì sao đáng check: đây là ranh giới duy nhất phân biệt "đã đăng nhập thật" với "chỉ mới ghé
  * chatgpt.com". Nới lỏng nhầm → app bật connected cho phiên giả, worker gen ảnh chết ở bước
  * chờ composer mà log không nói được lý do (doc mục 3).
  */
 import assert from 'node:assert/strict';
-import { hasSessionCookie } from '../app/api/chatgpt-auth/session/route';
+import { hasSessionCookie } from '../lib/chatgptImage/sessionCookie';
 
 // Chưa đăng nhập: ghé chatgpt.com vẫn được set cookie Cloudflare/analytics.
 assert.equal(hasSessionCookie('__cf_bm=abc; _cfuvid=xyz; oai-did=123'), false, 'cookie Cloudflare không phải phiên');

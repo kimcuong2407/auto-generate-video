@@ -7,6 +7,7 @@ import {
   markNeedsLogin,
   profileDir,
 } from '@/lib/chatgptImage/accountStore';
+import { hasSessionCookie } from '@/lib/chatgptImage/sessionCookie';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,21 +25,6 @@ function json(data: unknown, status = 200) {
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
-}
-
-/**
- * Có cookie phiên thật hay chưa — theo doc mục 3.
- *
- * Chỉ ghé chatgpt.com khi CHƯA đăng nhập cũng đã được set vài cookie (Cloudflare, analytics),
- * nên "có cookie" không đủ. Phải có cookie tên chứa "session" (vd __Secure-next-auth.session-token)
- * mới tính là đã login; thiếu bước này sẽ đánh dấu connected cho phiên giả, rồi gen ảnh chết
- * ở bước chờ composer mà không rõ lý do.
- */
-export function hasSessionCookie(cookie: string): boolean {
-  return cookie
-    .split(';')
-    .map((c) => c.split('=')[0]?.trim().toLowerCase() || '')
-    .some((name) => name.includes('session'));
 }
 
 /**
