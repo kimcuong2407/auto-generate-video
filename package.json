@@ -46,6 +46,7 @@
     "check:background-refs": "tsx scripts/check-background-refs.ts",
     "check:chatgpt-image-filter": "tsx scripts/check-chatgpt-image-filter.ts",
     "check:product-lock": "tsx scripts/check-product-lock.ts",
+    "check:chatgpt-session-cookie": "tsx scripts/check-chatgpt-session-cookie.ts",
     "chatgpt:login": "tsx scripts/chatgpt-login.ts"
   },
   "dependencies": {

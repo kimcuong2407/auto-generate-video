@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px -apple-system, system-ui, sans-serif; width: 320px; padding: 12px; margin: 0; }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      label { display: block; margin: 8px 0 3px; color: #555; font-size: 12px; }
+      input { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+      button { margin-top: 10px; width: 100%; padding: 8px; border: 0; border-radius: 4px; background: #10a37f; color: #fff; font-size: 13px; cursor: pointer; }
+      button:disabled { background: #9bbdb3; cursor: default; }
+      #status { margin-top: 10px; font-size: 12px; white-space: pre-wrap; }
+      .ok { color: #0a7a5c; }
+      .err { color: #c02626; }
+      .warn { color: #b26a00; }
+    </style>
+  </head>
+  <body>
+    <h1>ChatGPT Session Grabber</h1>
+    <label for="endpoint">Endpoint app</label>
+    <input id="endpoint" type="text" placeholder="https://video.homebox.vn/api/chatgpt-auth/session" />
+    <label for="label">Nhãn tài khoản</label>
+    <input id="label" type="text" placeholder="Tài khoản ChatGPT" />
+    <button id="push">Gửi trạng thái đăng nhập</button>
+    <div id="status"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

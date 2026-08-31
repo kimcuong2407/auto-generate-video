@@ -4,9 +4,16 @@
  * Chạy trên MÁY CÓ MÀN HÌNH (Mac của Mr.D), không chạy trên VPS:
  *   npx tsx scripts/chatgpt-login.ts "Tài khoản chính"
  *
- * Script mở Chromium thật, Mr.D tự đăng nhập bằng tay (email, mật khẩu, 2FA — không tự động
- * phần này). Khi thấy ô chat của ChatGPT xuất hiện, script tự đánh dấu account connected rồi
- * đóng browser. Profile nằm ở data/chatgpt-profiles/<id>/.
+ * Mở lại profile đã có (không tạo account mới) để login tiếp hoặc kiểm tra phiên còn sống:
+ *   npx tsx scripts/chatgpt-login.ts --open
+ *
+ * Script mở Google Chrome thật (không phải Chromium bundle của Playwright — Google từ chối
+ * đăng nhập trên đó). Mr.D tự đăng nhập bằng tay (email, mật khẩu, 2FA). Khi thấy ô chat của
+ * ChatGPT xuất hiện, script tự đánh dấu account connected rồi đóng browser.
+ * Profile nằm ở data/chatgpt-profiles/<id>/.
+ *
+ * Nếu Google VẪN chặn: đăng nhập ChatGPT bằng email/mật khẩu OpenAI thay vì nút "Continue with
+ * Google" — luồng đó không đi qua màn hình chặn của Google.
  *
  * Sau đó copy profile lên VPS:
  *   tar czf profile.tgz -C data/chatgpt-profiles <id>
@@ -19,31 +26,46 @@
  * vẫn khác (Mac ở VN, VPS ở nơi khác); nếu ChatGPT đá phiên ra thì phải login lại trực tiếp
  * trên VPS qua VNC/X11 forwarding.
  */
-import { chromium } from 'playwright';
 import { createAccount, markOk, profileDir, listAccounts } from '../lib/chatgptImage/accountStore';
-import { BROWSER_FINGERPRINT } from '../lib/chatgptImage/runner';
+import { openContext } from '../lib/chatgptImage/runner';
 import { COMPOSER_SELECTOR } from '../lib/chatgptImage/domScript';
 
 async function main() {
-  const label = process.argv[2] || 'Tài khoản ChatGPT';
-  const reuseId = process.argv[3];
+  const args = process.argv.slice(2);
+  // --open: mở lại profile đã có để login tiếp / kiểm tra phiên, KHÔNG tạo account mới.
+  // Mỗi lần chạy mà tạo account mới sẽ đẻ ra một profile Chrome rỗng vài chục MB, và
+  // account cũ đã login dở thì không bao giờ quay lại được.
+  const openOnly = args.includes('--open');
+  const rest = args.filter((a) => a !== '--open');
+  const label = rest[0] || 'Tài khoản ChatGPT';
+  const reuseId = rest[1];
 
+  const existing = listAccounts();
   const account = reuseId
-    ? listAccounts().find((a) => a.id === reuseId)
-    : createAccount(label);
+    ? existing.find((a) => a.id === reuseId)
+    : openOnly
+      ? existing.find((a) => a.isDefault) || existing[0]
+      : createAccount(label);
   if (!account) {
-    console.error(`Không tìm thấy account id ${reuseId}`);
+    console.error(
+      reuseId
+        ? `Không tìm thấy account id ${reuseId}`
+        : 'Chưa có account nào — bỏ --open để tạo mới.'
+    );
     process.exit(1);
   }
 
   console.log(`Account: ${account.id} (${account.label})`);
   console.log(`Profile: ${profileDir(account.id)}`);
-  console.log('Đang mở Chromium — hãy đăng nhập ChatGPT bằng tay...\n');
+  console.log(
+    openOnly
+      ? 'Đang mở lại profile — kiểm tra xem còn đăng nhập không...\n'
+      : 'Đang mở Chrome — hãy đăng nhập ChatGPT bằng tay...\n'
+  );
 
-  const context = await chromium.launchPersistentContext(profileDir(account.id), {
-    headless: false,
-    ...BROWSER_FINGERPRINT,
-  });
+  // Dùng chung openContext với lúc gen: cùng browser, cùng fingerprint, cùng cờ chống dò
+  // automation. Lệch một tham số giữa 2 pha là phiên bị đá ra ở lần gen đầu.
+  const context = await openContext(account.id, true);
   const page = context.pages()[0] || (await context.newPage());
   await page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded' });
 

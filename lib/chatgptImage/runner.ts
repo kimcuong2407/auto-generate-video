@@ -57,9 +57,18 @@ export interface RunImageParams {
 
 export async function openContext(accountId: string, debug = false): Promise<BrowserContext> {
   return chromium.launchPersistentContext(profileDir(accountId), {
+    // Chrome thật, KHÔNG phải Chromium bundle của Playwright. Google chặn đăng nhập trên
+    // Chromium bundle ("trình duyệt này không an toàn") nên không login tay vào đó được.
+    channel: 'chrome',
     // headless:false + Xvfb trên VPS. Xem ghi chú đầu file.
     headless: false,
-    args: debug ? [] : ['--window-position=-2400,-2400'],
+    // Bỏ cờ --enable-automation và navigator.webdriver — hai dấu vết mà màn hình đăng nhập
+    // Google soi để từ chối. Không có nó thì cửa sổ này login được như Chrome bình thường.
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      ...(debug ? [] : ['--window-position=-2400,-2400']),
+    ],
     ...BROWSER_FINGERPRINT,
   });
 }

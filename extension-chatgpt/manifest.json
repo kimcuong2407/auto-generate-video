@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Session Grabber",
+  "version": "1.0.0",
+  "description": "Xác minh phiên đăng nhập chatgpt.com và đẩy trạng thái về app review pipeline.",
+  "permissions": ["storage", "alarms", "cookies"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://*.openai.com/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://video.homebox.vn/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ChatGPT Session Grabber"
+  }
+}
