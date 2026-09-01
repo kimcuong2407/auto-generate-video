@@ -5,6 +5,7 @@ import { useState } from 'react';
 // chatClient/node:fs vào client bundle. 3 file logic re-export cùng nguồn này.
 import {
   LIVESTREAM_SYSTEM_PROMPT,
+  LIVESTREAM_DEFAULT_NEGATIVE_PROMPT,
   EXTRACT_SYSTEM_PROMPT,
   VISION_SYSTEM_PROMPT,
   PRODUCT_VISUAL_SYSTEM_PROMPT,
@@ -38,6 +39,7 @@ const summaryStyle: React.CSSProperties = {
 export function PromptSettingsPanel({
   jobId,
   scriptSystemPromptOverride,
+  negativePromptOverride,
   busy,
   onRefresh,
   /** Prompt mặc định của job này — job V2 dùng bộ prompt AIDA Shopee, không phải bộ V1. Sai giá
@@ -46,6 +48,7 @@ export function PromptSettingsPanel({
 }: {
   jobId: string;
   scriptSystemPromptOverride: string | null;
+  negativePromptOverride: string | null;
   busy: boolean;
   onRefresh: () => Promise<void>;
   defaultScriptPrompt?: string;
@@ -53,6 +56,14 @@ export function PromptSettingsPanel({
   const [draft, setDraft] = useState(scriptSystemPromptOverride ?? defaultScriptPrompt);
   const [saving, setSaving] = useState(false);
   const isCustom = scriptSystemPromptOverride != null && scriptSystemPromptOverride.trim() !== '';
+  // null = chưa đụng tới → hiện bản mặc định. Chuỗi rỗng là lựa chọn hợp lệ (tắt hẳn) nên KHÔNG
+  // dùng `?? default` cho nó — xem resolveNegativePrompt.
+  const [negDraft, setNegDraft] = useState(
+    negativePromptOverride ?? LIVESTREAM_DEFAULT_NEGATIVE_PROMPT
+  );
+  const [savingNeg, setSavingNeg] = useState(false);
+  const negIsCustom = negativePromptOverride !== null;
+  const negIsOff = negativePromptOverride !== null && negativePromptOverride.trim() === '';
 
   async function patchPrompt(value: string | null) {
     setSaving(true);
@@ -76,6 +87,25 @@ export function PromptSettingsPanel({
   function handleReset() {
     setDraft(defaultScriptPrompt);
     patchPrompt(null);
+  }
+
+  async function patchNegative(value: string | null) {
+    setSavingNeg(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/prompt`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ negativePrompt: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Lưu negative prompt thất bại');
+        return;
+      }
+      await onRefresh();
+    } finally {
+      setSavingNeg(false);
+    }
   }
 
   return (
@@ -143,6 +173,49 @@ export function PromptSettingsPanel({
             {saving ? 'Đang lưu...' : '💾 Lưu prompt'}
           </button>
           <button className="btn" onClick={handleReset} disabled={saving || busy}>
+            ↺ Khôi phục mặc định
+          </button>
+        </div>
+      </details>
+
+      <details>
+        <summary style={summaryStyle}>
+          5. Negative prompt (gen video) — có thể chỉnh{' '}
+          <span className={`badge ${negIsCustom ? 'badge-running' : 'badge-pending'}`}>
+            {negIsOff ? 'Đã tắt' : negIsCustom ? 'Đã tuỳ chỉnh' : 'Đang dùng mặc định'}
+          </span>
+        </summary>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+          Danh sách những thứ Veo phải TRÁNH khi dựng hình, gửi kèm mọi đoạn dưới dạng
+          <code> Avoid: ...</code>. Đây là lớp chặn tay thừa / ngón dính / sản phẩm đổi màu / MC
+          đứng dậy ngay ở khâu gen, thay vì để QA kịch bản bắt lỗi sau. Viết bằng tiếng Anh —
+          Veo nhận diện tốt hơn hẳn tiếng Việt. Xoá sạch ô rồi lưu = tắt hẳn negative prompt.
+        </div>
+        <div className="field-group">
+          <textarea
+            rows={8}
+            value={negDraft}
+            onChange={(e) => setNegDraft(e.target.value)}
+            style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }}
+          />
+        </div>
+        <div className="step-actions">
+          <button
+            className="btn btn-primary"
+            onClick={() => patchNegative(negDraft)}
+            disabled={savingNeg || busy}
+            title={busy ? 'Đang có đoạn generating — không thể lưu lúc này' : undefined}
+          >
+            {savingNeg ? 'Đang lưu...' : '💾 Lưu negative prompt'}
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              setNegDraft(LIVESTREAM_DEFAULT_NEGATIVE_PROMPT);
+              patchNegative(null);
+            }}
+            disabled={savingNeg || busy}
+          >
             ↺ Khôi phục mặc định
           </button>
         </div>

@@ -386,6 +386,7 @@ export default function LivestreamDetailPage() {
           <PromptSettingsPanel
             jobId={jobId}
             scriptSystemPromptOverride={job.scriptSystemPromptOverride}
+            negativePromptOverride={job.negativePromptOverride}
             busy={busy}
             onRefresh={refresh}
             defaultScriptPrompt={v2Input ? LIVESTREAM_V2_SYSTEM_PROMPT : undefined}

@@ -194,6 +194,12 @@ export interface LivestreamJob {
    */
   scriptSystemPromptOverride: string | null;
   /**
+   * Negative prompt gửi kèm khi gen video (nhúng "Avoid: ..." — appendNegativePrompt).
+   * null = dùng LIVESTREAM_DEFAULT_NEGATIVE_PROMPT; chuỗi rỗng = người dùng CHỦ ĐỘNG tắt hẳn.
+   * Phân biệt được 2 ca này nên không dùng `?? default` ở chỗ đọc — xem resolveNegativePrompt.
+   */
+  negativePromptOverride: string | null;
+  /**
    * Prompt gen ảnh background người dùng đã chỉnh cho job này. null = dùng
    * BACKGROUND_SYSTEM_PROMPT mặc định (xem resolveBackgroundPrompt ở backgroundGenerate.ts).
    */

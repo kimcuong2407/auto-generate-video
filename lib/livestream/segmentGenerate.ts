@@ -3,7 +3,8 @@ import path from 'node:path';
 import { readJob, updateJob, ensureJobFlowId, ensureJobVideoSeed } from './jobStore';
 import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
-import { findPreviousSegment, pickRefImagePaths } from './refImages';
+import { findPreviousSegment, pickRefImagePaths, resolveNegativePrompt } from './refImages';
+import { LIVESTREAM_DEFAULT_NEGATIVE_PROMPT } from './promptDefaults';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { triggerBackgroundImageGeneration } from './backgroundGenerate';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
@@ -207,6 +208,9 @@ export async function triggerSegmentGeneration(
         veoPrompt: segment.veoPrompt,
         voiceoverVi: segment.voiceoverVi,
         duration: segment.duration,
+        // Chặn lỗi tay thừa / sản phẩm biến hình / MC đứng dậy ngay ở tầng gen, thay vì để
+        // SCRIPT_QA_SYSTEM_PROMPT đi bắt lỗi SAU khi script đã sinh xong.
+        negativePrompt: resolveNegativePrompt(job, LIVESTREAM_DEFAULT_NEGATIVE_PROMPT),
       },
       {
         aspect: job.aspectRatio,

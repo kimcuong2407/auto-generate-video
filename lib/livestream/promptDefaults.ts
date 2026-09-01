@@ -195,6 +195,33 @@ Bối cảnh sản phẩm:`;
  * engineering cho Veo đã kiểm chứng, bỏ khái niệm "loại cảnh" (hook/demo/cta) vì livestream
  * là 1 luồng nội dung liên tục, không có cấu trúc cảnh cố định.
  */
+/**
+ * Negative prompt mặc định gửi kèm MỌI đoạn video livestream — nhúng dạng "Avoid: ..." ở
+ * appendNegativePrompt (lib/googleFlow/flowJobs.ts).
+ *
+ * Vì sao livestream cần bản riêng thay vì dùng chung DEFAULT_NEGATIVE_PROMPT của product-review:
+ * livestream luôn là MỘT người NGỒI tại bàn quay liên tục, nên có thêm 2 nhóm lỗi mà nhánh kia
+ * không gặp — người thứ hai lọt vào khung / MC đứng dậy rời ghế, và sản phẩm tự nhân bản hoặc
+ * đổi màu giữa các đoạn. Đây đúng những thứ SCRIPT_QA_SYSTEM_PROMPT đang phải đi bắt lỗi SAU khi
+ * script đã sinh; chặn thẳng ở tầng gen video rẻ hơn nhiều.
+ *
+ * Tiếng Anh: Veo nhận diện các cụm negative này tốt hơn hẳn tiếng Việt.
+ */
+export const LIVESTREAM_DEFAULT_NEGATIVE_PROMPT =
+  'text overlay, subtitles, captions, on-screen text, watermarks, logo, blurry, low quality, ' +
+  'distorted faces, deformed face, messy background, ' +
+  'extra limbs, extra arms, extra hands, extra fingers, three hands, three arms, four arms, ' +
+  'deformed hands, deformed fingers, fused fingers, disfigured hands, missing fingers, ' +
+  'multiple limbs, merged limbs, duplicated body parts, ' +
+  'second person, extra person, bystander, crowd, ' +
+  'standing up, walking around, leaving the chair, changing outfit, changing hairstyle, ' +
+  'product changing color, product changing shape, product changing size, duplicated product, ' +
+  'floating product, teleporting object, hands passing through objects, ' +
+  'artificial looking, plastic skin, overly smooth, glossy AI-rendered look, uncanny valley, ' +
+  'perfect symmetry, flawless surfaces, CGI look, video game render, waxy skin texture, ' +
+  'over-sharpened, oversaturated colors, unnatural lighting, jump cuts, ' +
+  'inconsistent lighting between shots';
+
 export const LIVESTREAM_SYSTEM_PROMPT = `Bạn là chuyên gia viết lời thoại livestream bán hàng (như 1 buổi live TikTok/Facebook thật),
 đồng thời là đạo diễn hình ảnh đảm bảo các đoạn video ghép lại liền mạch như 1 buổi quay liên tục.
 

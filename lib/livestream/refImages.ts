@@ -19,6 +19,25 @@ export function isChaining(v: unknown): v is LivestreamChaining {
   return v === 'off' || v === 'per_product' || v === 'continuous';
 }
 
+/**
+ * Negative prompt thực dùng khi gen video 1 đoạn.
+ *
+ * Phân biệt 3 ca — KHÔNG rút gọn thành `override ?? DEFAULT` được:
+ * - null/undefined (job chưa từng đụng tới) → mặc định.
+ * - chuỗi rỗng hoặc chỉ khoảng trắng → người dùng CHỦ ĐỘNG xoá sạch ô để tắt hẳn, phải tôn trọng.
+ * - có nội dung → dùng đúng nội dung đó.
+ *
+ * Ở module thuần để ô sửa bên client hiển thị đúng thứ server sẽ gửi đi.
+ */
+export function resolveNegativePrompt(
+  job: Pick<LivestreamJob, 'negativePromptOverride'>,
+  defaultPrompt: string
+): string {
+  const override = job.negativePromptOverride;
+  if (override === null || override === undefined) return defaultPrompt;
+  return override.trim();
+}
+
 /** Veo reference-to-video chỉ nhận TỐI ĐA 3 ảnh reference — vượt là Flow trả INVALID_ARGUMENT. */
 const MAX_REF_IMAGES = 3;
 

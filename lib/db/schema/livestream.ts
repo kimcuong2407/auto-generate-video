@@ -70,6 +70,10 @@ export const livestreamJobs = mysqlTable(
   flowStatusCache: mariaJson('flow_status_cache').$type<FlowStatusCache>().notNull(),
   flowProjectId: varchar('flow_project_id', { length: 255 }),
   scriptSystemPromptOverride: mediumtext('script_system_prompt_override'),
+  // Negative prompt gửi kèm khi gen video (nhúng dạng "Avoid: ..." — xem appendNegativePrompt ở
+  // lib/googleFlow/flowJobs.ts). null = dùng LIVESTREAM_DEFAULT_NEGATIVE_PROMPT; chuỗi rỗng =
+  // người dùng CHỦ ĐỘNG tắt hẳn. Nullable để ALTER TABLE chạy được trên bảng đã có data.
+  negativePromptOverride: mediumtext('negative_prompt_override'),
   // Prompt gen ảnh background do người dùng chỉnh (null = dùng BACKGROUND_SYSTEM_PROMPT mặc định).
   backgroundPromptOverride: mediumtext('background_prompt_override'),
   // Ảnh người dùng TỰ CHỌN gửi kèm khi gen background (null/[] = để server tự chọn theo
