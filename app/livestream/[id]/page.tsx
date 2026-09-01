@@ -214,6 +214,30 @@ export default function LivestreamDetailPage() {
     }
   }
 
+  /**
+   * Bật/tắt chế độ auto-gen nối tiếp (cascade). Cascade đã có sẵn ở lib/livestream/segmentSync.ts
+   * nhưng trước đây `chaining` chỉ đặt được lúc TẠO job — không có chỗ nào sửa lại, nên người dùng
+   * không biết nó tồn tại lẫn không tắt được khi muốn gen song song cho nhanh.
+   */
+  async function handleChangeChaining(value: string) {
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chaining: value }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error || 'Đổi chế độ auto thất bại');
+      }
+      await refresh();
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function handleStopAllSegments() {
     setActionBusy(true);
     try {
@@ -319,6 +343,31 @@ export default function LivestreamDetailPage() {
             </div>
           )}
           {actionError && <div className="banner">{actionError}</div>}
+          {/* Công tắc cascade. Ảnh ref là cấp JOB (selectedRefImagePaths) nên mọi đoạn tự dùng
+              chung đúng bộ ảnh đã chọn — chỉ thứ tự chạy là do chaining quyết. */}
+          <div
+            className="banner"
+            style={{ background: '#f6f8fa', color: '#444', display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            <label htmlFor="chaining-select">
+              <b>🔁 Tự động gen đoạn tiếp theo:</b>
+            </label>
+            <select
+              id="chaining-select"
+              value={job.chaining}
+              disabled={actionBusy}
+              onChange={(e) => handleChangeChaining(e.target.value)}
+            >
+              <option value="continuous">Bật — chạy nối tiếp toàn bộ job</option>
+              <option value="per_product">Bật — chỉ nối tiếp trong cùng sản phẩm</option>
+              <option value="off">Tắt — gen song song, tự bấm từng đoạn</option>
+            </select>
+            <span style={{ fontSize: 13, opacity: 0.75 }}>
+              {job.chaining === 'off'
+                ? 'Các đoạn chạy song song, không dùng khung hình cuối của đoạn trước.'
+                : 'Gen xong 1 đoạn sẽ tự kích đoạn kế (cùng ảnh tham chiếu, prompt riêng từng đoạn) và nối khung hình cuối.'}
+            </span>
+          </div>
           {/* Sân khấu đã chốt: hiện ra để phát hiện sai NGAY lúc sinh script (VD ảnh mẫu nam mà
               host tả "woman"), thay vì chỉ biết sau khi gen video hỏng. Bible tự chốt lại khi ảnh
               hoặc mô tả sản phẩm đổi — xem isStageBibleStale ở lib/livestream/stageBible.ts. */}

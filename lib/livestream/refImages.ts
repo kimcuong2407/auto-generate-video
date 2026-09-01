@@ -4,7 +4,20 @@
  * server. Trước đây UI tự ghép danh sách riêng và KHÔNG cắt 3, nên hiện đủ 4 ảnh trong khi Veo
  * thực tế chỉ nhận 3 — người dùng tưởng đã gửi ảnh mẫu mà thật ra nó bị cắt mất.
  */
-import type { LivestreamJob, LivestreamProduct, LivestreamSegment } from './types';
+import type {
+  LivestreamChaining,
+  LivestreamJob,
+  LivestreamProduct,
+  LivestreamSegment,
+} from './types';
+
+/**
+ * Validate giá trị `chaining` đến từ HTTP body (route PATCH job). Để ở module THUẦN này thay vì
+ * trong route file để self-check import được mà không kéo theo Next runtime.
+ */
+export function isChaining(v: unknown): v is LivestreamChaining {
+  return v === 'off' || v === 'per_product' || v === 'continuous';
+}
 
 /** Veo reference-to-video chỉ nhận TỐI ĐA 3 ảnh reference — vượt là Flow trả INVALID_ARGUMENT. */
 const MAX_REF_IMAGES = 3;

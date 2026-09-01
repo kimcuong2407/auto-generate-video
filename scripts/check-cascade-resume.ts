@@ -10,10 +10,11 @@
  */
 import assert from 'node:assert';
 import { shouldAutoTrigger } from '../lib/livestream/segmentSync';
+import { isChaining, findNextSegment, findPreviousSegment } from '../lib/livestream/refImages';
 import { MAX_SEGMENT_AUTO_RETRIES, SEGMENT_RETRY_BACKOFF_MS } from '../lib/constants';
 import { isQuotaError } from '../lib/googleFlow/errors';
 import { FlowApiError } from '../lib/googleFlow/errors';
-import type { LivestreamSegment } from '../lib/livestream/types';
+import type { LivestreamChaining, LivestreamJob, LivestreamSegment } from '../lib/livestream/types';
 
 const NOW = new Date('2026-08-26T20:00:00.000Z').getTime();
 /** Thời điểm lỗi đã đủ cũ để được thử lại (quá SEGMENT_RETRY_BACKOFF_MS). */
@@ -130,5 +131,63 @@ assert.strictEqual(
 );
 assert.strictEqual(isQuotaError(new Error('HTTP 500 internal')), false, '5xx không phải quota');
 assert.strictEqual(isQuotaError(undefined), false, 'undefined không crash');
+
+// ---------------------------------------------------------------
+// Công tắc auto-gen (job.chaining) — nay sửa được từ UI qua PATCH /api/livestream/[id].
+// Validate phải CHẶN giá trị lạ: ghi bừa vào cột mysqlEnum sẽ nổ ở tầng DB, và một giá trị
+// không hợp lệ lọt qua sẽ làm findPreviousSegment coi như 'continuous' → gen sai thứ tự.
+// ---------------------------------------------------------------
+for (const ok of ['off', 'per_product', 'continuous'] as LivestreamChaining[]) {
+  assert.strictEqual(isChaining(ok), true, `'${ok}' phải hợp lệ`);
+}
+for (const bad of ['', 'ON', 'true', 'auto', null, undefined, 1, {}]) {
+  assert.strictEqual(isChaining(bad), false, `${JSON.stringify(bad)} phải bị chặn`);
+}
+
+// Cascade đi tới đoạn nào là do `chaining` quyết. Job mẫu: 2 sản phẩm, mỗi sản phẩm 2 đoạn,
+// `order` đánh số TUYỆT ĐỐI xuyên suốt job (0,1 | 2,3) — xem lib/livestream/reorder.ts.
+const twoProductJob = {
+  chaining: 'continuous' as LivestreamChaining,
+  products: [
+    { id: 'p1', segments: [seg({ id: 'a0', order: 0 }), seg({ id: 'a1', order: 1 })] },
+    { id: 'p2', segments: [seg({ id: 'b0', order: 2 }), seg({ id: 'b1', order: 3 })] },
+  ],
+} as unknown as LivestreamJob;
+const p1 = twoProductJob.products[0];
+const p2 = twoProductJob.products[1];
+const lastOfP1 = p1.segments[1];
+
+// 'continuous': hết sản phẩm 1 thì nhảy sang sản phẩm 2 — đây là điều Mr.D muốn khi bật auto.
+assert.strictEqual(
+  findNextSegment(twoProductJob, p1, lastOfP1)?.id,
+  'b0',
+  'continuous phải cascade xuyên sản phẩm'
+);
+
+// 'per_product': dừng ở cuối mỗi sản phẩm, không tự tràn sang sản phẩm kế.
+const perProductJob = { ...twoProductJob, chaining: 'per_product' as LivestreamChaining };
+assert.strictEqual(
+  findNextSegment(perProductJob, p1, lastOfP1),
+  null,
+  'per_product phải dừng ở cuối sản phẩm'
+);
+assert.strictEqual(
+  findNextSegment(perProductJob, p1, p1.segments[0])?.id,
+  'a1',
+  'per_product vẫn cascade trong cùng sản phẩm'
+);
+
+// 'off': không có ràng buộc "đoạn trước phải xong" → generate-all được fan-out song song.
+const offJob = { ...twoProductJob, chaining: 'off' as LivestreamChaining };
+assert.strictEqual(
+  findPreviousSegment(offJob, p2, p2.segments[0]),
+  null,
+  "chaining 'off' không ràng buộc đoạn liền trước"
+);
+assert.strictEqual(
+  findPreviousSegment(twoProductJob, p2, p2.segments[0])?.id,
+  'a1',
+  'continuous ràng buộc đoạn liền trước xuyên sản phẩm'
+);
 
 console.log('✓ check-cascade-resume: tất cả assert pass');
