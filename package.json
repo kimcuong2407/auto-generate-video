@@ -53,7 +53,8 @@
     "chatgpt:login": "tsx scripts/chatgpt-login.ts",
     "chatgpt:import": "tsx scripts/chatgpt-import-profile.ts",
     "check:prompt-params": "tsx scripts/check-prompt-params.ts",
-    "check:prompt-registry": "tsx scripts/check-prompt-registry.ts"
+    "check:prompt-registry": "tsx scripts/check-prompt-registry.ts",
+    "check:prompt-wiring": "tsx scripts/check-prompt-wiring.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

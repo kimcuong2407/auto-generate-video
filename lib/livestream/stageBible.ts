@@ -7,6 +7,7 @@ import { ensureLocalImage } from './imageR2';
 import { pickScriptRefEntries, stageBibleFingerprint } from './refImages';
 import { resolveWithinJob } from './paths';
 import { STAGE_BIBLE_SYSTEM_PROMPT } from './promptDefaults';
+import { loadPromptSet } from './promptStore';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 
 /**
@@ -73,7 +74,8 @@ export async function ensureStageBible(
   if (!opts.force && job.stageBible && !isStageBibleStale(job)) return job.stageBible;
 
   try {
-    const bible = await generateStageBible(job, opts.visualDescription);
+    const prompts = await loadPromptSet(job.slug);
+    const bible = await generateStageBible(job, opts.visualDescription, prompts.get('stage_bible'));
     await updateJob(jobId, (j) => {
       j.stageBible = bible;
     });
@@ -123,7 +125,9 @@ async function collectStageRefImages(
 
 async function generateStageBible(
   job: LivestreamJob,
-  visualDescription?: string
+  visualDescription?: string,
+  /** System prompt của bước này (registry). Bỏ trống = hằng mặc định. */
+  systemPrompt: string = STAGE_BIBLE_SYSTEM_PROMPT
 ): Promise<LivestreamStageBible> {
   const productList = job.products
     .map((p, i) => `${i + 1}. ${p.name}: ${p.description.slice(0, 400)}`)
@@ -156,11 +160,11 @@ async function generateStageBible(
   }
   const raw =
     refs.images.length > 0 && visionModel
-      ? await chatCompletion(STAGE_BIBLE_SYSTEM_PROMPT, user, {
+      ? await chatCompletion(systemPrompt, user, {
           model: visionModel,
           images: refs.images,
         })
-      : await generateScriptText(STAGE_BIBLE_SYSTEM_PROMPT, user);
+      : await generateScriptText(systemPrompt, user);
   const parsed = JSON.parse(extractJson(raw)) as Partial<LivestreamStageBible>;
   const required = ['host', 'scene', 'camera', 'voice'] as const;
   for (const key of required) {

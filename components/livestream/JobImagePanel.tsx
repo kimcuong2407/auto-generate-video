@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { LivestreamJob } from '@/lib/livestream/types';
 import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
 import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
@@ -28,9 +28,10 @@ export function JobImagePanel({
   const [uploadingModel, setUploadingModel] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
   const [generatingBg, setGeneratingBg] = useState(false);
-  const [bgPromptDraft, setBgPromptDraft] = useState(
-    job.backgroundPromptOverride ?? BACKGROUND_SYSTEM_PROMPT
-  );
+  // Prompt background giờ có 2 tầng (riêng job / mặc định hệ thống) nên tầng nào đang thắng là
+  // việc của server tính — đọc field trên job sẽ hiện sai ngay khi có bản mặc định toàn hệ thống.
+  const [bgScope, setBgScope] = useState<'job' | 'global' | 'default'>('default');
+  const [bgPromptDraft, setBgPromptDraft] = useState(BACKGROUND_SYSTEM_PROMPT);
   const [selectingRef, setSelectingRef] = useState(false);
   const [savingBgModel, setSavingBgModel] = useState(false);
   const [detaching, setDetaching] = useState(false);
@@ -200,6 +201,28 @@ export function JobImagePanel({
     }
   }
 
+  /** Nạp prompt background đang có hiệu lực (bản riêng job → mặc định hệ thống → hằng). */
+  const loadBgPrompt = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/prompts?jobSlug=${encodeURIComponent(jobId)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      const step = (data.steps as { key: string; effective: string; scope: typeof bgScope }[]).find(
+        (s) => s.key === 'background'
+      );
+      if (step) {
+        setBgPromptDraft(step.effective);
+        setBgScope(step.scope);
+      }
+    } catch {
+      // Không nạp được thì giữ hằng mặc định đang hiển thị — không chặn thao tác ảnh của panel.
+    }
+  }, [jobId]);
+
+  useEffect(() => {
+    loadBgPrompt();
+  }, [loadBgPrompt]);
+
   /** Lưu prompt gen background theo job (null = xoá override, về mặc định). */
   async function handleSaveBgPrompt(value: string | null) {
     setSavingBgPrompt(true);
@@ -214,7 +237,7 @@ export function JobImagePanel({
         alert(data.error || 'Lưu prompt background thất bại');
         return;
       }
-      if (value === null) setBgPromptDraft(BACKGROUND_SYSTEM_PROMPT);
+      await loadBgPrompt();
       await onRefresh();
     } finally {
       setSavingBgPrompt(false);
@@ -802,8 +825,12 @@ export function JobImagePanel({
             >
               ↺ Khôi phục mặc định
             </button>
-            <span className={`badge ${job.backgroundPromptOverride ? 'badge-running' : 'badge-pending'}`}>
-              {job.backgroundPromptOverride ? 'Đã tuỳ chỉnh' : 'Đang dùng mặc định'}
+            <span className={`badge ${bgScope !== 'default' ? 'badge-running' : 'badge-pending'}`}>
+              {bgScope === 'job'
+                ? 'Riêng job này'
+                : bgScope === 'global'
+                  ? 'Mặc định đã tuỳ chỉnh'
+                  : 'Đang dùng mặc định'}
             </span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
@@ -825,10 +852,7 @@ export function JobImagePanel({
           // Sửa prompt TRONG modal xong, ô ở panel phải theo — không thì đóng modal ra thấy bản cũ
           // rồi bấm lưu ở panel là ghi đè mất thứ vừa sửa.
           onSaved={async () => {
-            const { job: fresh } = await fetch(`/api/livestream/${jobId}`)
-              .then((r) => r.json())
-              .catch(() => ({ job: null }));
-            if (fresh) setBgPromptDraft(fresh.backgroundPromptOverride ?? BACKGROUND_SYSTEM_PROMPT);
+            await loadBgPrompt();
             await onRefresh();
           }}
           onClose={() => setPreviewingBgPrompt(null)}

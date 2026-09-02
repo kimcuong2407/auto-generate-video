@@ -11,7 +11,6 @@ import { PromptSettingsPanel } from '@/components/livestream/PromptSettingsPanel
 import { JobImagePanel } from '@/components/livestream/JobImagePanel';
 import { PromptPreviewModal } from '@/components/livestream/PromptPreviewModal';
 import { V2InputPanel } from '@/components/livestream/V2InputPanel';
-import { LIVESTREAM_V2_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaultsV2';
 import type { LivestreamV2Input } from '@/lib/livestream/types';
 
 /** Đọc SSE response của route script/generate (fetch thường, không dùng EventSource vì cần POST). */
@@ -383,14 +382,7 @@ export default function LivestreamDetailPage() {
           {v2Input && (
             <V2InputPanel jobId={jobId} input={v2Input} busy={busy} onRefresh={refresh} />
           )}
-          <PromptSettingsPanel
-            jobId={jobId}
-            scriptSystemPromptOverride={job.scriptSystemPromptOverride}
-            negativePromptOverride={job.negativePromptOverride}
-            busy={busy}
-            onRefresh={refresh}
-            defaultScriptPrompt={v2Input ? LIVESTREAM_V2_SYSTEM_PROMPT : undefined}
-          />
+          <PromptSettingsPanel jobId={jobId} isV2={!!v2Input} onRefresh={refresh} />
           <JobImagePanel job={job} onRefresh={refresh} />
 
           {job.products.map((product) => (

@@ -1,287 +1,93 @@
 'use client';
 
-import { useState } from 'react';
-import { PromptParamsHint } from './PromptParamsHint';
-// Import từ module thuần promptDefaults (không có server-only import) để không kéo
-// chatClient/node:fs vào client bundle. 3 file logic re-export cùng nguồn này.
-import {
-  LIVESTREAM_SYSTEM_PROMPT,
-  LIVESTREAM_DEFAULT_NEGATIVE_PROMPT,
-  EXTRACT_SYSTEM_PROMPT,
-  VISION_SYSTEM_PROMPT,
-  PRODUCT_VISUAL_SYSTEM_PROMPT,
-} from '@/lib/livestream/promptDefaults';
-
-const readonlyTextareaStyle: React.CSSProperties = {
-  width: '100%',
-  fontFamily: 'monospace',
-  fontSize: 12,
-  lineHeight: 1.5,
-  background: 'var(--surface2)',
-  color: 'var(--text-muted)',
-  border: '1px solid var(--border)',
-  borderRadius: 8,
-  padding: 10,
-  resize: 'vertical',
-};
-
-const summaryStyle: React.CSSProperties = {
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 600,
-  padding: '8px 0',
-};
+import { useCallback, useEffect, useState } from 'react';
+import { PromptStepEditor, type PromptStepView } from '@/components/prompts/PromptStepEditor';
 
 /**
- * Khối "xem tất cả system prompt AI" cho 1 job livestream. Prompt extract/vision chỉ đọc
- * (chạy tự động lúc ingest, không có điểm sửa trước generate); prompt sinh kịch bản cho phép
- * chỉnh + lưu override cấp job (PATCH /api/livestream/[id]/prompt) + khôi phục mặc định.
+ * Khối "system prompt AI" của MỘT job livestream: cả 11 bước gọi AI, mỗi bước sửa được với 2 phạm
+ * vi (riêng job này / mặc định cho mọi project).
+ *
+ * Trước đây panel này hiển thị 3 prompt read-only + 2 prompt sửa được, đọc thẳng từ field của job.
+ * Nay mọi prompt đi qua /api/prompts (bảng ai_prompts) nên panel chỉ còn là danh sách —
+ * PromptStepEditor lo phần sửa/lưu, dùng chung với trang /settings/prompts.
+ *
+ * Vì sao KHÔNG đọc prompt từ object `job` nữa: prompt giờ có 2 tầng, và tầng nào đang thắng là
+ * việc của server tính. Đọc field cũ trên job sẽ hiện sai ngay khi có bản mặc định toàn hệ thống.
  */
 export function PromptSettingsPanel({
   jobId,
-  scriptSystemPromptOverride,
-  negativePromptOverride,
-  busy,
+  isV2,
   onRefresh,
-  /** Prompt mặc định của job này — job V2 dùng bộ prompt AIDA Shopee, không phải bộ V1. Sai giá
-   *  trị ở đây thì nút "Khôi phục mặc định" sẽ hiện prompt của phiên bản kia. */
-  defaultScriptPrompt = LIVESTREAM_SYSTEM_PROMPT,
 }: {
   jobId: string;
-  scriptSystemPromptOverride: string | null;
-  negativePromptOverride: string | null;
-  busy: boolean;
+  /** Job V2 (Shopee AIDA) dùng prompt sinh kịch bản gốc khác — sai cờ này thì nút khôi phục mặc
+   *  định trả về prompt của phiên bản kia. */
+  isV2?: boolean;
   onRefresh: () => Promise<void>;
-  defaultScriptPrompt?: string;
 }) {
-  const [draft, setDraft] = useState(scriptSystemPromptOverride ?? defaultScriptPrompt);
-  const [saving, setSaving] = useState(false);
-  const isCustom = scriptSystemPromptOverride != null && scriptSystemPromptOverride.trim() !== '';
-  // null = chưa đụng tới → hiện bản mặc định. Chuỗi rỗng là lựa chọn hợp lệ (tắt hẳn) nên KHÔNG
-  // dùng `?? default` cho nó — xem resolveNegativePrompt.
-  const [negDraft, setNegDraft] = useState(
-    negativePromptOverride ?? LIVESTREAM_DEFAULT_NEGATIVE_PROMPT
-  );
-  const [savingNeg, setSavingNeg] = useState(false);
-  const negIsCustom = negativePromptOverride !== null;
-  const negIsOff = negativePromptOverride !== null && negativePromptOverride.trim() === '';
+  const [steps, setSteps] = useState<PromptStepView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Prompt SAU KHI ghép params, do server trả về — hiện ngay dưới nút lưu để Mr.D kiểm tra
-  // ${...} có ăn không. Phải hỏi lại server chứ không tự thay ở client: giá trị params nằm trong
-  // job/v2Input mà panel này không có, tự ghép là chắc chắn trôi lệch với thứ thật sự gửi đi.
-  const [filled, setFilled] = useState<string | null>(null);
-  const [loadingFilled, setLoadingFilled] = useState(false);
-
-  /** Nạp prompt đã ghép của sản phẩm ĐẦU TIÊN — panel này ở cấp job, không gắn với sản phẩm nào. */
-  async function loadFilled() {
-    setLoadingFilled(true);
+  const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/livestream/${jobId}/preview-prompt?step=script`);
-      const data = await res.json();
-      setFilled(res.ok ? data.prompt : `Không xem được: ${data.error || `HTTP ${res.status}`}`);
-    } catch (e) {
-      setFilled(`Không xem được: ${(e as Error).message}`);
-    } finally {
-      setLoadingFilled(false);
-    }
-  }
-
-  async function patchPrompt(value: string | null) {
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/livestream/${jobId}/prompt`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptSystemPrompt: value }),
-      });
+      const res = await fetch(`/api/prompts?jobSlug=${encodeURIComponent(jobId)}${isV2 ? '&v2=1' : ''}`);
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Lưu prompt thất bại');
+        setError(data.error || `HTTP ${res.status}`);
         return;
       }
-      await onRefresh();
-      // Lưu xong tự hiện bản đã ghép: đó là lý do duy nhất để bấm lưu khi prompt có params.
-      await loadFilled();
-    } finally {
-      setSaving(false);
+      setError(null);
+      setSteps(data.steps);
+    } catch (err) {
+      setError((err as Error).message);
     }
+  }, [jobId, isV2]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleSaved() {
+    await load();
+    // Job cũng phải nạp lại: ô sửa prompt background ở JobImagePanel đọc từ job.
+    await onRefresh();
   }
 
-  function handleReset() {
-    setDraft(defaultScriptPrompt);
-    patchPrompt(null);
-  }
-
-  async function patchNegative(value: string | null) {
-    setSavingNeg(true);
-    try {
-      const res = await fetch(`/api/livestream/${jobId}/prompt`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ negativePrompt: value }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Lưu negative prompt thất bại');
-        return;
-      }
-      await onRefresh();
-    } finally {
-      setSavingNeg(false);
-    }
-  }
+  const jobCustom = steps?.filter((s) => s.scope === 'job').length ?? 0;
 
   return (
     <div className="card">
       <div className="card-header">⚙️ <span>System prompt AI (nâng cao)</span></div>
 
       <div className="banner banner-info">
-        Đây là chỉ dẫn hệ thống gửi cho AI ở từng bước. Bạn có thể xem để hiểu AI đang làm gì, và chỉnh
-        sửa prompt <strong>sinh kịch bản</strong> nếu muốn thay đổi giọng/phong cách lời thoại. Hai prompt
-        còn lại chạy tự động lúc tạo job nên chỉ để xem.
+        Chỉ dẫn hệ thống gửi cho AI ở từng bước. Sửa xong bấm <strong>💾 Lưu cho job này</strong> để
+        chỉ áp cho job đang mở, hoặc <strong>🌐 Lưu làm mặc định</strong> để áp cho mọi job tạo sau.
+        Viết <code>{'${ten_sanpham}'}</code> và các params khác vào prompt, hệ thống tự thay bằng
+        giá trị thật của từng sản phẩm lúc gen.
       </div>
 
-      <details>
-        <summary style={summaryStyle}>1. Chuẩn hoá mô tả (extract) — chỉ đọc</summary>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-          Chạy tự động khi tạo job: đọc text thô (Shopee/nhập tay) → chuẩn hoá tên + mô tả sản phẩm.
-        </div>
-        <textarea readOnly rows={10} value={EXTRACT_SYSTEM_PROMPT} style={readonlyTextareaStyle} />
-      </details>
+      {error && <div className="banner banner-error">{error}</div>}
+      {!steps && !error && <div style={{ opacity: 0.7 }}>Đang tải...</div>}
 
-      <details>
-        <summary style={summaryStyle}>2. Đọc ảnh sản phẩm (vision) — chỉ đọc</summary>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-          Chạy khi bạn tải ảnh chụp màn hình sản phẩm (VD link Shopee bị chặn): AI đọc ảnh → điền tên + mô tả.
-        </div>
-        <textarea readOnly rows={10} value={VISION_SYSTEM_PROMPT} style={readonlyTextareaStyle} />
-      </details>
-
-      <details>
-        <summary style={summaryStyle}>3. Mô tả ngoại hình sản phẩm (từ ảnh ref) — chỉ đọc</summary>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-          Chạy tự động trước khi sinh kịch bản nếu job có ảnh ref sản phẩm đã chọn: đọc ảnh → mô tả
-          ngoại hình vật lý (kích thước, chất liệu, cầm 1 tay hay 2 tay) để script viết cảnh cầm/thao
-          tác sản phẩm chân thực hơn.
-        </div>
-        <textarea readOnly rows={10} value={PRODUCT_VISUAL_SYSTEM_PROMPT} style={readonlyTextareaStyle} />
-      </details>
-
-      <details open>
-        <summary style={summaryStyle}>
-          4. Sinh kịch bản (script) — có thể chỉnh{' '}
-          <span className={`badge ${isCustom ? 'badge-running' : 'badge-pending'}`}>
-            {isCustom ? 'Đã tuỳ chỉnh' : 'Đang dùng mặc định'}
-          </span>
-        </summary>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-          Prompt cốt lõi: chỉ dẫn AI viết lời thoại + mô tả video (veoPrompt) cho từng đoạn ~8s. Chỉnh sửa
-          áp dụng cho lần &quot;Sinh script&quot; kế tiếp của job này.
-        </div>
-        <PromptParamsHint />
-        <div className="field-group">
-          <textarea
-            rows={16}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }}
-          />
-        </div>
-        <div className="step-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() => patchPrompt(draft)}
-            disabled={saving || busy}
-            title={busy ? 'Đang có đoạn generating — không thể lưu prompt lúc này' : undefined}
-          >
-            {saving ? 'Đang lưu...' : '💾 Lưu prompt'}
-          </button>
-          <button className="btn" onClick={handleReset} disabled={saving || busy}>
-            ↺ Khôi phục mặc định
-          </button>
-          <button className="btn btn-ghost" onClick={loadFilled} disabled={loadingFilled}>
-            {loadingFilled ? 'Đang tải...' : '👁 Xem prompt sau khi ghép params'}
-          </button>
-        </div>
-
-        {filled !== null && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-              Prompt THẬT gửi AI ({filled.length.toLocaleString('vi-VN')} ký tự) — sản phẩm đầu
-              tiên của job, đã thay giá trị {'${...}'} và ghép đủ mọi mảnh server thêm vào:
-            </div>
-            <pre
-              style={{
-                whiteSpace: 'pre-wrap',
-                fontSize: 12,
-                lineHeight: 1.5,
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-                padding: 10,
-                borderRadius: 8,
-                maxHeight: '45vh',
-                overflowY: 'auto',
-              }}
-            >
-              {filled}
-            </pre>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="btn btn-ghost"
-                onClick={() => navigator.clipboard?.writeText(filled)}
-              >
-                📋 Copy
-              </button>
-              <button className="btn btn-ghost" onClick={() => setFilled(null)}>
-                Ẩn
-              </button>
-            </div>
+      {steps && (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0 0' }}>
+            {steps.length} bước AI —{' '}
+            {jobCustom > 0
+              ? `${jobCustom} bước có prompt riêng cho job này`
+              : 'job này đang dùng prompt mặc định'}
           </div>
-        )}
-      </details>
-
-      <details>
-        <summary style={summaryStyle}>
-          5. Negative prompt (gen video) — có thể chỉnh{' '}
-          <span className={`badge ${negIsCustom ? 'badge-running' : 'badge-pending'}`}>
-            {negIsOff ? 'Đã tắt' : negIsCustom ? 'Đã tuỳ chỉnh' : 'Đang dùng mặc định'}
-          </span>
-        </summary>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-          Danh sách những thứ Veo phải TRÁNH khi dựng hình, gửi kèm mọi đoạn dưới dạng
-          <code> Avoid: ...</code>. Đây là lớp chặn tay thừa / ngón dính / sản phẩm đổi màu / MC
-          đứng dậy ngay ở khâu gen, thay vì để QA kịch bản bắt lỗi sau. Viết bằng tiếng Anh —
-          Veo nhận diện tốt hơn hẳn tiếng Việt. Xoá sạch ô rồi lưu = tắt hẳn negative prompt.
-        </div>
-        <div className="field-group">
-          <textarea
-            rows={8}
-            value={negDraft}
-            onChange={(e) => setNegDraft(e.target.value)}
-            style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.5 }}
-          />
-        </div>
-        <div className="step-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() => patchNegative(negDraft)}
-            disabled={savingNeg || busy}
-            title={busy ? 'Đang có đoạn generating — không thể lưu lúc này' : undefined}
-          >
-            {savingNeg ? 'Đang lưu...' : '💾 Lưu negative prompt'}
-          </button>
-          <button
-            className="btn"
-            onClick={() => {
-              setNegDraft(LIVESTREAM_DEFAULT_NEGATIVE_PROMPT);
-              patchNegative(null);
-            }}
-            disabled={savingNeg || busy}
-          >
-            ↺ Khôi phục mặc định
-          </button>
-        </div>
-      </details>
+          {steps.map((s, i) => (
+            <PromptStepEditor
+              key={s.key}
+              step={s}
+              jobSlug={jobId}
+              index={i + 1}
+              onSaved={handleSaved}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }

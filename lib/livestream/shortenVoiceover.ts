@@ -36,6 +36,8 @@ export function replaceSpokenLine(veoPrompt: string, oldLine: string, newLine: s
  */
 export async function shortenOverlongSegments(
   segments: LivestreamSegment[],
+  /** System prompt của bước này (registry: bản riêng job → mặc định → hằng). Bỏ trống = hằng. */
+  systemPrompt: string = SHORTEN_SYSTEM_PROMPT,
   onRound?: (round: number, remaining: number) => void
 ): Promise<LivestreamSegment[]> {
   let current = segments;
@@ -56,7 +58,7 @@ export async function shortenOverlongSegments(
     let rewritten: Map<string, string>;
     try {
       const raw = await chatCompletion(
-        SHORTEN_SYSTEM_PROMPT,
+        systemPrompt,
         `Rút gọn các đoạn sau cho đúng giới hạn số từ:\n\n${user}`
       );
       const parsed = JSON.parse(extractJson(raw)) as {

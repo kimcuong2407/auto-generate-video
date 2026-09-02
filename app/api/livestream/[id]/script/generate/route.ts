@@ -4,8 +4,9 @@ import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';
-import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
+import { loadPromptSet } from '@/lib/livestream/promptStore';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import {
   computeSegmentDurations,
@@ -88,9 +89,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Job V2 (tab Livestream Shopee) có bản ghi input riêng → dùng bộ prompt AIDA theo skill.
       // Đọc 1 lần cho cả lượt chạy; null = job V1, mọi thứ giữ nguyên như cũ.
       const v2Input = await readV2Input(id).catch(() => null);
-      // Prompt override không đổi trong 1 lần chạy — resolve 1 lần từ job đã đọc ở đầu route.
-      // Params `${...}` thì PHẢI fill trong vòng lặp bên dưới: giá trị khác nhau theo từng sản phẩm.
-      const systemPromptTemplate = resolveScriptSystemPrompt(job, v2Input);
+      // Nạp prompt MỘT LẦN cho cả lượt chạy: lượt này chạm 6 bước AI khác nhau (product_visual →
+      // product_lock → stage_bible → script → script_qa → shorten) nằm rải ở 6 module, resolve lẻ
+      // là 6 round-trip DB cho dữ liệu không đổi. Chốt snapshot ở đây cũng đúng ngữ nghĩa: sửa
+      // prompt giữa lúc đang gen 32 đoạn thì kết quả không bị lai 2 phiên bản.
+      const prompts = await loadPromptSet(job.slug);
+      // Params `${...}` PHẢI fill trong vòng lặp bên dưới: giá trị khác nhau theo từng sản phẩm.
+      const systemPromptTemplate = prompts.get('script', { isV2: !!v2Input });
 
       // Mô tả ngoại hình vật lý sản phẩm (đọc ảnh ref thật) — tính 1 lần cho cả job vì
       // selectedRefImagePaths dùng chung cho mọi sản phẩm. Đọc TẤT CẢ ảnh đã chọn, không chỉ ảnh
@@ -111,7 +116,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             refPaths.map((rel) => ensureLocalImage(job.id, rel, job.imageR2Urls?.[rel]))
           );
           visualDescription = await describeProductAppearance(
-            refPaths.map((rel) => resolveWithinJob(job.id, rel))
+            refPaths.map((rel) => resolveWithinJob(job.id, rel)),
+            prompts.get('product_visual')
           );
         } catch {
           // bỏ qua — script vẫn sinh bình thường không có mô tả ngoại hình bổ sung.
@@ -212,7 +218,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           const rawSegments = sanitizeSegments(parsed.segments, durations);
           // Lời thoại dài quá nhịp nói → Veo đọc không kịp, cắt cụt câu cuối. Ép AI viết lại NGAY
           // tại đây thay vì chỉ cảnh báo rồi bắt người dùng bấm sinh lại (lần sinh lại vẫn hay dư).
-          const segments = await shortenOverlongSegments(rawSegments, (round, remaining) => {
+          const segments = await shortenOverlongSegments(rawSegments, prompts.get('shorten'), (round, remaining) => {
             send({ type: 'shorten_start', productId: product.id, round, remaining });
           });
 
@@ -249,7 +255,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           // QA lỗi vật lý + claim. CHỈ CẢNH BÁO: kịch bản đã ghi vào job ở trên rồi, đây là lớp
           // soát cuối để Mr.D biết cảnh nào đáng sửa TRƯỚC khi đốt quota Veo — chặn đúng chỗ tốn
           // tiền nhất. Chỉ chạy cho job V2; best-effort, lỗi thì trả mảng rỗng.
-          const qaIssues = v2Input ? await reviewScriptQuality(segments) : [];
+          const qaIssues = v2Input ? await reviewScriptQuality(segments, prompts.get('script_qa')) : [];
           send({ type: 'product_done', productId: product.id, segments, overlong, qaIssues });
         } catch (err) {
           const message =

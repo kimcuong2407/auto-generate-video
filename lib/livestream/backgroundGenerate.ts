@@ -6,6 +6,7 @@ import { ensureLocalImage, uploadImageToR2 } from './imageR2';
 import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
 import { pickBackgroundRefEntries } from './refImages';
 import { buildPromptParamValues, fillPromptParams } from './promptParams';
+import { loadPromptSet } from './promptStore';
 import type { VisionRefEntry } from './refImages';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 import { ensureStageBible } from './stageBible';
@@ -83,8 +84,10 @@ export async function triggerBackgroundImageGeneration(
     return { ok: false, error: 'Sản phẩm không tồn tại' };
   }
 
-  // promptOverride = bản nháp đang sửa trên UI (chưa lưu); không có thì dùng bản đã lưu của job.
-  const basePrompt = promptOverride?.trim() || resolveBackgroundPrompt(job);
+  // promptOverride = bản nháp đang sửa trên UI (chưa lưu); không có thì hỏi registry (bản riêng
+  // job → bản mặc định toàn hệ thống → hằng trong code).
+  const prompts = await loadPromptSet(job.slug);
+  const basePrompt = promptOverride?.trim() || prompts.get('background');
   // Nếu job đã chốt sân khấu cố định (stageBible, sinh lúc gen script), ép ảnh nền dựng đúng người
   // dẫn/bối cảnh/góc máy đó — nếu không ảnh nền và veoPrompt sẽ mô tả 2 buổi live khác nhau, ảnh nền
   // dùng làm reference lại kéo video lệch khỏi mô tả trong script.

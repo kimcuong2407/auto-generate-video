@@ -5,6 +5,7 @@ import { extractJson } from '../ai/jsonExtract';
 import { ensureLocalImage } from './imageR2';
 import { resolveWithinJob } from './paths';
 import { PRODUCT_LOCK_SYSTEM_PROMPT } from './promptDefaults';
+import { loadPromptSet } from './promptStore';
 import type { LivestreamJob, LivestreamProductLock } from './types';
 
 /**
@@ -82,7 +83,7 @@ export async function ensureProductLock(
     if (images.length === 0) return null;
 
     const raw = await chatCompletion(
-      PRODUCT_LOCK_SYSTEM_PROMPT,
+      (await loadPromptSet(job.slug)).get('product_lock'),
       // Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau
       // — cùng cái bẫy mà describeProductAppearance đã gặp.
       'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể màu. Chốt bản mô tả ngoại hình cố định của sản phẩm đó.',

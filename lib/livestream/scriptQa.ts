@@ -42,7 +42,9 @@ function normalizeSeverity(raw: unknown): ScriptQaIssue['severity'] {
  * trong sản phẩm) để model trả về đúng số cảnh mà UI đang hiển thị, không phải số trong lô.
  */
 export async function reviewScriptQuality(
-  segments: LivestreamSegment[]
+  segments: LivestreamSegment[],
+  /** System prompt của bước này (registry: bản riêng job → mặc định → hằng). Bỏ trống = hằng. */
+  systemPrompt: string = SCRIPT_QA_SYSTEM_PROMPT
 ): Promise<ScriptQaIssue[]> {
   if (segments.length === 0) return [];
 
@@ -59,7 +61,7 @@ export async function reviewScriptQuality(
 
     try {
       const raw = await chatCompletion(
-        SCRIPT_QA_SYSTEM_PROMPT,
+        systemPrompt,
         `Chấm các cảnh sau. Đánh số cảnh trong kết quả PHẢI trùng đúng số cảnh ghi ở đây:\n\n${user}`
       );
       const parsed = JSON.parse(extractJson(raw)) as {

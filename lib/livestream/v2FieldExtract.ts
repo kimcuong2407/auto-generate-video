@@ -9,6 +9,7 @@ import { chatCompletion } from '../ai/chatClient';
 import { extractJson } from '../ai/jsonExtract';
 import { V2_FIELD_EXTRACT_SYSTEM_PROMPT } from './promptDefaultsV2';
 import type { LivestreamV2Fields } from './types';
+import { loadPromptSet } from './promptStore';
 
 export { V2_FIELD_EXTRACT_SYSTEM_PROMPT } from './promptDefaultsV2';
 
@@ -49,7 +50,7 @@ function normalize(parsed: Partial<LivestreamV2Fields>): LivestreamV2Fields {
 export async function extractV2Fields(rawText: string): Promise<LivestreamV2Fields> {
   if (!rawText.trim()) return EMPTY;
   try {
-    const raw = await chatCompletion(V2_FIELD_EXTRACT_SYSTEM_PROMPT, rawText);
+    const raw = await chatCompletion((await loadPromptSet()).get('v2_field_extract'), rawText);
     return normalize(JSON.parse(extractJson(raw)) as Partial<LivestreamV2Fields>);
   } catch (err) {
     console.error('[v2FieldExtract] tách field thất bại:', (err as Error).message);

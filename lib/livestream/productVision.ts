@@ -7,6 +7,7 @@ import { extractJson } from '../ai/jsonExtract';
 // kéo theo chatClient/node:fs server-only. Đây vẫn là 1 nguồn sự thật duy nhất.
 export { VISION_SYSTEM_PROMPT, PRODUCT_VISUAL_SYSTEM_PROMPT } from './promptDefaults';
 import { VISION_SYSTEM_PROMPT, PRODUCT_VISUAL_SYSTEM_PROMPT } from './promptDefaults';
+import { loadPromptSet } from './promptStore';
 
 export interface ExtractedProduct {
   name: string;
@@ -29,7 +30,7 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
   const buffer = await fs.readFile(imageAbsPath);
   const mimeType = sniffImageMime(buffer);
 
-  const raw = await chatCompletion(VISION_SYSTEM_PROMPT, 'Đọc ảnh và trích xuất thông tin sản phẩm.', {
+  const raw = await chatCompletion((await loadPromptSet()).get('vision_screenshot'), 'Đọc ảnh và trích xuất thông tin sản phẩm.', {
     model: visionModel,
     images: [{ mimeType, base64: buffer.toString('base64') }],
   });
@@ -51,7 +52,11 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
  *
  * @throws nếu chưa cấu hình AI_VISION_MODEL hoặc không đọc được ảnh nào.
  */
-export async function describeProductAppearance(imageAbsPaths: string[]): Promise<string> {
+export async function describeProductAppearance(
+  imageAbsPaths: string[],
+  /** System prompt của bước này (registry: bản riêng job → mặc định → hằng). Bỏ trống = hằng. */
+  systemPrompt: string = PRODUCT_VISUAL_SYSTEM_PROMPT
+): Promise<string> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   if (!visionModel) {
     throw new Error(
@@ -65,7 +70,7 @@ export async function describeProductAppearance(imageAbsPaths: string[]): Promis
   }
 
   const raw = await chatCompletion(
-    PRODUCT_VISUAL_SYSTEM_PROMPT,
+    systemPrompt,
     // Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau.
     'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể. Mô tả ngoại hình vật lý của sản phẩm đó.',
     { model: visionModel, images }

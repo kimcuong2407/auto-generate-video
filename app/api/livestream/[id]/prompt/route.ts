@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jobExists, updateJob } from '@/lib/livestream/jobStore';
+import { jobExists, readJob } from '@/lib/livestream/jobStore';
+import { savePrompt } from '@/lib/livestream/promptStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Cập nhật prompt người dùng chỉnh cho job (job-level override): sinh kịch bản
- * (`scriptSystemPrompt`) và/hoặc gen ảnh background (`backgroundPrompt`).
- * Gửi chuỗi rỗng/null → xoá override, quay về prompt mặc định tương ứng (xem
- * resolveScriptSystemPrompt ở scriptPrompt.ts và resolveBackgroundPrompt ở backgroundGenerate.ts).
- * Trường nào KHÔNG có mặt trong body thì giữ nguyên — các panel lưu độc lập, không đè lên nhau.
- * Prompt extract/vision không cho override, chỉ hiển thị read-only ở UI.
+ * Cập nhật prompt người dùng chỉnh cho MỘT job — nay ghi vào bảng ai_prompts (tầng riêng job) chứ
+ * không còn vào 3 cột của livestream_jobs.
  *
- * `negativePrompt` KHÁC 2 trường trên ở cách hiểu chuỗi rỗng: gửi null = khôi phục mặc định, còn
- * gửi chuỗi rỗng = TẮT HẲN negative prompt (người dùng chủ động xoá sạch ô). Ép rỗng→null như 2
- * trường kia sẽ khiến không ai tắt được, vì xoá sạch ô lại quay về mặc định — xem
- * resolveNegativePrompt ở lib/livestream/refImages.ts.
+ * Giữ nguyên hình dạng body cũ (`scriptSystemPrompt` / `backgroundPrompt` / `negativePrompt`) để 2
+ * UI hiện có không phải sửa; route mới /api/prompts mới là đường đầy đủ 11 bước.
+ *
+ * Gửi null = XOÁ override của job, quay về bản mặc định toàn hệ thống (rồi mới tới hằng trong code).
+ *
+ * `negativePrompt` KHÁC 2 trường kia ở cách hiểu chuỗi rỗng: null = khôi phục mặc định, còn chuỗi
+ * rỗng = TẮT HẲN negative prompt. Ép rỗng→null như 2 trường kia sẽ khiến không ai tắt được, vì xoá
+ * sạch ô lại quay về mặc định — xem doc-comment bảng ai_prompts.
  */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const { id } = params;
@@ -29,23 +30,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     negativePrompt?: string | null;
   };
 
-  const { job } = await updateJob(id, (j) => {
-    // Chỉ dùng .trim() để phân biệt rỗng→null; LƯU nguyên bản để không mất format prompt.
-    if ('scriptSystemPrompt' in body) {
-      const v = body.scriptSystemPrompt;
-      j.scriptSystemPromptOverride = v && v.trim() ? v : null;
-    }
-    if ('backgroundPrompt' in body) {
-      const v = body.backgroundPrompt;
-      j.backgroundPromptOverride = v && v.trim() ? v : null;
-    }
-    // Giữ nguyên chuỗi rỗng (không ép về null): rỗng là lựa chọn hợp lệ nghĩa "không gửi negative
-    // prompt nào". Chỉ null mới là "quay về mặc định".
-    if ('negativePrompt' in body) {
-      const v = body.negativePrompt;
-      j.negativePromptOverride = v === null || v === undefined ? null : v;
-    }
-  });
+  // Chỉ dùng .trim() để phân biệt rỗng→xoá; LƯU nguyên bản để không mất format prompt.
+  if ('scriptSystemPrompt' in body) {
+    const v = body.scriptSystemPrompt;
+    await savePrompt({ step: 'script', jobSlug: id, body: v && v.trim() ? v : null });
+  }
+  if ('backgroundPrompt' in body) {
+    const v = body.backgroundPrompt;
+    await savePrompt({ step: 'background', jobSlug: id, body: v && v.trim() ? v : null });
+  }
+  // Giữ nguyên chuỗi rỗng (không ép về null): rỗng là lựa chọn hợp lệ nghĩa "không gửi negative
+  // prompt nào". Chỉ null mới là "quay về mặc định".
+  if ('negativePrompt' in body) {
+    const v = body.negativePrompt;
+    await savePrompt({ step: 'negative_video', jobSlug: id, body: v === null || v === undefined ? null : v });
+  }
 
+  const job = await readJob(id);
   return NextResponse.json({ job });
 }

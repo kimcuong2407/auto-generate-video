@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
-import { buildBackgroundPrompt, resolveBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
-import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
+import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
+import { loadPromptSet } from '@/lib/livestream/promptStore';
 import { formatProductLockBlock, pickProductLockRefPaths } from '@/lib/livestream/productLock';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
@@ -89,6 +90,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Sản phẩm không tồn tại' }, { status: 404 });
   }
 
+  // Prompt phải lấy từ ĐÚNG registry mà route gen dùng — 2 bên lệch nhau thì bản xem trước vô nghĩa.
+  const prompts = await loadPromptSet(job.slug);
   const notes: string[] = [];
   // Ảnh mẫu bị tách khỏi gen video: bible vẫn tả ĐÚNG người (pickVisionRefEntries không lọc
   // detached), nhưng Veo KHÔNG nhận ảnh khuôn mặt nên tự vẽ người khác. Không cảnh báo thì không
@@ -114,7 +117,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     // Đúng bộ ảnh triggerBackgroundImageGeneration sẽ gửi: ưu tiên ảnh người dùng tự chọn.
     const entries = pickBackgroundRefEntries(job);
     // ?prompt = bản nháp đang sửa trên UI (chưa bấm lưu); không có thì dùng bản đã lưu của job.
-    const basePrompt = req.nextUrl.searchParams.get('prompt')?.trim() || resolveBackgroundPrompt(job);
+    const basePrompt = req.nextUrl.searchParams.get('prompt')?.trim() || prompts.get('background');
     const bgNotes = [...notes];
     if ((job.backgroundRefPaths ?? []).length === 0) {
       bgNotes.push(
@@ -141,7 +144,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         // Bản GỐC còn `${...}` để sửa — khung prompt bên trên đã là bản thay rồi. Ưu tiên bản nháp
         // đang gõ trên UI (?prompt) để mở modal giữa chừng không mất thứ chưa lưu.
         systemPrompt: basePrompt,
-        isCustomPrompt: !!job.backgroundPromptOverride?.trim(),
+        isCustomPrompt: prompts.scopeOf('background') !== 'default',
         chosenRefPaths: job.backgroundRefPaths ?? [],
         candidates: [
           ...(job.selectedModelImagePath
@@ -271,7 +274,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   // Ô sửa hiện BẢN GỐC còn `${...}`, còn khung "prompt gửi AI" hiện bản ĐÃ THAY — nếu hiện cùng
   // một bản thì hoặc Mr.D sửa nhầm vào chuỗi đã fill, hoặc không kiểm tra được param có ăn không.
-  const systemPromptTemplate = resolveScriptSystemPrompt(job, v2Input);
+  const systemPromptTemplate = prompts.get('script', { isV2: !!v2Input });
   const systemPromptFilled = fillPromptParams(
     systemPromptTemplate,
     buildPromptParamValues({ job, product, durations, v2Input })
@@ -297,7 +300,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     editable: {
       step: 'script',
       systemPrompt: systemPromptTemplate,
-      isCustomPrompt: !!job.scriptSystemPromptOverride?.trim(),
+      isCustomPrompt: prompts.scopeOf('script') !== 'default',
       chosenRefPaths: job.scriptRefPaths ?? [],
       // Cùng tập ảnh mà route PUT images/script-refs chấp nhận — lệch nhau là tick xong báo lỗi.
       candidates: [

@@ -3,8 +3,8 @@ import path from 'node:path';
 import { readJob, updateJob, ensureJobFlowId, ensureJobVideoSeed } from './jobStore';
 import { resolveWithinJob } from './paths';
 import { ensureLocalImage } from './imageR2';
-import { findPreviousSegment, pickRefImagePaths, resolveNegativePrompt } from './refImages';
-import { LIVESTREAM_DEFAULT_NEGATIVE_PROMPT } from './promptDefaults';
+import { findPreviousSegment, pickRefImagePaths } from './refImages';
+import { loadPromptSet } from './promptStore';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { triggerBackgroundImageGeneration } from './backgroundGenerate';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
@@ -210,7 +210,9 @@ export async function triggerSegmentGeneration(
         duration: segment.duration,
         // Chặn lỗi tay thừa / sản phẩm biến hình / MC đứng dậy ngay ở tầng gen, thay vì để
         // SCRIPT_QA_SYSTEM_PROMPT đi bắt lỗi SAU khi script đã sinh xong.
-        negativePrompt: resolveNegativePrompt(job, LIVESTREAM_DEFAULT_NEGATIVE_PROMPT),
+        // Registry giữ ngữ nghĩa 3 trạng thái của resolveNegativePrompt cũ: không có row = mặc
+        // định, row rỗng = người dùng chủ động TẮT HẲN. Xem doc-comment bảng ai_prompts.
+        negativePrompt: (await loadPromptSet(job.slug)).get('negative_video'),
       },
       {
         aspect: job.aspectRatio,
