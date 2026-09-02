@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PromptParamsHint } from './PromptParamsHint';
 
 interface PreviewData {
@@ -72,6 +72,10 @@ export function PromptPreviewModal({
   const [reloadKey, setReloadKey] = useState(0);
   const [promptDraft, setPromptDraft] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Lưu prompt xong, thứ Mr.D cần xem NGAY là khung prompt đã ghép params — nó nằm cuối modal dài,
+  // không cuộn tới thì lưu xong nhìn như không có gì đổi.
+  const promptBoxRef = useRef<HTMLPreElement>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     const qs = new URLSearchParams({ step });
@@ -104,10 +108,19 @@ export function PromptPreviewModal({
       await onSaved?.();
       setPromptDraft(null);
       setReloadKey((k) => k + 1);
+      setJustSaved(true);
     } finally {
       setSavingEdit(false);
     }
   }
+
+  // Chờ preview MỚI về rồi mới cuộn — cuộn ngay lúc bấm lưu thì Mr.D nhìn vào prompt cũ.
+  useEffect(() => {
+    if (!justSaved || !data) return;
+    promptBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const t = setTimeout(() => setJustSaved(false), 2500);
+    return () => clearTimeout(t);
+  }, [justSaved, data]);
 
   function toggleRef(rel: string) {
     const cur = data?.editable?.chosenRefPaths ?? [];
@@ -311,10 +324,18 @@ export function PromptPreviewModal({
             )}
 
             <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>
-              Prompt gửi AI ({data.prompt.length.toLocaleString('vi-VN')} ký tự):
+              Prompt gửi AI ({data.prompt.length.toLocaleString('vi-VN')} ký tự) — đã ghép đủ mọi
+              mảnh và thay giá trị params:
+              {justSaved && (
+                <span className="badge badge-running" style={{ marginLeft: 6 }}>
+                  ✓ vừa cập nhật
+                </span>
+              )}
             </div>
             <pre
+              ref={promptBoxRef}
               style={{
+                outline: justSaved ? '2px solid var(--accent-glow)' : undefined,
                 whiteSpace: 'pre-wrap',
                 fontSize: 12,
                 lineHeight: 1.5,

@@ -66,6 +66,26 @@ export function PromptSettingsPanel({
   const negIsCustom = negativePromptOverride !== null;
   const negIsOff = negativePromptOverride !== null && negativePromptOverride.trim() === '';
 
+  // Prompt SAU KHI ghép params, do server trả về — hiện ngay dưới nút lưu để Mr.D kiểm tra
+  // ${...} có ăn không. Phải hỏi lại server chứ không tự thay ở client: giá trị params nằm trong
+  // job/v2Input mà panel này không có, tự ghép là chắc chắn trôi lệch với thứ thật sự gửi đi.
+  const [filled, setFilled] = useState<string | null>(null);
+  const [loadingFilled, setLoadingFilled] = useState(false);
+
+  /** Nạp prompt đã ghép của sản phẩm ĐẦU TIÊN — panel này ở cấp job, không gắn với sản phẩm nào. */
+  async function loadFilled() {
+    setLoadingFilled(true);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/preview-prompt?step=script`);
+      const data = await res.json();
+      setFilled(res.ok ? data.prompt : `Không xem được: ${data.error || `HTTP ${res.status}`}`);
+    } catch (e) {
+      setFilled(`Không xem được: ${(e as Error).message}`);
+    } finally {
+      setLoadingFilled(false);
+    }
+  }
+
   async function patchPrompt(value: string | null) {
     setSaving(true);
     try {
@@ -80,6 +100,8 @@ export function PromptSettingsPanel({
         return;
       }
       await onRefresh();
+      // Lưu xong tự hiện bản đã ghép: đó là lý do duy nhất để bấm lưu khi prompt có params.
+      await loadFilled();
     } finally {
       setSaving(false);
     }
@@ -177,7 +199,45 @@ export function PromptSettingsPanel({
           <button className="btn" onClick={handleReset} disabled={saving || busy}>
             ↺ Khôi phục mặc định
           </button>
+          <button className="btn btn-ghost" onClick={loadFilled} disabled={loadingFilled}>
+            {loadingFilled ? 'Đang tải...' : '👁 Xem prompt sau khi ghép params'}
+          </button>
         </div>
+
+        {filled !== null && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+              Prompt THẬT gửi AI ({filled.length.toLocaleString('vi-VN')} ký tự) — sản phẩm đầu
+              tiên của job, đã thay giá trị {'${...}'} và ghép đủ mọi mảnh server thêm vào:
+            </div>
+            <pre
+              style={{
+                whiteSpace: 'pre-wrap',
+                fontSize: 12,
+                lineHeight: 1.5,
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                padding: 10,
+                borderRadius: 8,
+                maxHeight: '45vh',
+                overflowY: 'auto',
+              }}
+            >
+              {filled}
+            </pre>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => navigator.clipboard?.writeText(filled)}
+              >
+                📋 Copy
+              </button>
+              <button className="btn btn-ghost" onClick={() => setFilled(null)}>
+                Ẩn
+              </button>
+            </div>
+          </div>
+        )}
       </details>
 
       <details>
