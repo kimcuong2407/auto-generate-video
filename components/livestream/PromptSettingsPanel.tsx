@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { PromptParamsHint } from './PromptParamsHint';
 // Import từ module thuần promptDefaults (không có server-only import) để không kéo
 // chatClient/node:fs vào client bundle. 3 file logic re-export cùng nguồn này.
 import {
@@ -155,6 +156,7 @@ export function PromptSettingsPanel({
           Prompt cốt lõi: chỉ dẫn AI viết lời thoại + mô tả video (veoPrompt) cho từng đoạn ~8s. Chỉnh sửa
           áp dụng cho lần &quot;Sinh script&quot; kế tiếp của job này.
         </div>
+        <PromptParamsHint />
         <div className="field-group">
           <textarea
             rows={16}

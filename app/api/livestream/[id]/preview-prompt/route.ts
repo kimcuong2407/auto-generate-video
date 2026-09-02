@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
 import { buildBackgroundPrompt, resolveBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
 import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { formatProductLockBlock, pickProductLockRefPaths } from '@/lib/livestream/productLock';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
@@ -237,10 +238,21 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     productLockBlock,
   });
 
+  // Ô sửa hiện BẢN GỐC còn `${...}`, còn khung "prompt gửi AI" hiện bản ĐÃ THAY — nếu hiện cùng
+  // một bản thì hoặc Mr.D sửa nhầm vào chuỗi đã fill, hoặc không kiểm tra được param có ăn không.
+  const systemPromptTemplate = resolveScriptSystemPrompt(job, v2Input);
+  const systemPromptFilled = fillPromptParams(
+    systemPromptTemplate,
+    buildPromptParamValues({ job, product, durations, v2Input })
+  );
+  if (systemPromptFilled !== systemPromptTemplate) {
+    notes.push('System prompt có dùng params ${...} — khung bên dưới hiện bản ĐÃ thay giá trị thật.');
+  }
+
   const result: PreviewPromptResult = {
     // Sinh script gửi system prompt + user prompt TÁCH RIÊNG cho AI; nối lại có nhãn để Mr.D thấy
     // trọn vẹn payload trong 1 khung, đúng thứ tự AI đọc.
-    prompt: `===== SYSTEM PROMPT${v2Input ? ' (V2 — kịch bản AIDA Shopee)' : ''} =====\n${resolveScriptSystemPrompt(job, v2Input)}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`,
+    prompt: `===== SYSTEM PROMPT${v2Input ? ' (V2 — kịch bản AIDA Shopee)' : ''} =====\n${systemPromptFilled}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`,
     // Bước sinh script KHÔNG gửi ảnh cho AI viết lời thoại — ảnh chỉ đi vào 2 lượt phụ: vision đọc
     // ngoại hình sản phẩm, và chốt sân khấu. Hiện đúng bộ ảnh của 2 lượt đó để Mr.D kiểm tra.
     refImages: pickScriptRefEntries(job).map((e) => ({ rel: e.rel, label: e.label })),
@@ -253,7 +265,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     ],
     editable: {
       step: 'script',
-      systemPrompt: resolveScriptSystemPrompt(job, v2Input),
+      systemPrompt: systemPromptTemplate,
       isCustomPrompt: !!job.scriptSystemPromptOverride?.trim(),
       chosenRefPaths: job.scriptRefPaths ?? [],
       // Cùng tập ảnh mà route PUT images/script-refs chấp nhận — lệch nhau là tick xong báo lỗi.

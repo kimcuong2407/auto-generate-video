@@ -5,6 +5,7 @@ import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';
 import { buildScriptUserPrompt, resolveScriptSystemPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import {
   computeSegmentDurations,
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Đọc 1 lần cho cả lượt chạy; null = job V1, mọi thứ giữ nguyên như cũ.
       const v2Input = await readV2Input(id).catch(() => null);
       // Prompt override không đổi trong 1 lần chạy — resolve 1 lần từ job đã đọc ở đầu route.
-      const systemPrompt = resolveScriptSystemPrompt(job, v2Input);
+      // Params `${...}` thì PHẢI fill trong vòng lặp bên dưới: giá trị khác nhau theo từng sản phẩm.
+      const systemPromptTemplate = resolveScriptSystemPrompt(job, v2Input);
 
       // Mô tả ngoại hình vật lý sản phẩm (đọc ảnh ref thật) — tính 1 lần cho cả job vì
       // selectedRefImagePaths dùng chung cho mọi sản phẩm. Đọc TẤT CẢ ảnh đã chọn, không chỉ ảnh
@@ -190,6 +192,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             },
             productLockBlock,
           });
+          const systemPrompt = fillPromptParams(
+            systemPromptTemplate,
+            buildPromptParamValues({ job, product, durations, v2Input })
+          );
 
           const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
             if (e.type === 'start' || e.type === 'retry') {

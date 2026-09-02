@@ -48,9 +48,11 @@
     "check:background-refs": "tsx scripts/check-background-refs.ts",
     "check:chatgpt-image-filter": "tsx scripts/check-chatgpt-image-filter.ts",
     "check:product-lock": "tsx scripts/check-product-lock.ts",
+    "check:chatgpt-extension": "tsx scripts/check-chatgpt-extension.ts",
     "check:chatgpt-session-cookie": "tsx scripts/check-chatgpt-session-cookie.ts",
     "chatgpt:login": "tsx scripts/chatgpt-login.ts",
-    "chatgpt:import": "tsx scripts/chatgpt-import-profile.ts"
+    "chatgpt:import": "tsx scripts/chatgpt-import-profile.ts",
+    "check:prompt-params": "tsx scripts/check-prompt-params.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

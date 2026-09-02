@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { PromptParamsHint } from './PromptParamsHint';
 
 interface PreviewData {
   prompt: string;
@@ -195,10 +196,13 @@ export function PromptPreviewModal({
               ))}
             </div>
 
+            {/* Bước gen video MỞ SẴN danh sách ảnh: Veo chỉ nhận 3 ảnh nên chọn đúng ảnh là việc
+                phải làm mỗi lần gen, không phải tuỳ chọn nâng cao. Bước script thì giữ thu gọn —
+                ở đó hệ thống tự chọn đã ổn, hiếm khi cần đổi. */}
             {data.editable && (
-              <details style={{ marginBottom: 12 }}>
+              <details open={data.editable.step === 'video'} style={{ marginBottom: 12 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                  📎 Đổi ảnh gửi cho {data.editable.step === 'video' ? 'Veo' : 'AI'} (
+                  📎 {data.editable.step === 'video' ? 'Chọn ảnh gửi cho Veo' : 'Đổi ảnh gửi cho AI'} (
                   {data.editable.chosenRefPaths.length === 0
                     ? 'đang tự động'
                     : `${data.editable.chosenRefPaths.length} ảnh đã tick`})
@@ -278,6 +282,7 @@ export function PromptPreviewModal({
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0' }}>
                   Lưu áp cho MỌI lần sinh script sau của job này (giống panel ⚙️ đầu trang).
                 </div>
+                <PromptParamsHint />
                 <textarea
                   rows={12}
                   value={promptDraft ?? data.editable.systemPrompt}
