@@ -1,5 +1,7 @@
 'use client';
 
+import { CHATGPT_EXTENSION_MODEL } from '@/lib/imageModels';
+
 import { useEffect, useState } from 'react';
 import { TopNav } from '@/components/TopNav';
 
@@ -24,6 +26,8 @@ export default function AiSettingsPage() {
   const [savingImage, setSavingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageOk, setImageOk] = useState(false);
+  // Extension gen ảnh có đang kết nối không — chỉ hiện khi chọn provider extension.
+  const [extOnline, setExtOnline] = useState<boolean | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -69,6 +73,31 @@ export default function AiSettingsPage() {
     loadModels();
     loadSettings();
   }, []);
+
+  // Poll trạng thái extension khi (và chỉ khi) đang chọn provider extension — không chọn thì
+  // hỏi làm gì cho tốn request.
+  useEffect(() => {
+    if (imageModel !== CHATGPT_EXTENSION_MODEL) {
+      setExtOnline(null);
+      return;
+    }
+    let alive = true;
+    const check = async () => {
+      try {
+        const res = await fetch('/api/chatgpt-image/status');
+        const data = await res.json();
+        if (alive) setExtOnline(Boolean(data.online));
+      } catch {
+        if (alive) setExtOnline(false);
+      }
+    };
+    check();
+    const timer = setInterval(check, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [imageModel]);
 
   async function handleSave() {
     setSaving(true);
@@ -284,6 +313,13 @@ export default function AiSettingsPage() {
           </select>
         </div>
 
+        {imageModel === CHATGPT_EXTENSION_MODEL && (
+          <div className={extOnline ? 'banner banner-info' : 'banner'}>
+            {extOnline
+              ? '✅ Extension đang kết nối — job gen ảnh sẽ chạy trong Chrome này.'
+              : '⚠️ Chưa thấy extension. Mở Chrome có cài extension ChatGPT Image Worker và một tab chatgpt.com đã đăng nhập; ảnh chỉ gen được khi Chrome đang mở.'}
+          </div>
+        )}
         {imageModel === 'chatgpt-local' && (
           <div className="banner">
             ⚠️ &quot;ChatGPT (tài khoản riêng)&quot; cần server có profile Chrome đã đăng nhập ChatGPT

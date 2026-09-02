@@ -10,6 +10,7 @@
  * Chạy: npx tsx scripts/check-script-refs.ts
  */
 import assert from 'node:assert';
+import fs from 'node:fs';
 import {
   pickRefImagePaths,
   pickScriptRefEntries,
@@ -139,4 +140,15 @@ assert.deepStrictEqual(
   'nối frame đoạn trước thì chỉ còn 2 suất cho ảnh tick'
 );
 
-console.log('✓ check-script-refs: 12/12 pass');
+// 12. Modal gen video phải MỞ SẴN danh sách ảnh, không bắt bấm mở mỗi lần.
+// Veo chỉ nhận 3 ảnh nên chọn đúng ảnh là việc phải làm mỗi lần gen — để thu gọn thì người
+// dùng không thấy, gen xong mới biết ảnh bị cắt.
+{
+  const modal = fs.readFileSync('components/livestream/PromptPreviewModal.tsx', 'utf8');
+  assert.ok(
+    /<details open=\{data\.editable\.step === 'video'\}/.test(modal),
+    'khối chọn ảnh phải mở sẵn khi step=video'
+  );
+}
+
+console.log('✓ check-script-refs: 13/13 pass');

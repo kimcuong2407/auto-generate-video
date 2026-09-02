@@ -30,6 +30,14 @@ export const chatgptImageJobs = mysqlTable(
     /** Đường dẫn file local của ảnh tham chiếu, JSON array. */
     refImagePaths: mariaJson('ref_image_paths').$type<string[]>(),
     status: mysqlEnum('status', ['queued', 'running', 'done', 'failed']).notNull(),
+    /**
+     * Ai được phép chạy job này: 'playwright' = worker Playwright trên server,
+     * 'extension' = extension Chrome trên máy người dùng. Hai worker cùng quét bảng này nên
+     * KHÔNG có cột này thì chúng cướp job của nhau — extension nhận job đáng lẽ của Playwright
+     * rồi nằm im khi Chrome đóng, hoặc ngược lại.
+     * Default 'playwright' để job cũ (và ALTER TABLE trên bảng đã có data) giữ nguyên hành vi.
+     */
+    source: mysqlEnum('source', ['playwright', 'extension']).notNull().default('playwright'),
     /** Account đã/đang xử lý job (id trong data/chatgpt-auth/accounts.json). */
     accountId: varchar('account_id', { length: 128 }),
     /** Đường dẫn file ảnh kết quả đã ghi ra đĩa. */
@@ -44,5 +52,7 @@ export const chatgptImageJobs = mysqlTable(
   (t) => ({
     // Worker claim job: quét status='queued' theo thứ tự vào trước ra trước.
     statusCreatedIdx: index('idx_chatgpt_image_status_created').on(t.status, t.createdAt),
+    // Claim giờ lọc thêm theo source — index riêng để không phải quét job của worker kia.
+    sourceStatusIdx: index('idx_chatgpt_image_source_status').on(t.source, t.status, t.createdAt),
   })
 );

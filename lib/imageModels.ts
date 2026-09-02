@@ -18,11 +18,30 @@ export const DEFAULT_STORYBOARD_MODEL = 'flow-image';
  */
 export const CHATGPT_LOCAL_MODEL = 'chatgpt-local';
 
-// 2 option provider gen ảnh hiển thị ở UI (StoryboardStep, JobImagePanel) — value là chuỗi
+/**
+ * Model gen ảnh qua ChatGPT web chạy trên CHROME CỦA NGƯỜI DÙNG, điều khiển bằng extension
+ * (extension-chatgpt/) thay vì Playwright trên server.
+ *
+ * Vì sao có thêm đường này bên cạnh CHATGPT_LOCAL_MODEL: bản Playwright cần một profile Chrome
+ * đã đăng nhập nằm sẵn trên server, mà tạo được profile đó thì tắc cả ba đường — copy profile
+ * từ macOS không ăn (cookie mã hoá bằng khoá Keychain), gửi cookie qua extension không đủ
+ * (token còn ở localStorage/IndexedDB + Cloudflare gắn phiên với fingerprint), còn login qua
+ * X11 thì phải làm lại mỗi lần ChatGPT đá phiên. Chạy thẳng trong Chrome người dùng đang mở
+ * thì không vướng rào nào trong số đó vì đó là trình duyệt thật đã đăng nhập.
+ *
+ * Đánh đổi: máy người dùng phải mở Chrome (có extension + tab chatgpt.com) thì job mới chạy;
+ * không thì job nằm chờ trong queue.
+ *
+ * KHÔNG chứa "/" — nhánh rẽ provider ở flowJobs.ts kiểm hằng này TRƯỚC khi kiểm dấu "/".
+ */
+export const CHATGPT_EXTENSION_MODEL = 'chatgpt-extension';
+
+// Các option provider gen ảnh hiển thị ở UI (StoryboardStep, JobImagePanel) — value là chuỗi
 // `model` thực gửi xuống generateStoryboardImage(): có "/" → OmniRoute, không có → Google Flow.
 export const IMAGE_MODEL_OPTIONS = [
   { value: 'chatgpt-web/gpt-5.5', label: 'ChatGPT (OmniRoute)' },
   { value: CHATGPT_LOCAL_MODEL, label: 'ChatGPT (tài khoản riêng)' },
+  { value: CHATGPT_EXTENSION_MODEL, label: 'ChatGPT (qua extension Chrome)' },
   { value: 'flow-image', label: 'Veo model' },
 ] as const;
 

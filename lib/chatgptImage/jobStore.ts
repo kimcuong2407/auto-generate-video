@@ -16,7 +16,15 @@ export interface ChatgptImageJobInput {
   prompt: string;
   aspect: '9:16' | '16:9';
   refImagePaths?: string[];
+  /** Ai chạy job này. Bỏ trống = 'playwright' (giữ nguyên hành vi cũ). */
+  source?: ChatgptImageJobSource;
 }
+
+/**
+ * Worker nào được phép giành job. Hai worker (Playwright trên server, extension Chrome trên
+ * máy người dùng) cùng quét một bảng nên phải tách, nếu không cái này cướp job của cái kia.
+ */
+export type ChatgptImageJobSource = 'playwright' | 'extension';
 
 export type ChatgptImageJobStatus = 'queued' | 'running' | 'done' | 'failed';
 
@@ -26,6 +34,7 @@ export interface ChatgptImageJob {
   aspect: '9:16' | '16:9';
   refImagePaths: string[];
   status: ChatgptImageJobStatus;
+  source: ChatgptImageJobSource;
   imagePath: string | null;
   error: string | null;
   attempts: number;
@@ -44,6 +53,7 @@ export async function createJob(input: ChatgptImageJobInput): Promise<string> {
     aspect: input.aspect,
     refImagePaths: input.refImagePaths || [],
     status: 'queued',
+    source: input.source || 'playwright',
     attempts: 0,
     createdAt: now,
     updatedAt: now,
@@ -61,6 +71,7 @@ export async function readJob(id: string): Promise<ChatgptImageJob | null> {
     aspect: row.aspect,
     refImagePaths: row.refImagePaths || [],
     status: row.status,
+    source: row.source,
     imagePath: row.imagePath,
     error: row.error,
     attempts: row.attempts,
@@ -72,12 +83,17 @@ export async function readJob(id: string): Promise<ChatgptImageJob | null> {
  * cùng đọc ra 1 job thì chỉ đúng 1 cái UPDATE ăn dòng, cái còn lại thấy affectedRows=0 và bỏ
  * qua. Không cần transaction tường minh — chính câu UPDATE này đã atomic.
  */
-export async function claimNextJob(accountId: string): Promise<ChatgptImageJob | null> {
+export async function claimNextJob(
+  accountId: string,
+  source: ChatgptImageJobSource = 'playwright'
+): Promise<ChatgptImageJob | null> {
   const db = getDb();
   const candidates = await db
     .select({ id: chatgptImageJobs.id })
     .from(chatgptImageJobs)
-    .where(eq(chatgptImageJobs.status, 'queued'))
+    // Lọc theo source: worker Playwright không được giành job dành cho extension (và ngược
+    // lại) — giành nhầm thì job nằm im tới lúc reap vì worker kia mới có đường chạy nó.
+    .where(and(eq(chatgptImageJobs.status, 'queued'), eq(chatgptImageJobs.source, source)))
     .orderBy(asc(chatgptImageJobs.createdAt))
     .limit(5);
 
@@ -117,18 +133,24 @@ export async function failJob(id: string, error: string): Promise<void> {
 }
 
 /**
- * Dọn job kẹt 'running' quá lâu — luôn là dấu vết của PM2 reload giữa lúc gen (deploy), vì
- * worker chạy được thì tự finish/fail. Không dọn thì job nằm 'running' vĩnh viễn và call-site
- * chờ nó sẽ treo tới hết timeout của chính nó.
+ * Dọn job kẹt 'running' quá lâu — worker chạy được thì tự finish/fail, nên kẹt luôn là dấu vết
+ * của một trong hai: PM2 reload giữa lúc gen (đường Playwright), hoặc người dùng đóng Chrome
+ * giữa chừng (đường extension). Không dọn thì job nằm 'running' vĩnh viễn và call-site chờ nó
+ * sẽ treo tới hết timeout của chính nó.
  */
 export async function reapStaleJobs(maxAgeMs: number): Promise<number> {
   const cutoff = isoToSql(new Date(Date.now() - maxAgeMs).toISOString())!;
   const stale = await getDb()
-    .select({ id: chatgptImageJobs.id })
+    .select({ id: chatgptImageJobs.id, source: chatgptImageJobs.source })
     .from(chatgptImageJobs)
     .where(and(eq(chatgptImageJobs.status, 'running'), lt(chatgptImageJobs.startedAt, cutoff)));
-  for (const { id } of stale) {
-    await failJob(id, 'Job bị bỏ dở (server khởi động lại giữa lúc gen)');
+  for (const { id, source } of stale) {
+    await failJob(
+      id,
+      source === 'extension'
+        ? 'Job bị bỏ dở (Chrome đóng hoặc extension mất kết nối giữa lúc gen)'
+        : 'Job bị bỏ dở (server khởi động lại giữa lúc gen)'
+    );
   }
   return stale.length;
 }

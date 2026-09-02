@@ -14,7 +14,7 @@ import { createProject } from './projects';
 import { generateImage } from './imageGen';
 import { generateOmniImage } from '../omniroute/imageGen';
 import { generateChatgptImage } from '../chatgptImage/imageGen';
-import { CHATGPT_LOCAL_MODEL } from '../imageModels';
+import { CHATGPT_EXTENSION_MODEL, CHATGPT_LOCAL_MODEL } from '../imageModels';
 import { generateVideo, pollVideoStatus } from './videoGen';
 import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
@@ -266,14 +266,18 @@ export async function generateStoryboardImage(params: {
   // Model OmniRoute (vd "chatgpt-web/gpt-5.5", chứa "/") → rẽ sang provider khác, không đụng
   // Google Flow (không cần flowProjectId/account thật). Model Google Flow (flow-image,
   // HARBOR_SEAL, GEM_PIX_2, NARWHAL) không chứa "/" nên rơi xuống nhánh cũ như trước.
-  // Model ChatGPT web (browser automation tự chạy, xem lib/chatgptImage/) — kiểm TRƯỚC nhánh
-  // "/" vì 'chatgpt-local' không chứa "/" và cũng không phải model Google Flow.
-  if (model === CHATGPT_LOCAL_MODEL) {
+  // Model ChatGPT web (browser automation, xem lib/chatgptImage/) — kiểm TRƯỚC nhánh "/" vì
+  // cả 'chatgpt-local' lẫn 'chatgpt-extension' đều không chứa "/" và cũng không phải model
+  // Google Flow. Hai model này chung hệt nhau trừ NƠI chạy browser: 'chatgpt-local' dùng
+  // Chromium Playwright trên server, 'chatgpt-extension' dùng Chrome của người dùng qua
+  // extension. Khác biệt gói gọn trong cờ `source` nên dùng chung một nhánh.
+  if (model === CHATGPT_LOCAL_MODEL || model === CHATGPT_EXTENSION_MODEL) {
     const paths = await generateChatgptImage({
       prompt: params.prompt,
       aspect: params.aspect,
       refImagePaths: (params.refImages || []).map((r) => r.path),
       timeoutMs: params.timeoutMs,
+      source: model === CHATGPT_EXTENSION_MODEL ? 'extension' : 'playwright',
     });
     return {
       job_id: '',
