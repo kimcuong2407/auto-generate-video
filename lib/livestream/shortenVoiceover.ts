@@ -2,23 +2,10 @@ import { chatCompletion } from '../ai/chatClient';
 import { extractJson } from '../ai/jsonExtract';
 import { countWords, findOverlongSegments } from './segmentSanitize';
 import type { LivestreamSegment } from './types';
+import { SHORTEN_SYSTEM_PROMPT } from './promptDefaults';
 
-const SHORTEN_SYSTEM_PROMPT = `Bạn là biên tập viên rút gọn lời thoại livestream bán hàng tiếng Việt.
+export { SHORTEN_SYSTEM_PROMPT } from './promptDefaults';
 
-Nhiệm vụ: với MỖI đoạn được cung cấp, viết lại lời thoại NGẮN HƠN để đọc kịp trong thời lượng video,
-tuân thủ NGHIÊM NGẶT giới hạn số từ ghi kèm từng đoạn (đếm từ = số cụm cách nhau bởi dấu cách).
-
-Nguyên tắc:
-- Giữ nguyên Ý CHÍNH, giọng điệu nói chuyện tự nhiên như đang live, và vai trò của đoạn trong mạch
-  (câu chuyển tiếp vẫn là chuyển tiếp, câu chốt đơn vẫn chốt đơn).
-- Cắt phần rườm rà: từ đệm, tính từ thừa, ý lặp lại, liệt kê dài. Ưu tiên bỏ nguyên cụm thay vì cắt
-  cụt câu — kết quả phải là câu tiếng Việt hoàn chỉnh, đọc lên trôi chảy.
-- KHÔNG thêm thông tin mới, KHÔNG bịa tính năng/giá/ưu đãi không có trong bản gốc.
-- Thà ngắn hơn giới hạn vài từ còn hơn vượt dù chỉ 1 từ.
-
-Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
-{"segments":[{"id":"seg-01","voiceoverVi":"..."}]}
-Chỉ trả về các đoạn được yêu cầu, giữ nguyên "id" đã cho.`;
 
 /** Số lượt gọi AI tối đa để ép các đoạn về đúng giới hạn từ (mỗi lượt chỉ gửi đoạn còn vượt). */
 const MAX_SHORTEN_ROUNDS = 2;

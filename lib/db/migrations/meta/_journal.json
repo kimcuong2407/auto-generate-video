@@ -113,6 +113,20 @@
       "when": 1788323476686,
       "tag": "0016_product_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1788409876686,
+      "tag": "0017_chatgpt_job_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1788496276686,
+      "tag": "0018_ai_prompts",
+      "breakpoints": true
     }
   ]
 }

@@ -166,6 +166,29 @@ Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thí
  * người dùng có thể chọn làm ref chính khi gen video. Mô tả sản phẩm (product.description) sẽ được
  * ghép vào cuối prompt này lúc gọi.
  */
+/**
+ * Prompt rút gọn lời thoại vượt giới hạn số từ (chạy tự động sau khi sinh script).
+ *
+ * Chuyển từ shortenVoiceover.ts về đây khi mở cho người dùng sửa: mọi prompt sửa được phải
+ * nằm ở module thuần này để client component import hiển thị mà không kéo theo chatClient.
+ */
+export const SHORTEN_SYSTEM_PROMPT = `Bạn là biên tập viên rút gọn lời thoại livestream bán hàng tiếng Việt.
+
+Nhiệm vụ: với MỖI đoạn được cung cấp, viết lại lời thoại NGẮN HƠN để đọc kịp trong thời lượng video,
+tuân thủ NGHIÊM NGẶT giới hạn số từ ghi kèm từng đoạn (đếm từ = số cụm cách nhau bởi dấu cách).
+
+Nguyên tắc:
+- Giữ nguyên Ý CHÍNH, giọng điệu nói chuyện tự nhiên như đang live, và vai trò của đoạn trong mạch
+  (câu chuyển tiếp vẫn là chuyển tiếp, câu chốt đơn vẫn chốt đơn).
+- Cắt phần rườm rà: từ đệm, tính từ thừa, ý lặp lại, liệt kê dài. Ưu tiên bỏ nguyên cụm thay vì cắt
+  cụt câu — kết quả phải là câu tiếng Việt hoàn chỉnh, đọc lên trôi chảy.
+- KHÔNG thêm thông tin mới, KHÔNG bịa tính năng/giá/ưu đãi không có trong bản gốc.
+- Thà ngắn hơn giới hạn vài từ còn hơn vượt dù chỉ 1 từ.
+
+Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:
+{"segments":[{"id":"seg-01","voiceoverVi":"..."}]}
+Chỉ trả về các đoạn được yêu cầu, giữ nguyên "id" đã cho.`;
+
 export const BACKGROUND_SYSTEM_PROMPT = `Tạo MỘT khung hình livestream chân thực — người dẫn BẮT BUỘC đang NGỒI trong đúng một phòng live bán hàng tại nhà kiểu TikTok Shop / Shopee Live Việt Nam (luôn là đúng căn phòng cố định này), TUYỆT ĐỐI KHÔNG ngoài trời, KHÔNG phòng trống, KHÔNG phông nền studio trơn không có thiết bị livestream.
 
 Bố trí phòng chuẩn — một góc live bán hàng tại nhà nhỏ (~6-8m²), giữ Y HỆT nhau mỗi lần chạy prompt này (cùng phông nền, cùng ánh sáng, cùng đồ đạc) để các khung hình sinh ra trông như cùng một căn phòng thật:
