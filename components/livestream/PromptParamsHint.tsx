@@ -1,6 +1,6 @@
 'use client';
 
-import { paramsForStep } from '@/lib/livestream/promptParams';
+import { paramsForStep } from '@/lib/livestream/promptParamsDefs';
 
 /**
  * Bảng gợi ý params dùng được trong system prompt sinh kịch bản.
@@ -18,8 +18,8 @@ export function PromptParamsHint({ step = 'script' }: { step?: 'script' | 'backg
       </summary>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0' }}>
         Viết {'${ten_param}'} vào bất kỳ đâu trong prompt, hệ thống tự thay bằng giá trị thật của
-        sản phẩm đang sinh. Gõ sai tên thì param được giữ nguyên trong prompt (nhìn khung "Prompt
-        gửi AI" bên dưới là thấy ngay).
+        sản phẩm đang sinh. Gõ sai tên thì param được giữ nguyên trong prompt (nhìn khung &quot;Prompt
+        gửi AI&quot; bên dưới là thấy ngay).
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {params.map((p) => (
