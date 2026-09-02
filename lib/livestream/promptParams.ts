@@ -1,3 +1,4 @@
+import { computeSegmentDurations } from './segmentSanitize';
 import type { LivestreamJob, LivestreamProduct, LivestreamV2Input } from './types';
 
 /**
@@ -13,16 +14,27 @@ import type { LivestreamJob, LivestreamProduct, LivestreamV2Input } from './type
 export const PROMPT_PARAMS = [
   { key: 'ten_sanpham', label: 'Tên sản phẩm' },
   { key: 'mota_sanpham', label: 'Mô tả sản phẩm' },
-  { key: 'thoiluong', label: 'Tổng thời lượng mong muốn (giây)' },
-  { key: 'so_doan', label: 'Số đoạn sẽ viết' },
+  { key: 'thoiluong', label: 'Tổng thời lượng mong muốn (giây)', scriptOnly: true },
+  { key: 'so_doan', label: 'Số đoạn sẽ viết', scriptOnly: true },
   { key: 'uu_diem', label: 'Ưu điểm sản phẩm (job V2), mỗi ý 1 dòng' },
   { key: 'nen_tang', label: 'Nền tảng live (job V2), VD Shopee Live' },
   { key: 'ten_kenh', label: 'Tên kênh (job V2)' },
-  { key: 'khuyen_mai', label: 'Khuyến mãi (job V2)' },
-  { key: 'cta', label: 'Lời kêu gọi hành động (job V2)' },
-  { key: 'so_sanpham', label: 'Tổng số sản phẩm trong buổi live' },
-  { key: 'vi_tri_sanpham', label: 'Sản phẩm này là thứ mấy (1-based)' },
+  { key: 'khuyen_mai', label: 'Khuyến mãi (job V2)', scriptOnly: true },
+  { key: 'cta', label: 'Lời kêu gọi hành động (job V2)', scriptOnly: true },
+  { key: 'so_sanpham', label: 'Tổng số sản phẩm trong buổi live', scriptOnly: true },
+  { key: 'vi_tri_sanpham', label: 'Sản phẩm này là thứ mấy (1-based)', scriptOnly: true },
 ] as const;
+
+/**
+ * Params gợi ý cho 1 bước. Bước gen ảnh chỉ hiện thứ tả được bằng HÌNH (tên/mô tả/ưu điểm/kênh) —
+ * ${so_doan} hay ${cta} trong prompt vẽ ảnh chỉ làm nhiễu.
+ *
+ * Đây chỉ là bộ lọc HIỂN THỊ: fillPromptParams vẫn thay MỌI param ở mọi bước, nên prompt cũ có
+ * ${cta} không đột nhiên hỏng sau thay đổi này.
+ */
+export function paramsForStep(step: 'script' | 'background') {
+  return step === 'script' ? PROMPT_PARAMS : PROMPT_PARAMS.filter((p) => !('scriptOnly' in p));
+}
 
 export type PromptParamKey = (typeof PROMPT_PARAMS)[number]['key'];
 
@@ -30,10 +42,13 @@ export type PromptParamKey = (typeof PROMPT_PARAMS)[number]['key'];
 export function buildPromptParamValues(args: {
   job: Pick<LivestreamJob, 'products'>;
   product: Pick<LivestreamProduct, 'id' | 'name' | 'description' | 'targetDurationSec'>;
-  durations: number[];
+  /** Thời lượng từng đoạn. Bỏ trống thì tự tính từ targetDurationSec — bước gen background không
+   *  có sẵn mảng này nhưng ${so_doan} vẫn phải ra số thật, không phải 0. */
+  durations?: number[];
   v2Input?: LivestreamV2Input | null;
 }): Record<PromptParamKey, string> {
-  const { job, product, durations, v2Input } = args;
+  const { job, product, v2Input } = args;
+  const durations = args.durations ?? computeSegmentDurations(product.targetDurationSec);
   const index = job.products.findIndex((p) => p.id === product.id);
   return {
     ten_sanpham: product.name,

@@ -5,6 +5,7 @@ import type { LivestreamJob } from '@/lib/livestream/types';
 import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
 import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
 import { PromptPreviewModal } from './PromptPreviewModal';
+import { PromptParamsHint } from './PromptParamsHint';
 
 /**
  * Khu cấu hình BỘ ẢNH CHUNG cả job (đặt cạnh panel System prompt đầu trang): ảnh sản phẩm (kho +
@@ -779,6 +780,7 @@ export function JobImagePanel({
           <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>
             ⚙️ Prompt gen background (có thể chỉnh)
           </summary>
+          <PromptParamsHint step="background" />
           <textarea
             rows={8}
             value={bgPromptDraft}
@@ -820,6 +822,15 @@ export function JobImagePanel({
           imageR2Urls={job.imageR2Urls ?? undefined}
           confirmLabel={previewingBgPrompt === 'gen' ? '🎨 Gen background ngay' : undefined}
           onConfirm={previewingBgPrompt === 'gen' ? handleGenerateBackground : undefined}
+          // Sửa prompt TRONG modal xong, ô ở panel phải theo — không thì đóng modal ra thấy bản cũ
+          // rồi bấm lưu ở panel là ghi đè mất thứ vừa sửa.
+          onSaved={async () => {
+            const { job: fresh } = await fetch(`/api/livestream/${jobId}`)
+              .then((r) => r.json())
+              .catch(() => ({ job: null }));
+            if (fresh) setBgPromptDraft(fresh.backgroundPromptOverride ?? BACKGROUND_SYSTEM_PROMPT);
+            await onRefresh();
+          }}
           onClose={() => setPreviewingBgPrompt(null)}
         />
       )}

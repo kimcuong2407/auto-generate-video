@@ -9,7 +9,7 @@ interface PreviewData {
   notes: string[];
   /** Xem PreviewPromptResult ở route preview-prompt. */
   editable?: {
-    step: 'script' | 'video';
+    step: 'script' | 'video' | 'background';
     systemPrompt?: string;
     isCustomPrompt?: boolean;
     chosenRefPaths: string[];
@@ -125,6 +125,13 @@ export function PromptPreviewModal({
   function toggleRef(rel: string) {
     const cur = data?.editable?.chosenRefPaths ?? [];
     const next = cur.includes(rel) ? cur.filter((r) => r !== rel) : [...cur, rel];
+    // Ảnh bước background lưu ở job.backgroundRefPaths qua route RIÊNG (chỉ nhận `paths`), còn
+    // script/video dùng chung route script-refs phân biệt bằng `step`. Gửi nhầm route là ảnh tick
+    // xong không có tác dụng gì.
+    if (data?.editable?.step === 'background') {
+      saveEdit(`/api/livestream/${jobId}/images/background-refs`, { paths: next });
+      return;
+    }
     saveEdit(`/api/livestream/${jobId}/images/script-refs`, {
       paths: next,
       step: data?.editable?.step ?? 'script',
@@ -285,17 +292,18 @@ export function PromptPreviewModal({
             )}
 
             {data.editable?.systemPrompt !== undefined && (
-              <details style={{ marginBottom: 12 }}>
+              <details open={data.editable.step === 'background'} style={{ marginBottom: 12 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                  ✏️ Sửa system prompt sinh kịch bản{' '}
+                  ✏️ Sửa prompt {data.editable.step === 'background' ? 'gen ảnh background' : 'sinh kịch bản'}{' '}
                   <span className={`badge ${data.editable.isCustomPrompt ? 'badge-running' : 'badge-pending'}`}>
                     {data.editable.isCustomPrompt ? 'Đã tuỳ chỉnh' : 'Mặc định'}
                   </span>
                 </summary>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0' }}>
-                  Lưu áp cho MỌI lần sinh script sau của job này (giống panel ⚙️ đầu trang).
+                  Lưu áp cho MỌI lần {data.editable.step === 'background' ? 'gen background' : 'sinh script'} sau
+                  của job này (giống panel đầu trang).
                 </div>
-                <PromptParamsHint />
+                <PromptParamsHint step={data.editable.step === 'background' ? 'background' : 'script'} />
                 <textarea
                   rows={12}
                   value={promptDraft ?? data.editable.systemPrompt}
@@ -307,7 +315,12 @@ export function PromptPreviewModal({
                     className="btn"
                     disabled={savingEdit || promptDraft === null}
                     onClick={() =>
-                      saveEdit(`/api/livestream/${jobId}/prompt`, { scriptSystemPrompt: promptDraft })
+                      saveEdit(
+                        `/api/livestream/${jobId}/prompt`,
+                        data.editable!.step === 'background'
+                          ? { backgroundPrompt: promptDraft }
+                          : { scriptSystemPrompt: promptDraft }
+                      )
                     }
                   >
                     {savingEdit ? 'Đang lưu...' : '💾 Lưu prompt'}
@@ -315,7 +328,14 @@ export function PromptPreviewModal({
                   <button
                     className="btn btn-ghost"
                     disabled={savingEdit || !data.editable.isCustomPrompt}
-                    onClick={() => saveEdit(`/api/livestream/${jobId}/prompt`, { scriptSystemPrompt: null })}
+                    onClick={() =>
+                      saveEdit(
+                        `/api/livestream/${jobId}/prompt`,
+                        data.editable!.step === 'background'
+                          ? { backgroundPrompt: null }
+                          : { scriptSystemPrompt: null }
+                      )
+                    }
                   >
                     ↺ Khôi phục mặc định
                   </button>

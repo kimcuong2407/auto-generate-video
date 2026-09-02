@@ -39,7 +39,7 @@ export interface PreviewPromptResult {
    */
   editable?: {
     /** Bước nào đang sửa — modal gửi lại field này khi lưu danh sách ảnh. */
-    step: 'script' | 'video';
+    step: 'script' | 'video' | 'background';
     systemPrompt?: string;
     /** true = systemPrompt là bản người dùng đã override, false = đang dùng mặc định. */
     isCustomPrompt?: boolean;
@@ -121,10 +121,41 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         'Đang để hệ thống tự chọn ảnh tham chiếu (ảnh mẫu + tối đa 3 ảnh sản phẩm + ảnh nền đang chọn). Tick chọn ảnh ở phần "Ảnh gửi kèm khi gen background" để tự quyết.'
       );
     }
+    const paramValues = buildPromptParamValues({ job, product });
+    const filledBase = fillPromptParams(basePrompt, paramValues);
+    if (filledBase !== basePrompt) {
+      bgNotes.push('Prompt có dùng params ${...} — khung bên dưới hiện bản ĐÃ thay giá trị thật.');
+    }
     const result: PreviewPromptResult = {
-      prompt: buildBackgroundPrompt(basePrompt, product.description || product.name, bible, entries),
+      prompt: buildBackgroundPrompt(
+        basePrompt,
+        product.description || product.name,
+        bible,
+        entries,
+        paramValues
+      ),
       refImages: entries.map((e) => ({ rel: e.rel, label: e.label })),
       notes: bgNotes,
+      editable: {
+        step: 'background',
+        // Bản GỐC còn `${...}` để sửa — khung prompt bên trên đã là bản thay rồi. Ưu tiên bản nháp
+        // đang gõ trên UI (?prompt) để mở modal giữa chừng không mất thứ chưa lưu.
+        systemPrompt: basePrompt,
+        isCustomPrompt: !!job.backgroundPromptOverride?.trim(),
+        chosenRefPaths: job.backgroundRefPaths ?? [],
+        candidates: [
+          ...(job.selectedModelImagePath
+            ? [{ rel: job.selectedModelImagePath, role: 'ảnh mẫu' }]
+            : []),
+          ...(job.spokespersonImagePaths ?? []).map((rel) => ({
+            rel,
+            role: (job.selectedRefImagePaths ?? []).includes(rel)
+              ? 'ảnh sản phẩm (đã chọn)'
+              : 'ảnh sản phẩm',
+          })),
+          ...(job.backgroundImagePaths ?? []).map((rel) => ({ rel, role: 'ảnh nền' })),
+        ].filter((item, i, arr) => arr.findIndex((x) => x.rel === item.rel) === i),
+      },
     };
     return NextResponse.json(result);
   }

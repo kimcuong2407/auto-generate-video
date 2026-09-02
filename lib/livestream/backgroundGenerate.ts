@@ -5,6 +5,7 @@ import { jobInputsDir, resolveWithinJob } from './paths';
 import { ensureLocalImage, uploadImageToR2 } from './imageR2';
 import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
 import { pickBackgroundRefEntries } from './refImages';
+import { buildPromptParamValues, fillPromptParams } from './promptParams';
 import type { VisionRefEntry } from './refImages';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 import { ensureStageBible } from './stageBible';
@@ -41,7 +42,12 @@ export function buildBackgroundPrompt(
   basePrompt: string,
   productText: string,
   bible: LivestreamStageBible | null,
-  entries: VisionRefEntry[]
+  entries: VisionRefEntry[],
+  /**
+   * Giá trị thay cho params `${...}` trong basePrompt (buildPromptParamValues). Bỏ trống thì
+   * params được giữ nguyên — dùng ở call-site chưa có job/product trong tay.
+   */
+  paramValues?: Record<string, string>
 ): string {
   const bibleBlock = bible
     ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
@@ -54,7 +60,10 @@ export function buildBackgroundPrompt(
           .map((e, i) => `  ${i + 1}. ${e.label}`)
           .join('\n')}\nẢnh reference là NGUỒN SỰ THẬT, ưu tiên hơn MỌI mô tả bằng chữ ở trên. Khuôn mặt, giới tính, kiểu tóc, vóc dáng và trang phục của người dẫn PHẢI copy đúng ảnh NGƯỜI MẪU — nếu mô tả bằng chữ khác ảnh thì theo ẢNH. Sản phẩm trên bàn PHẢI đúng món trong ảnh SẢN PHẨM THẬT, không thay bằng món khác.`
       : '';
-  return `${basePrompt}\n${productText}${bibleBlock}${refLegendBlock}`;
+  // Fill params TRƯỚC khi ghép 3 mảnh còn lại: mảnh server tự ghép (bible/chú giải ảnh) không phải
+  // do Mr.D viết, thay `${...}` trong đó chỉ tổ phá chuỗi mô tả model sinh ra.
+  const filled = paramValues ? fillPromptParams(basePrompt, paramValues) : basePrompt;
+  return `${filled}\n${productText}${bibleBlock}${refLegendBlock}`;
 }
 
 /**
@@ -96,7 +105,8 @@ export async function triggerBackgroundImageGeneration(
     basePrompt,
     product.description || product.name,
     bible,
-    entries
+    entries,
+    buildPromptParamValues({ job, product })
   );
 
   // Tải lại từ R2 về local nếu file local mất (server mới sau deploy) — Google Flow đọc file local.

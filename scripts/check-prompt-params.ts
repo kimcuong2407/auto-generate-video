@@ -8,7 +8,10 @@ import {
   PROMPT_PARAMS,
   buildPromptParamValues,
   fillPromptParams,
+  paramsForStep,
 } from '../lib/livestream/promptParams';
+import { computeSegmentDurations } from '../lib/livestream/segmentSanitize';
+import { buildBackgroundPrompt } from '../lib/livestream/backgroundGenerate';
 
 const job = {
   products: [
@@ -73,6 +76,35 @@ assert.equal(fillPromptParams(plain, values), plain);
 assert.equal(
   fillPromptParams('${mota_sanpham}', { mota_sanpham: 'giá ${ten_sanpham} đồng', ten_sanpham: 'X' }),
   'giá ${ten_sanpham} đồng'
+);
+
+// durations bỏ trống (bước gen background) vẫn phải ra số đoạn THẬT, không phải 0.
+const bgValues = buildPromptParamValues({ job, product: job.products[1] });
+assert.equal(bgValues.thoiluong, '32');
+assert.notEqual(bgValues.so_doan, '0');
+assert.equal(bgValues.so_doan, String(computeSegmentDurations(32).length));
+
+// Bước gen ảnh chỉ GỢI Ý param tả được bằng hình; script thì đủ bộ.
+const bgParams = paramsForStep('background');
+assert.equal(paramsForStep('script').length, PROMPT_PARAMS.length);
+assert.ok(bgParams.length < PROMPT_PARAMS.length, 'bước background phải lọc bớt param');
+assert.ok(bgParams.some((p) => p.key === 'mota_sanpham'));
+assert.ok(!bgParams.some((p) => p.key === 'so_doan'));
+
+// Lọc chỉ là hiển thị: prompt background có ${so_doan} vẫn được THAY, không bị bỏ qua.
+const bgPrompt = buildBackgroundPrompt(
+  'Vẽ cảnh bán ${ten_sanpham}, chia ${so_doan} đoạn',
+  'mô tả sản phẩm',
+  null,
+  [],
+  bgValues
+);
+assert.ok(bgPrompt.includes('Vẽ cảnh bán Quần jean'), bgPrompt);
+assert.ok(!bgPrompt.includes('${so_doan}'), 'param scriptOnly vẫn phải được thay ở bước background');
+
+// Không truyền paramValues thì giữ nguyên ${...} — call-site cũ không đột nhiên đổi hành vi.
+assert.ok(
+  buildBackgroundPrompt('Vẽ ${ten_sanpham}', 'x', null, []).includes('${ten_sanpham}')
 );
 
 console.log('✅ check-prompt-params: OK');
