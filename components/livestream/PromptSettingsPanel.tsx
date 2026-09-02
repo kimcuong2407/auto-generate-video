@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { PromptStepEditor, type PromptStepView } from '@/components/prompts/PromptStepEditor';
+import { PromptPreviewModal } from './PromptPreviewModal';
 
 /**
  * Khối "system prompt AI" của MỘT job livestream: cả 11 bước gọi AI, mỗi bước sửa được với 2 phạm
@@ -27,6 +28,7 @@ export function PromptSettingsPanel({
 }) {
   const [steps, setSteps] = useState<PromptStepView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewStep, setPreviewStep] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +56,9 @@ export function PromptSettingsPanel({
   }
 
   const jobCustom = steps?.filter((s) => s.scope === 'job').length ?? 0;
+
+  // Chỉ những bước route preview-prompt dựng được payload — bước khác mở modal sẽ ra lỗi 400.
+  const PREVIEWABLE = ['background', 'script', 'stage_bible', 'product_lock', 'product_visual', 'script_qa'];
 
   return (
     <div className="card">
@@ -84,9 +89,19 @@ export function PromptSettingsPanel({
               jobSlug={jobId}
               index={i + 1}
               onSaved={handleSaved}
+              onPreview={PREVIEWABLE.includes(s.key) ? setPreviewStep : undefined}
             />
           ))}
         </>
+      )}
+
+      {previewStep && (
+        <PromptPreviewModal
+          jobId={jobId}
+          step={previewStep as 'script'}
+          onSaved={handleSaved}
+          onClose={() => setPreviewStep(null)}
+        />
       )}
     </div>
   );

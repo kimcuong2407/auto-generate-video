@@ -4,10 +4,18 @@ import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
 import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { loadPromptSet } from '@/lib/livestream/promptStore';
-import { formatProductLockBlock, pickProductLockRefPaths } from '@/lib/livestream/productLock';
+import {
+  PRODUCT_LOCK_USER_PROMPT,
+  formatProductLockBlock,
+  pickProductLockRefPaths,
+} from '@/lib/livestream/productLock';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
-import { formatStageBibleBlock, isStageBibleStale } from '@/lib/livestream/stageBible';
+import {
+  buildStageBibleUserPrompt,
+  formatStageBibleBlock,
+  isStageBibleStale,
+} from '@/lib/livestream/stageBible';
 import {
   findPreviousSegment,
   pickBackgroundRefEntries,
@@ -40,7 +48,7 @@ export interface PreviewPromptResult {
    */
   editable?: {
     /** Bước nào đang sửa — modal gửi lại field này khi lưu danh sách ảnh. */
-    step: 'script' | 'video' | 'background';
+    step: 'script' | 'video' | 'background' | 'stage_bible' | 'product_lock' | 'product_visual' | 'script_qa';
     systemPrompt?: string;
     /** true = systemPrompt là bản người dùng đã override, false = đang dùng mặc định. */
     isCustomPrompt?: boolean;
@@ -74,9 +82,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
   const job = await readJob(id);
   const step = req.nextUrl.searchParams.get('step');
-  if (step !== 'background' && step !== 'script' && step !== 'segment') {
+  const EXTRA_STEPS = ['stage_bible', 'product_lock', 'product_visual', 'script_qa'] as const;
+  type ExtraStep = (typeof EXTRA_STEPS)[number];
+  const isExtra = (v: string | null): v is ExtraStep =>
+    !!v && (EXTRA_STEPS as readonly string[]).includes(v);
+  if (step !== 'background' && step !== 'script' && step !== 'segment' && !isExtra(step)) {
     return NextResponse.json(
-      { error: 'step phải là "background", "script" hoặc "segment"' },
+      { error: `step không hợp lệ: ${step}` },
       { status: 400 }
     );
   }
@@ -229,6 +241,85 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
           })),
           ...(job.backgroundImagePaths ?? []).map((rel) => ({ rel, role: 'ảnh nền' })),
         ].filter((item, i, arr) => arr.findIndex((x) => x.rel === item.rel) === i),
+      },
+    };
+    return NextResponse.json(result);
+  }
+
+  // 4 bước phụ trợ chạy TRONG lượt sinh script (không có nút bấm riêng) — preview để xem trước
+  // prompt + đúng bộ ảnh mỗi bước nhận, vì đây là những lượt AI quyết định chất lượng cả job.
+  if (isExtra(step)) {
+    // 2 bước product_lock/script_qa CHỈ chạy với job V2 — không nói rõ thì Mr.D sửa prompt xong
+    // chờ mãi không thấy tác dụng vì job V1 không bao giờ gọi tới.
+    const v2InputForExtra = await readV2Input(id).catch(() => null);
+    const extraNotes = [...notes];
+    let prompt: string;
+    let refImages: PreviewRefImage[] = [];
+
+    if (step === 'stage_bible') {
+      // Đúng bộ ảnh collectStageRefImages gửi đi (pickScriptRefEntries), KHÔNG phải
+      // pickVisionRefEntries — hai tập khác nhau, hiện nhầm thì preview vô nghĩa.
+      const entries = pickScriptRefEntries(job);
+      refImages = entries.map((e) => ({ rel: e.rel, label: e.label }));
+      // visualDescription do vision sinh mới mỗi lượt, preview không gọi AI nên đánh dấu vị trí.
+      const legend = entries.map((e, i) => `  ${i + 1}. ${e.label}`).join('\n');
+      prompt = `===== SYSTEM PROMPT =====\n${prompts.get('stage_bible')}\n\n===== USER PROMPT =====\n${buildStageBibleUserPrompt(
+        job,
+        '[mô tả ngoại hình sản phẩm sẽ được chèn vào đây khi bấm sinh script]',
+        entries.length > 0 ? legend : undefined
+      )}`;
+      if (entries.length === 0) {
+        extraNotes.push('❌ Chưa có ảnh nào gửi kèm — AI sẽ tự bịa người dẫn thay vì tả đúng ảnh mẫu.');
+      }
+      extraNotes.push(
+        'Bước này chốt người dẫn/bối cảnh/góc máy/giọng cho TOÀN BỘ job, chạy tự động trong lượt sinh script (hoặc khi bấm "Chốt lại sân khấu").'
+      );
+    } else if (step === 'product_lock') {
+      const paths = pickProductLockRefPaths(job);
+      refImages = paths.map((rel) => ({ rel, label: 'ảnh SẢN PHẨM THẬT' }));
+      prompt = `===== SYSTEM PROMPT =====\n${prompts.get('product_lock')}\n\n===== USER PROMPT =====\n${PRODUCT_LOCK_USER_PROMPT}`;
+      if (!v2InputForExtra) {
+        extraNotes.push('⚠️ Bước này CHỈ chạy với job Livestream Shopee V2 — job hiện tại không dùng tới.');
+      }
+      if (paths.length === 0) {
+        extraNotes.push('Chưa chọn ảnh sản phẩm nào nên bước này sẽ bị bỏ qua (script vẫn sinh bình thường).');
+      }
+    } else if (step === 'product_visual') {
+      // Đúng phép giao route generate dùng: chỉ ảnh SẢN PHẨM trong danh sách đã tick.
+      const chosen = job.scriptRefPaths ?? [];
+      const paths =
+        chosen.length > 0
+          ? chosen.filter((rel) => (job.selectedRefImagePaths ?? []).includes(rel))
+          : (job.selectedRefImagePaths ?? []);
+      refImages = paths.map((rel) => ({ rel, label: 'ảnh SẢN PHẨM THẬT' }));
+      prompt = `===== SYSTEM PROMPT =====\n${prompts.get('product_visual')}\n\n===== USER PROMPT =====\n(bước này chỉ gửi ẢNH, không có user prompt bằng chữ)`;
+      if (paths.length === 0) {
+        extraNotes.push('Chưa chọn ảnh sản phẩm nào nên bước này sẽ bị bỏ qua.');
+      }
+    } else {
+      // script_qa: user prompt dựng từ chính kịch bản ĐÃ sinh, chưa sinh thì không có gì để chấm.
+      const segs = product.segments;
+      prompt = `===== SYSTEM PROMPT =====\n${prompts.get('script_qa')}\n\n===== USER PROMPT (dựng từ ${segs.length} đoạn hiện có của "${product.name}") =====\n${
+        segs.length > 0
+          ? segs.map((sg, i) => `Cảnh ${i + 1}: ${sg.veoPrompt || '(chưa có)'}`).join('\n')
+          : '(chưa sinh script nên chưa có cảnh nào để chấm)'
+      }`;
+      if (!v2InputForExtra) {
+        extraNotes.push('⚠️ Bước này CHỈ chạy với job Livestream Shopee V2 — job hiện tại không dùng tới.');
+      }
+      extraNotes.push('Chạy SAU khi sinh script: chỉ cảnh báo lỗi vật lý / lời quảng cáo quá đà, KHÔNG tự sửa kịch bản.');
+    }
+
+    const result: PreviewPromptResult = {
+      prompt,
+      refImages,
+      notes: extraNotes,
+      editable: {
+        step,
+        systemPrompt: prompts.raw(step, 'job') ?? prompts.raw(step, 'global') ?? prompts.get(step),
+        isCustomPrompt: prompts.scopeOf(step) !== 'default',
+        chosenRefPaths: job.scriptRefPaths ?? [],
+        candidates: [],
       },
     };
     return NextResponse.json(result);

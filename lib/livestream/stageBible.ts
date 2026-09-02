@@ -123,24 +123,45 @@ async function collectStageRefImages(
   return { images, legend };
 }
 
-async function generateStageBible(
-  job: LivestreamJob,
+/**
+ * Ghép user prompt chốt sân khấu — hàm THUẦN, tách khỏi generateStageBible để route preview
+ * (app/api/livestream/[id]/preview-prompt) hiện ĐÚNG chuỗi server thật sự gửi đi.
+ *
+ * Cùng lý do buildBackgroundPrompt đã tách: hai bên tự ghép riêng thì bản xem trước trôi lệch với
+ * thứ gửi đi, và preview thành vô nghĩa — đúng hợp đồng check-preview-prompt.ts khoá lại.
+ *
+ * `imageLegend` là chú giải ảnh đã đọc được (collectStageRefImages); rỗng = không đính kèm ảnh nào.
+ */
+export function buildStageBibleUserPrompt(
+  job: Pick<LivestreamJob, 'products'>,
   visualDescription?: string,
-  /** System prompt của bước này (registry). Bỏ trống = hằng mặc định. */
-  systemPrompt: string = STAGE_BIBLE_SYSTEM_PROMPT
-): Promise<LivestreamStageBible> {
+  imageLegend?: string
+): string {
   const productList = job.products
     .map((p, i) => `${i + 1}. ${p.name}: ${p.description.slice(0, 400)}`)
     .join('\n');
   const visualBlock = visualDescription
     ? `\n\nMô tả ảnh reference (người mẫu/sản phẩm thật) — mô tả người dẫn phải khớp nếu ảnh có người:\n${visualDescription}`
     : '';
-  const refs = await collectStageRefImages(job);
   const imageBlock =
-    refs.images.length > 0
-      ? `\n\nẢNH THẬT ĐÍNH KÈM (nhìn kỹ trước khi chốt — đây là nguồn sự thật, ưu tiên hơn MỌI mô tả bằng chữ ở trên):\n${refs.legend}\nNếu có ảnh NGƯỜI MẪU: "host" PHẢI tả ĐÚNG người trong ảnh — đúng GIỚI TÍNH (nhìn ảnh để xác định, KHÔNG mặc định theo loại sản phẩm), đúng độ tuổi, kiểu tóc, vóc dáng, trang phục và màu sắc trang phục. "voice" PHẢI khớp giới tính người trong ảnh (ảnh nam → giọng nam, ảnh nữ → giọng nữ). Nếu có ảnh SẢN PHẨM THẬT: "scene" phải là không gian bày vừa và hợp lý với ĐÚNG món hàng trong ảnh (đúng kích thước, đúng loại mặt bàn/giá đỡ cần có); đạo cụ nhắc trong "scene" phải phù hợp sản phẩm thật, KHÔNG bịa thêm đồ vật không thấy trong ảnh. Nếu có ảnh BỐI CẢNH: "scene" phải tả đúng căn phòng/bàn/ánh sáng trong ảnh. TUYỆT ĐỐI KHÔNG bịa khác ảnh.`
+    imageLegend
+      ? `\n\nẢNH THẬT ĐÍNH KÈM (nhìn kỹ trước khi chốt — đây là nguồn sự thật, ưu tiên hơn MỌI mô tả bằng chữ ở trên):\n${imageLegend}\nNếu có ảnh NGƯỜI MẪU: "host" PHẢI tả ĐÚNG người trong ảnh — đúng GIỚI TÍNH (nhìn ảnh để xác định, KHÔNG mặc định theo loại sản phẩm), đúng độ tuổi, kiểu tóc, vóc dáng, trang phục và màu sắc trang phục. "voice" PHẢI khớp giới tính người trong ảnh (ảnh nam → giọng nam, ảnh nữ → giọng nữ). Nếu có ảnh SẢN PHẨM THẬT: "scene" phải là không gian bày vừa và hợp lý với ĐÚNG món hàng trong ảnh (đúng kích thước, đúng loại mặt bàn/giá đỡ cần có); đạo cụ nhắc trong "scene" phải phù hợp sản phẩm thật, KHÔNG bịa thêm đồ vật không thấy trong ảnh. Nếu có ảnh BỐI CẢNH: "scene" phải tả đúng căn phòng/bàn/ánh sáng trong ảnh. TUYỆT ĐỐI KHÔNG bịa khác ảnh.`
       : '';
-  const user = `Danh sách sản phẩm sẽ giới thiệu lần lượt trong buổi live này:\n${productList}${visualBlock}${imageBlock}`;
+  return `Danh sách sản phẩm sẽ giới thiệu lần lượt trong buổi live này:\n${productList}${visualBlock}${imageBlock}`;
+}
+
+async function generateStageBible(
+  job: LivestreamJob,
+  visualDescription?: string,
+  /** System prompt của bước này (registry). Bỏ trống = hằng mặc định. */
+  systemPrompt: string = STAGE_BIBLE_SYSTEM_PROMPT
+): Promise<LivestreamStageBible> {
+  const refs = await collectStageRefImages(job);
+  const user = buildStageBibleUserPrompt(
+    job,
+    visualDescription,
+    refs.images.length > 0 ? refs.legend : undefined
+  );
 
   // Có ảnh đính kèm thì phải đi qua AI_VISION_MODEL (model chat mặc định không nhìn được ảnh).
   const visionModel = process.env.AI_VISION_MODEL || '';

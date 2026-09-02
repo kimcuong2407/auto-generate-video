@@ -9,7 +9,7 @@ interface PreviewData {
   notes: string[];
   /** Xem PreviewPromptResult ở route preview-prompt. */
   editable?: {
-    step: 'script' | 'video' | 'background';
+    step: 'script' | 'video' | 'background' | 'stage_bible' | 'product_lock' | 'product_visual' | 'script_qa';
     systemPrompt?: string;
     isCustomPrompt?: boolean;
     chosenRefPaths: string[];
@@ -21,6 +21,10 @@ const STEP_TITLE: Record<string, string> = {
   background: 'Bước: Gen ảnh background',
   script: 'Bước: Sinh kịch bản',
   segment: 'Bước: Gen video cho đoạn',
+  stage_bible: 'Bước: Chốt sân khấu buổi live',
+  product_lock: 'Bước: Khoá ngoại hình sản phẩm',
+  product_visual: 'Bước: Đọc ngoại hình sản phẩm từ ảnh',
+  script_qa: 'Bước: Kiểm duyệt kịch bản',
 };
 
 /**
@@ -48,7 +52,7 @@ export function PromptPreviewModal({
   onClose,
 }: {
   jobId: string;
-  step: 'background' | 'script' | 'segment';
+  step: 'background' | 'script' | 'segment' | 'stage_bible' | 'product_lock' | 'product_visual' | 'script_qa';
   productId?: string;
   /** Bắt buộc khi step='segment' — đoạn cần preview. */
   segmentId?: string;
@@ -96,7 +100,8 @@ export function PromptPreviewModal({
     setSavingEdit(true);
     try {
       const res = await fetch(url, {
-        method: url.endsWith('/prompt') ? 'PATCH' : 'PUT',
+        // /api/prompts và .../prompt đều PATCH; các route ảnh (script-refs, background-refs) là PUT.
+        method: url === '/api/prompts' || url.endsWith('/prompt') ? 'PATCH' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -121,6 +126,18 @@ export function PromptPreviewModal({
     const t = setTimeout(() => setJustSaved(false), 2500);
     return () => clearTimeout(t);
   }, [justSaved, data]);
+
+  /**
+   * Step key dùng để lưu prompt. Bước gen video (editable.step='video') KHÔNG sửa prompt được —
+   * veoPrompt do AI sinh, chốt sẵn trong từng đoạn — nên khối sửa không hiện, giá trị này không
+   * bao giờ tới đường lưu.
+   */
+  const promptStepKey = data?.editable?.step === 'video' ? 'script' : (data?.editable?.step ?? 'script');
+
+  /** Lưu prompt qua registry 2 tầng: có jobSlug = riêng job, không có = mặc định mọi project. */
+  async function savePrompt(body: { step: string; body: string | null; jobSlug?: string }) {
+    await saveEdit('/api/prompts', body);
+  }
 
   function toggleRef(rel: string) {
     const cur = data?.editable?.chosenRefPaths ?? [];
@@ -294,14 +311,14 @@ export function PromptPreviewModal({
             {data.editable?.systemPrompt !== undefined && (
               <details open={data.editable.step === 'background'} style={{ marginBottom: 12 }}>
                 <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                  ✏️ Sửa prompt {data.editable.step === 'background' ? 'gen ảnh background' : 'sinh kịch bản'}{' '}
+                  ✏️ Sửa prompt bước này{' '}
                   <span className={`badge ${data.editable.isCustomPrompt ? 'badge-running' : 'badge-pending'}`}>
                     {data.editable.isCustomPrompt ? 'Đã tuỳ chỉnh' : 'Mặc định'}
                   </span>
                 </summary>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0' }}>
-                  Lưu áp cho MỌI lần {data.editable.step === 'background' ? 'gen background' : 'sinh script'} sau
-                  của job này (giống panel đầu trang).
+                  Lưu cho job này, hoặc lưu làm mặc định cho mọi project. Panel ⚙️ đầu trang có đủ
+                  11 bước.
                 </div>
                 <PromptParamsHint step={data.editable.step === 'background' ? 'background' : 'script'} />
                 <textarea
@@ -312,30 +329,28 @@ export function PromptPreviewModal({
                 />
                 <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                   <button
-                    className="btn"
+                    className="btn btn-primary"
                     disabled={savingEdit || promptDraft === null}
                     onClick={() =>
-                      saveEdit(
-                        `/api/livestream/${jobId}/prompt`,
-                        data.editable!.step === 'background'
-                          ? { backgroundPrompt: promptDraft }
-                          : { scriptSystemPrompt: promptDraft }
-                      )
+                      savePrompt({ step: promptStepKey, body: promptDraft, jobSlug: jobId })
                     }
+                    title="Chỉ áp cho job này"
                   >
-                    {savingEdit ? 'Đang lưu...' : '💾 Lưu prompt'}
+                    {savingEdit ? 'Đang lưu...' : '💾 Lưu cho job này'}
+                  </button>
+                  <button
+                    className="btn"
+                    disabled={savingEdit || promptDraft === null}
+                    onClick={() => savePrompt({ step: promptStepKey, body: promptDraft })}
+                    title="Áp cho mọi job tạo sau (job đã có bản riêng vẫn giữ bản riêng)"
+                  >
+                    {savingEdit ? 'Đang lưu...' : '🌐 Lưu làm mặc định'}
                   </button>
                   <button
                     className="btn btn-ghost"
                     disabled={savingEdit || !data.editable.isCustomPrompt}
-                    onClick={() =>
-                      saveEdit(
-                        `/api/livestream/${jobId}/prompt`,
-                        data.editable!.step === 'background'
-                          ? { backgroundPrompt: null }
-                          : { scriptSystemPrompt: null }
-                      )
-                    }
+                    onClick={() => savePrompt({ step: promptStepKey, body: null, jobSlug: jobId })}
+                    title="Xoá bản riêng của job này, quay về bản mặc định"
                   >
                     ↺ Khôi phục mặc định
                   </button>

@@ -426,10 +426,12 @@ export default function LivestreamDetailPage() {
           onClose={() => setBulkPreview(null)}
         />
       )}
+      {/* Nút này chốt lại SÂN KHẤU rồi mới sinh script — trước đây preview step="script" nên Mr.D
+          nhìn thấy prompt của bước khác hẳn với bước sắp chạy. */}
       {bulkPreview?.kind === 'restage' && (
         <PromptPreviewModal
           jobId={jobId}
-          step="script"
+          step="stage_bible"
           productId={job.products[0]?.id}
           imageR2Urls={job.imageR2Urls ?? undefined}
           confirmLabel={`🎬 Chốt lại sân khấu + sinh lại ${job.products.length} sản phẩm (ghi đè script)`}

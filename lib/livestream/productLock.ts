@@ -42,6 +42,15 @@ export function isProductLockStale(
  * đây thì lock sẽ đi tả người dẫn hoặc căn phòng thay vì món hàng. Đúng cùng phép lọc mà route
  * sinh script đang dùng cho describeProductAppearance.
  */
+/**
+ * User prompt bước khoá ngoại hình — cố định, không phụ thuộc job.
+ *
+ * Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau —
+ * cùng cái bẫy mà describeProductAppearance đã gặp. Export để route preview hiện đúng chuỗi gửi đi.
+ */
+export const PRODUCT_LOCK_USER_PROMPT =
+  'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể màu. Chốt bản mô tả ngoại hình cố định của sản phẩm đó.';
+
 export function pickProductLockRefPaths(
   job: Pick<LivestreamJob, 'selectedRefImagePaths'> & Partial<Pick<LivestreamJob, 'scriptRefPaths'>>
 ): string[] {
@@ -84,9 +93,7 @@ export async function ensureProductLock(
 
     const raw = await chatCompletion(
       (await loadPromptSet(job.slug)).get('product_lock'),
-      // Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau
-      // — cùng cái bẫy mà describeProductAppearance đã gặp.
-      'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể màu. Chốt bản mô tả ngoại hình cố định của sản phẩm đó.',
+      PRODUCT_LOCK_USER_PROMPT,
       { model: visionModel, images }
     );
     const parsed = JSON.parse(extractJson(raw)) as Partial<LivestreamProductLock>;

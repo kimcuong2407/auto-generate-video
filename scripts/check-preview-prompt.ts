@@ -12,6 +12,7 @@ import assert from 'node:assert';
 import { buildBackgroundPrompt } from '../lib/livestream/backgroundGenerate';
 import { formatStageBibleBlock } from '../lib/livestream/stageBible';
 import { buildLivestreamUserPrompt } from '../lib/livestream/scriptPrompt';
+import { buildStageBibleUserPrompt } from '../lib/livestream/stageBible';
 import type { LivestreamStageBible } from '../lib/livestream/types';
 
 const bible: LivestreamStageBible = {
@@ -75,3 +76,28 @@ assert.ok(first.includes('MỞ ĐẦU'), 'sản phẩm đầu phải được đ
 assert.ok(!first.includes('TUYỆT ĐỐI KHÔNG chào lại'), 'sản phẩm đầu không bị cấm chào');
 
 console.log('✓ check-preview-prompt: tất cả assert pass');
+
+
+// --- stage bible: user prompt phải do HÀM CHUNG dựng, preview và gen không được ghép riêng ---
+// Tách buildStageBibleUserPrompt ra chính vì lý do này: hai bên ghép riêng thì bản xem trước trôi
+// lệch với thứ thật sự gửi đi, đúng ca buildBackgroundPrompt đã phải sửa trước đây.
+const jobForBible = {
+  products: [
+    { name: 'Áo thun', description: 'Cotton 100%' },
+    { name: 'Quần jean', description: 'Denim co giãn' },
+  ],
+} as Parameters<typeof buildStageBibleUserPrompt>[0];
+
+const bibleUser = buildStageBibleUserPrompt(jobForBible, 'MO_TA_NGOAI_HINH', '  1. ảnh NGƯỜI MẪU');
+assert.ok(bibleUser.includes('1. Áo thun: Cotton 100%'), 'phải liệt kê sản phẩm theo thứ tự live');
+assert.ok(bibleUser.includes('2. Quần jean'), 'sản phẩm thứ 2 phải có mặt');
+assert.ok(bibleUser.includes('MO_TA_NGOAI_HINH'), 'mô tả ngoại hình phải được ghép vào');
+assert.ok(bibleUser.includes('1. ảnh NGƯỜI MẪU'), 'chú giải ảnh phải được ghép vào');
+
+// Không có ảnh → KHÔNG được ghép khối "ảnh thật đính kèm" (ghép rỗng làm model tưởng có ảnh).
+const bibleNoImg = buildStageBibleUserPrompt(jobForBible, undefined, undefined);
+assert.ok(!bibleNoImg.includes('ẢNH THẬT ĐÍNH KÈM'), 'không có ảnh thì không ghép khối chú giải ảnh');
+assert.ok(!bibleNoImg.includes('Mô tả ảnh reference'), 'không có visualDescription thì không ghép khối đó');
+assert.ok(bibleNoImg.includes('1. Áo thun'), 'danh sách sản phẩm vẫn phải có');
+
+console.log('✓ check-preview-prompt: bổ sung stage bible OK');
