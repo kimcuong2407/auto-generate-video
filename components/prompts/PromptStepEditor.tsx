@@ -162,8 +162,13 @@ export function PromptStepEditor({
       </div>
 
       {/* Input/output THẬT của các lượt đã chạy — đặt ở đây (không phải ở panel) để cả trang
-          /settings/prompts lẫn panel trong job đều có, mà chỉ cắm một chỗ. */}
-      <AiCallLogView stepKey={step.key} jobSlug={jobSlug} />
+          /settings/prompts lẫn panel trong job đều có, mà chỉ cắm một chỗ.
+
+          CHỈ truyền jobSlug khi bước thực sự thuộc job: bước perJob=false (chuẩn hoá mô tả, đọc
+          ảnh screenshot, bóc tách form V2) chạy TRƯỚC khi job tồn tại nên log ghi ở phạm vi toàn
+          hệ thống (job_slug = ''). Truyền slug của job đang mở vào sẽ query nhầm phạm vi và luôn
+          ra rỗng — trông y như "chưa chạy lần nào" dù đã có log. */}
+      <AiCallLogView stepKey={step.key} jobSlug={step.perJob ? jobSlug : undefined} />
 
       {/* Job đang dùng bản riêng thì bản mặc định vẫn tồn tại phía dưới — cho xem để biết mình đang
           lệch khỏi cái gì trước khi quyết định bỏ bản riêng. */}

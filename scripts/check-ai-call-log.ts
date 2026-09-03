@@ -106,7 +106,29 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`✅ check-ai-call-log: OK (ALS không rò rỉ, cắt tỉa giữ đúng ${KEEP_RUNS}, ${PROMPT_STEPS.length - NO_LOG.size} bước đã bọc)`);
+  // --- 5. Bước perJob=false phải đọc log ở phạm vi TOÀN HỆ THỐNG ---
+  // Vì sao: các bước này chạy TRƯỚC khi job tồn tại nên recordAiCall ghi với job_slug = ''. Nếu UI
+  // truyền slug của job đang mở vào thì query lệch phạm vi và luôn trả rỗng — hiện y như "chưa
+  // chạy lần nào" dù log đã có. Đúng bug Mr.D gặp ở bước "Chuẩn hoá mô tả sản phẩm".
+  const editorSrc = fs.readFileSync(
+    path.join(process.cwd(), 'components/prompts/PromptStepEditor.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    /<AiCallLogView[^>]*jobSlug=\{step\.perJob \? jobSlug : undefined\}/.test(editorSrc),
+    'PromptStepEditor phải truyền jobSlug CÓ ĐIỀU KIỆN (step.perJob ? jobSlug : undefined) — ' +
+      'truyền thẳng jobSlug làm 3 bước chạy trước khi có job luôn hiện rỗng'
+  );
+
+  // Các bước chạy trước khi job tồn tại — đối chiếu với registry để danh sách không trôi lệch.
+  const preJobSteps = PROMPT_STEPS.filter((s) => !s.perJob).map((s) => s.key);
+  assert.deepEqual(
+    preJobSteps,
+    ['extract', 'vision_screenshot', 'v2_field_extract'],
+    'danh sách bước chạy trước khi có job đã đổi — kiểm lại phạm vi đọc log ở AiCallLogView'
+  );
+
+  console.log(`✅ check-ai-call-log: OK (ALS không rò rỉ, cắt tỉa giữ đúng ${KEEP_RUNS}, ${PROMPT_STEPS.length - NO_LOG.size} bước đã bọc, ${preJobSteps.length} bước đọc log phạm vi toàn hệ thống)`);
 }
 
 function readAllTs(dir: string): string {
