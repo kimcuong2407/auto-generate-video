@@ -113,6 +113,13 @@ export const livestreamProducts = mysqlTable(
     sourceLink: text('source_link'),
     sourceFilePath: varchar('source_file_path', { length: 1024 }),
     rawText: mediumtext('raw_text'),
+    // Dữ liệu gốc nguồn crawl (VD node `item` Shopee extension gửi về) — giữ nguyên vẹn để đối
+    // chiếu "gốc → AI viết lại" khi soát chất lượng. Nullable: chỉ nhánh crawl mới có, entry
+    // link/file/nhập tay để null.
+    //
+    // Vì sao lưu ở đây chứ không ở ingestStore: store đó in-memory + per-process PM2, mất sạch
+    // khi reload nên không đối chiếu được sau vài ngày.
+    sourceRaw: mariaJson('source_raw').$type<unknown>(),
     ingestStatus: mysqlEnum('ingest_status', [
       'pending',
       'fetched',

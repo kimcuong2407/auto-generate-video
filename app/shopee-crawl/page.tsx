@@ -161,7 +161,15 @@ export default function ShopeeCrawlPage() {
       form.set(
         'entries',
         JSON.stringify([
-          { type: 'manual', text: shopeeToLivestreamText(product), targetDurationSec: 60, imageUrls },
+          {
+            type: 'manual',
+            text: shopeeToLivestreamText(product),
+            targetDurationSec: 60,
+            imageUrls,
+            // JSON gốc Shopee gửi kèm để lưu bền cùng sản phẩm — ingestStore là in-memory nên
+            // dữ liệu này mất khi PM2 reload; không gửi bây giờ là mất hẳn cơ hội đối chiếu.
+            sourceRaw: raw ?? undefined,
+          },
         ])
       );
       const res = await fetch('/api/livestream', { method: 'POST', body: form });
@@ -190,7 +198,7 @@ export default function ShopeeCrawlPage() {
     setCreating('v2');
     setCreateError(null);
     try {
-      const prefill = shopeeToV2Prefill(product);
+      const prefill = shopeeToV2Prefill(product, raw ?? undefined);
       // Ảnh người dùng tự dán thêm ở danh sách trên cũng đưa sang (chỉ ảnh URL — file từ máy không
       // qua được sessionStorage, Mr.D chọn lại ở form).
       const extraUrls = imageItems.filter((it) => it.kind === 'url').map((it) => it.url.trim()).filter(Boolean);
@@ -221,7 +229,16 @@ export default function ShopeeCrawlPage() {
         // bỏ qua — chuyển trang với phần map thô.
       }
 
-      sessionStorage.setItem(SHOPEE_V2_PREFILL_KEY, JSON.stringify(prefill));
+      // sessionStorage giới hạn ~5MB: JSON gốc Shopee to có thể làm setItem ném QuotaExceeded và
+      // mất SẠCH prefill. Bỏ sourceRaw rồi thử lại — mất phần đối chiếu còn hơn mất cả form.
+      try {
+        sessionStorage.setItem(SHOPEE_V2_PREFILL_KEY, JSON.stringify(prefill));
+      } catch {
+        sessionStorage.setItem(
+          SHOPEE_V2_PREFILL_KEY,
+          JSON.stringify({ ...prefill, sourceRaw: undefined })
+        );
+      }
       router.push('/livestream-v2/new');
     } catch (err) {
       setCreateError((err as Error).message);

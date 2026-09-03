@@ -93,6 +93,11 @@ export interface ShopeeV2Prefill {
   imageUrls: string[];
   /** Text thô gửi kèm để form còn nguồn đối chiếu nếu cần tách lại. */
   rawText: string;
+  /**
+   * JSON gốc Shopee (node `item`) — đi kèm sang form V2 rồi lưu xuống DB cùng sản phẩm, để sau này
+   * đối chiếu "gốc → AI viết lại". Optional: prefill do bản code cũ ghi vào sessionStorage không có.
+   */
+  sourceRaw?: unknown;
 }
 
 /**
@@ -103,7 +108,7 @@ export interface ShopeeV2Prefill {
  * đối tượng, cách dùng, bảo quản) nằm lẫn trong description dạng văn xuôi nên để rỗng ở đây và
  * được lấp bằng 1 lượt AI. `advantages` cũng vậy: map thô sẽ lẫn thông số kỹ thuật.
  */
-export function shopeeToV2Prefill(p: ShopeeProductInfo): ShopeeV2Prefill {
+export function shopeeToV2Prefill(p: ShopeeProductInfo, sourceRaw?: unknown): ShopeeV2Prefill {
   const promoParts: string[] = [];
   if (p.discountPercent > 0) promoParts.push(`Giảm ${p.discountPercent}%`);
   if (p.freeShipping) promoParts.push('Freeship');
@@ -122,6 +127,7 @@ export function shopeeToV2Prefill(p: ShopeeProductInfo): ShopeeV2Prefill {
     promotion: promoParts.join(', '),
     imageUrls: p.images,
     rawText: shopeeToLivestreamText(p),
+    sourceRaw,
   };
 }
 

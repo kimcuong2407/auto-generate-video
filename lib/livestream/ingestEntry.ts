@@ -23,6 +23,11 @@ export interface EntryInput {
    * (spokespersonImagePaths). Chỉ dùng ở nhánh 'manual' (luồng tạo job từ trang crawl).
    */
   imageUrls?: string[];
+  /**
+   * Dữ liệu gốc nguồn crawl gửi kèm (node `item` Shopee) — lưu nguyên vào sản phẩm để đối chiếu
+   * "gốc → AI viết lại". Chỉ nhánh 'manual' (luồng tạo job từ trang crawl) mới có.
+   */
+  sourceRaw?: unknown;
   targetDurationSec: number;
 }
 
@@ -57,7 +62,8 @@ async function ingestTextBlocks(
   sourceType: 'file_text' | 'manual',
   targetDurationSec: number,
   warnings: string[],
-  sourceFilePath: string | null
+  sourceFilePath: string | null,
+  sourceRaw?: unknown
 ): Promise<LivestreamProduct[]> {
   let blocks = splitProductBlocks(text);
   if (blocks.length > MAX_PRODUCTS_PER_ENTRY) {
@@ -68,13 +74,16 @@ async function ingestTextBlocks(
   }
 
   return Promise.all(
-    blocks.map(async (block) => {
+    blocks.map(async (block, blockIndex) => {
       const info = await extractOrFallback(block);
       return buildProduct({
         order: 0,
         sourceType,
         sourceFilePath,
         rawText: block,
+        // Chỉ gắn cho khối ĐẦU: 1 lần crawl = 1 sản phẩm Shopee, nếu text bị splitProductBlocks
+        // tách thành nhiều khối thì các khối sau không thuộc về JSON gốc này.
+        sourceRaw: blockIndex === 0 ? sourceRaw : undefined,
         ingestStatus: 'ready',
         ingestError: info.ingestError,
         name: info.name,
@@ -142,7 +151,14 @@ export async function ingestEntry(
     if (!text) {
       return { products: [], warnings: [`Entry #${entryIndex + 1}: thiếu mô tả`] };
     }
-    const products = await ingestTextBlocks(text, 'manual', targetDurationSec, warnings, null);
+    const products = await ingestTextBlocks(
+      text,
+      'manual',
+      targetDurationSec,
+      warnings,
+      null,
+      entry.sourceRaw
+    );
 
     // Kho ảnh sản phẩm cho luồng crawl: tải ảnh remote (imageUrls) + ảnh File (field 'images')
     // vào inputs/. Ảnh nay áp CHUNG cả job nên trả về imagePaths cho nơi gọi gom vào

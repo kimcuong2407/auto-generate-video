@@ -41,6 +41,14 @@ export interface LivestreamProduct {
   sourceFilePath: string | null;
   /** Text thô trích được từ file/link/manual input, dùng làm input cho AI tách/viết script. */
   rawText: string | null;
+  /**
+   * Dữ liệu GỐC nguyên vẹn từ nguồn crawl (VD node `item` Shopee do extension gửi về), giữ để đối
+   * chiếu "gốc → AI viết lại" khi soát chất lượng. null với entry link/file/nhập tay.
+   *
+   * `unknown` chứ không phải type cụ thể: đây là dữ liệu bên thứ ba, shape đổi lúc nào không báo —
+   * ép kiểu ở đây chỉ tạo cảm giác an toàn giả. Nơi đọc tự chịu trách nhiệm.
+   */
+  sourceRaw?: unknown;
   ingestStatus: IngestStatus;
   ingestError: string | null;
   name: string;

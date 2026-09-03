@@ -617,3 +617,38 @@ main {
   padding: 4px 8px;
 }
 .pipeline-progress-close:hover { color: var(--text); }
+
+/* So sánh dữ liệu gốc ↔ AI viết lại (ProductPanel). Grid tự xuống dòng thay vì 3 cột cứng:
+   cột JSON chỉ có ở sản phẩm crawl từ Shopee, entry link/file chỉ còn 2 cột. */
+.source-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.source-compare-col {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  overflow: hidden;
+}
+.source-compare-head {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.source-compare-col pre {
+  margin: 0;
+  padding: 10px;
+  /* Trần chiều cao: JSON Shopee vài nghìn dòng sẽ đẩy toàn bộ danh sách đoạn ra khỏi màn hình. */
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}

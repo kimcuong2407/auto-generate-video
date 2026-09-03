@@ -202,6 +202,36 @@ export function ProductPanel({
         </button>
       </div>
 
+      {(product.rawText || product.sourceRaw != null) && (
+        <details style={{ marginBottom: 14 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)' }}>
+            🔍 So sánh dữ liệu gốc ↔ AI viết lại
+          </summary>
+          <div className="source-compare">
+            {product.sourceRaw != null && (
+              <div className="source-compare-col">
+                <div className="source-compare-head">① JSON gốc (Shopee)</div>
+                <pre>{JSON.stringify(product.sourceRaw, null, 2)}</pre>
+              </div>
+            )}
+            {product.rawText && (
+              <div className="source-compare-col">
+                <div className="source-compare-head">② Text ghép (input của AI)</div>
+                <pre>{product.rawText}</pre>
+              </div>
+            )}
+            <div className="source-compare-col">
+              <div className="source-compare-head">③ AI viết lại</div>
+              <pre>{`Tên: ${product.name}\n\nMô tả:\n${product.description || '(trống)'}`}</pre>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            Cột ② là thứ AI thật sự đọc (bước <code>extract</code>); cột ① là dữ liệu gốc trước khi
+            ghép, có những trường ② đã bỏ đi. Sửa tay ở ô mô tả trên sẽ làm cột ③ khác kết quả AI gốc.
+          </div>
+        </details>
+      )}
+
       {product.scriptError && <div className="banner">{product.scriptError}</div>}
 
       {product.segments.length > 0 && (

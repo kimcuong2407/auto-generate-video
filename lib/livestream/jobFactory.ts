@@ -17,6 +17,7 @@ export function buildProduct(fields: {
   sourceLink?: string | null;
   sourceFilePath?: string | null;
   rawText?: string | null;
+  sourceRaw?: unknown;
   ingestStatus: IngestStatus;
   ingestError?: string | null;
   name?: string;
@@ -32,6 +33,7 @@ export function buildProduct(fields: {
     sourceLink: fields.sourceLink ?? null,
     sourceFilePath: fields.sourceFilePath ?? null,
     rawText: fields.rawText ?? null,
+    sourceRaw: fields.sourceRaw,
     ingestStatus: fields.ingestStatus,
     ingestError: fields.ingestError ?? null,
     name: fields.name || `Sản phẩm ${fields.order}`,

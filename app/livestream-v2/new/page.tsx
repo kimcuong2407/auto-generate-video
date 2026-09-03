@@ -86,6 +86,8 @@ export default function NewLivestreamV2Page() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  // Dữ liệu gốc Shopee nhận từ trang crawl — chỉ để gửi kèm khi tạo job, không hiển thị.
+  const [sourceRaw, setSourceRaw] = useState<unknown>(null);
 
   // Đọc dữ liệu trang shopee-crawl vừa đẩy sang (1 lần, rồi xoá để F5 không prefill lại đè lên
   // những gì Mr.D đã sửa).
@@ -100,6 +102,8 @@ export default function NewLivestreamV2Page() {
     if (!raw) return;
     try {
       const p = JSON.parse(raw) as ShopeeV2Prefill;
+      // JSON gốc Shopee chỉ đi ngang qua form (không hiện ô nào) rồi lưu xuống DB cùng sản phẩm.
+      if (p.sourceRaw != null) setSourceRaw(p.sourceRaw);
       const done: string[] = [];
       const put = (label: string, value: string, setter: (v: string) => void) => {
         if (value && value.trim()) {
@@ -171,6 +175,7 @@ export default function NewLivestreamV2Page() {
             targetDurationSec: durationSec,
             // Ảnh URL từ trang crawl — server tự tải về kho ảnh của job.
             ...(prefillImageUrls.length > 0 ? { imageUrls: prefillImageUrls } : {}),
+            ...(sourceRaw != null ? { sourceRaw } : {}),
           },
         ])
       );
