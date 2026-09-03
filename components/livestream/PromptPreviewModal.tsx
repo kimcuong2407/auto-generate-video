@@ -172,12 +172,11 @@ export function PromptPreviewModal({
   return (
     <div className="media-modal-overlay" onClick={onClose}>
       <div
-        className="media-modal-content"
+        className="media-modal-content prompt-preview-modal"
         style={{
           background: 'var(--surface)',
           border: '1px solid var(--border)',
           borderRadius: 10,
-          padding: 20,
           width: 720,
           maxWidth: '92vw',
           textAlign: 'left',
@@ -187,10 +186,11 @@ export function PromptPreviewModal({
         <button className="media-modal-close" onClick={onClose} title="Đóng">
           ✕
         </button>
-        <h4 style={{ marginTop: 0 }}>
+        <h4 className="prompt-preview-head">
           👁 {STEP_TITLE[step] ?? step} — kiểm tra trước khi chạy
         </h4>
 
+        <div className="prompt-preview-body">
         {error && <div className="banner banner-error">{error}</div>}
         {!data && !error && <div style={{ opacity: 0.7 }}>Đang tải...</div>}
 
@@ -377,35 +377,42 @@ export function PromptPreviewModal({
                 background: 'var(--bg)',
                 padding: 10,
                 borderRadius: 8,
-                maxHeight: '40vh',
-                overflowY: 'auto',
+                // KHÔNG giới hạn chiều cao riêng: khối cha (.prompt-preview-body) đã cuộn rồi,
+                // thêm một vùng cuộn lồng bên trong khiến lăn chuột mắc kẹt giữa 2 tầng.
+                wordBreak: 'break-word',
               }}
             >
               {data.prompt}
             </pre>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-              {onConfirm && (
-                <button
-                  className="btn btn-primary"
-                  onClick={handleConfirm}
-                  disabled={confirming || blocking || savingEdit}
-                  title={blocking ? 'Còn lỗi chặn ở trên — sửa xong mới chạy được' : undefined}
-                >
-                  {confirming ? 'Đang chạy...' : (confirmLabel ?? '▶ Chạy bước này')}
-                </button>
-              )}
-              <button className="btn btn-ghost" onClick={onClose}>
-                Huỷ
-              </button>
-              <button
-                className="btn btn-ghost"
-                onClick={() => navigator.clipboard?.writeText(data.prompt)}
-              >
-                📋 Copy prompt
-              </button>
-            </div>
           </>
+        )}
+        </div>
+
+        {/* Hàng nút DÍNH ĐÁY, nằm ngoài khối cuộn: prompt gửi AI dài ~6-7k ký tự nên trước đây nút
+            "Chạy bước này" bị đẩy khỏi màn hình và không bấm được. */}
+        {data && (
+          <div className="prompt-preview-foot">
+            {onConfirm && (
+              <button
+                className="btn btn-primary"
+                onClick={handleConfirm}
+                disabled={confirming || blocking || savingEdit}
+                title={blocking ? 'Còn lỗi chặn ở trên — sửa xong mới chạy được' : undefined}
+              >
+                {confirming ? 'Đang chạy...' : (confirmLabel ?? '▶ Chạy bước này')}
+              </button>
+            )}
+            <button className="btn btn-ghost" onClick={onClose}>
+              Huỷ
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => navigator.clipboard?.writeText(data.prompt)}
+            >
+              📋 Copy prompt
+            </button>
+          </div>
         )}
       </div>
     </div>
