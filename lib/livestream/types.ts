@@ -237,6 +237,15 @@ export interface LivestreamJob {
    */
   videoRefPaths: string[];
   /**
+   * Các khối văn bản server tự ghép vào prompt mà người dùng đã TẮT — key trong PROMPT_BLOCKS
+   * (lib/livestream/promptBlocks.ts).
+   *
+   * Lưu khối BỊ TẮT, KHÔNG phải khối được bật: rỗng = bật hết, đúng hành vi trước khi có tính năng
+   * này nên job cũ không đổi gì. Lưu ngược lại thì mọi job cũ (mảng rỗng) sẽ thành tắt sạch mọi
+   * khối — prompt mất khối sân khấu, mỗi sản phẩm ra người dẫn khác nhau, mà UI không báo gì.
+   */
+  disabledPromptBlocks: string[];
+  /**
    * Sân khấu cố định dùng chung mọi sản phẩm (xem LivestreamStageBible). null = chưa sinh, sẽ
    * được lazy-tạo ở lần sinh script đầu tiên rồi giữ nguyên để các lần sinh lại vẫn khớp.
    */

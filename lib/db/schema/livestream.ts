@@ -85,6 +85,10 @@ export const livestreamJobs = mysqlTable(
   // Ảnh người dùng TỰ CHỌN gửi cho Veo khi gen video, theo đúng thứ tự tick. null/[] = để
   // pickRefImagePaths tự xếp ưu tiên như cũ. Vẫn bị trần 3 ảnh của Veo cắt.
   videoRefPaths: mariaJson('video_ref_paths').$type<string[]>(),
+  // Các KHỐI văn bản server tự ghép vào prompt mà người dùng đã TẮT (key trong PROMPT_BLOCKS, xem
+  // lib/livestream/promptBlocks.ts). Lưu khối BỊ TẮT chứ không phải khối được bật: null/[] = bật
+  // hết, đúng hành vi của mọi job tạo trước khi có tính năng này.
+  disabledPromptBlocks: mariaJson('disabled_prompt_blocks').$type<string[]>(),
   // Seed cố định dùng chung MỌI lần gen video của job (thay vì random mỗi đoạn) để giữ giọng/hình
   // ổn định hơn giữa các đoạn — xem ensureJobVideoSeed ở jobStore.ts. null = chưa gen lần nào.
   videoSeed: int('video_seed'),

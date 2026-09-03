@@ -1,4 +1,5 @@
 import { maxWordsFor } from './segmentSanitize';
+import { isBlockEnabled } from './promptBlocks';
 import { LIVESTREAM_V2_SYSTEM_PROMPT } from './promptDefaultsV2';
 import { buildLivestreamV2UserPrompt } from './scriptPromptV2';
 import type { LivestreamJob, LivestreamV2Input } from './types';
@@ -38,6 +39,11 @@ export function buildScriptUserPrompt(args: {
   position?: { index: number; total: number; prevProductName?: string };
   /** Khối khoá ngoại hình sản phẩm (formatProductLockBlock) — chỉ job V2 dùng. */
   productLockBlock?: string;
+  /**
+   * Các khối người dùng đã TẮT (job.disabledPromptBlocks) — xem lib/livestream/promptBlocks.ts.
+   * Bỏ trống = bật hết, đúng hành vi trước khi có tính năng này.
+   */
+  disabledBlocks?: readonly string[];
 }): string {
   const {
     description,
@@ -47,6 +53,7 @@ export function buildScriptUserPrompt(args: {
     stageBibleBlock,
     position,
     productLockBlock,
+    disabledBlocks,
   } = args;
   return v2Input
     ? buildLivestreamV2UserPrompt(
@@ -56,9 +63,17 @@ export function buildScriptUserPrompt(args: {
         visualDescription,
         stageBibleBlock,
         position,
-        productLockBlock
+        productLockBlock,
+        disabledBlocks
       )
-    : buildLivestreamUserPrompt(description, durations, visualDescription, stageBibleBlock, position);
+    : buildLivestreamUserPrompt(
+        description,
+        durations,
+        visualDescription,
+        stageBibleBlock,
+        position,
+        disabledBlocks
+      );
 }
 
 export function buildLivestreamUserPrompt(
@@ -68,15 +83,19 @@ export function buildLivestreamUserPrompt(
   /** Khối "sân khấu cố định" của buổi live (formatStageBibleBlock) — bỏ trống nếu chưa chốt được. */
   stageBibleBlock?: string,
   /** Vị trí sản phẩm trong buổi live, để LLM viết câu chuyển tiếp thay vì mở màn lại từ đầu. */
-  position?: { index: number; total: number; prevProductName?: string }
+  position?: { index: number; total: number; prevProductName?: string },
+  /** Khối đã tắt — xem promptBlocks.ts. Bỏ trống = bật hết. */
+  disabledBlocks?: readonly string[]
 ): string {
-  const visualBlock = visualDescription
+  const visualBlock =
+    visualDescription && isBlockEnabled(disabledBlocks, 'sc_visual')
     ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
     : '';
-  const bibleBlock = stageBibleBlock ? `${stageBibleBlock}\n\n` : '';
+  const bibleBlock =
+    stageBibleBlock && isBlockEnabled(disabledBlocks, 'sc_bible') ? `${stageBibleBlock}\n\n` : '';
   // Sản phẩm thứ 2 trở đi nằm GIỮA buổi live, không phải mở màn — nếu không nói rõ, LLM luôn viết
   // lại lời chào "Chào mọi người đã vào live" khiến ghép lại thành nhiều buổi live rời rạc.
-  const positionBlock = position
+  const positionBlock = position && isBlockEnabled(disabledBlocks, 'sc_position')
     ? position.index === 0
       ? `Đây là sản phẩm MỞ ĐẦU (1/${position.total}) của buổi live — được phép chào khán giả.\n\n`
       : `Đây là sản phẩm thứ ${position.index + 1}/${position.total} trong buổi live ĐANG diễn ra${

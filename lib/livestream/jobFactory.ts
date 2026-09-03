@@ -98,6 +98,8 @@ export function createNewJob(input: {
     backgroundRefPaths: [],
     scriptRefPaths: [],
     videoRefPaths: [],
+    // Rỗng = bật hết mọi khối prompt (xem promptBlocks.ts) — mặc định cho job mới.
+    disabledPromptBlocks: [],
     videoSeed: null,
     stageBible: null,
     productLock: null,

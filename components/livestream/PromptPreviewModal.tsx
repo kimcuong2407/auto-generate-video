@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { PromptParamsHint } from './PromptParamsHint';
+import { PromptBlocksToggle } from './PromptBlocksToggle';
 
 interface PreviewData {
   prompt: string;
   refImages: { rel: string; label: string }[];
   notes: string[];
+  /** Khối server tự ghép đang bị tắt — xem PreviewPromptResult ở route preview-prompt. */
+  disabledBlocks?: string[];
+  isV2?: boolean;
   /** Xem PreviewPromptResult ở route preview-prompt. */
   editable?: {
     step: 'script' | 'video' | 'background' | 'stage_bible' | 'product_lock' | 'product_visual' | 'script_qa';
@@ -367,6 +371,18 @@ export function PromptPreviewModal({
                 </span>
               )}
             </div>
+            {/* Bật/tắt các khối server tự ghép — đặt ngay trên khung "Prompt gửi AI" để bỏ tick là
+                thấy số ký tự tụt xuống liền. Chỉ 2 bước này có khối ghép thêm. */}
+            {(step === 'background' || step === 'script') && (
+              <PromptBlocksToggle
+                jobId={jobId}
+                step={step}
+                disabled={data.disabledBlocks ?? []}
+                isV2={data.isV2}
+                onSaved={() => setReloadKey((k) => k + 1)}
+              />
+            )}
+
             <pre
               ref={promptBoxRef}
               style={{

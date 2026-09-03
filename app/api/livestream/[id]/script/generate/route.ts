@@ -199,6 +199,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               prevProductName: index > 0 ? job.products[index - 1].name : undefined,
             },
             productLockBlock,
+            disabledBlocks: job.disabledPromptBlocks,
           });
           const systemPrompt = fillPromptParams(
             systemPromptTemplate,

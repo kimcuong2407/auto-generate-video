@@ -4,6 +4,7 @@ import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
 import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { loadPromptSet } from '@/lib/livestream/promptStore';
+import { isPromptBlockKey } from '@/lib/livestream/promptBlocks';
 import {
   PRODUCT_LOCK_USER_PROMPT,
   formatProductLockBlock,
@@ -42,6 +43,13 @@ export interface PreviewPromptResult {
    * cố tình KHÔNG gọi AI để mở bao nhiêu lần cũng miễn phí, xem README của route này.
    */
   notes: string[];
+  /**
+   * Các khối server tự ghép đang bị TẮT (job.disabledPromptBlocks) — để modal vẽ đúng trạng thái ô
+   * tick. Trả từ server chứ không để client tự đoán: đây cũng là thứ server dùng để ghép prompt.
+   */
+  disabledBlocks?: string[];
+  /** Job V2 (có bản ghi livestream_v2_inputs) — modal hiện mờ các khối chỉ có ở V2. */
+  isV2?: boolean;
   /**
    * Dữ liệu để modal cho SỬA TẠI CHỖ trước khi chạy. step='script' có cả prompt lẫn ảnh;
    * step='segment' chỉ có ảnh (veoPrompt đã chốt sẵn trong đoạn, sửa ở ô "Xem prompt").
@@ -125,6 +133,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     notes.push('Sân khấu đã chốt KHÔNG còn khớp ảnh/mô tả hiện tại — khi bấm gen thật, AI sẽ chốt lại và khối này sẽ khác preview.');
   }
 
+  // Tắt khối là tự tay bỏ ràng buộc chống AI bịa — phải nói rõ, không để im lặng.
+  const disabledCount = (job.disabledPromptBlocks ?? []).filter((k) => isPromptBlockKey(k)).length;
+  if (disabledCount > 0) {
+    notes.push(
+      `⚠️ Đang TẮT ${disabledCount} khối tự ghép — prompt ngắn lại nhưng AI có thể mô tả người dẫn/sản phẩm khác ảnh. Bật lại ở mục "Khối ghép thêm vào prompt".`
+    );
+  }
+
   if (step === 'background') {
     // Đúng bộ ảnh triggerBackgroundImageGeneration sẽ gửi: ưu tiên ảnh người dùng tự chọn.
     const entries = pickBackgroundRefEntries(job);
@@ -147,10 +163,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         product.description || product.name,
         bible,
         entries,
-        paramValues
+        paramValues,
+        job.disabledPromptBlocks
       ),
       refImages: entries.map((e) => ({ rel: e.rel, label: e.label })),
       notes: bgNotes,
+      disabledBlocks: job.disabledPromptBlocks ?? [],
+      // Đọc riêng ở nhánh này: `v2Input` của nhánh sinh script nằm dưới, chưa có ở đây.
+      isV2: !!(await readV2Input(id).catch(() => null)),
       editable: {
         step: 'background',
         // Bản GỐC còn `${...}` để sửa — khung prompt bên trên đã là bản thay rồi. Ưu tiên bản nháp
@@ -361,6 +381,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       prevProductName: index > 0 ? job.products[index - 1].name : undefined,
     },
     productLockBlock,
+    disabledBlocks: job.disabledPromptBlocks,
   });
 
   // Ô sửa hiện BẢN GỐC còn `${...}`, còn khung "prompt gửi AI" hiện bản ĐÃ THAY — nếu hiện cùng
@@ -381,6 +402,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     // Bước sinh script KHÔNG gửi ảnh cho AI viết lời thoại — ảnh chỉ đi vào 2 lượt phụ: vision đọc
     // ngoại hình sản phẩm, và chốt sân khấu. Hiện đúng bộ ảnh của 2 lượt đó để Mr.D kiểm tra.
     refImages: pickScriptRefEntries(job).map((e) => ({ rel: e.rel, label: e.label })),
+    disabledBlocks: job.disabledPromptBlocks ?? [],
+    isV2: !!v2Input,
     notes: [
       ...notes,
       'Ảnh liệt kê dưới đây gửi cho AI ở 2 lượt phụ (đọc ngoại hình sản phẩm + chốt sân khấu). Lượt viết lời thoại chỉ nhận chữ.',
