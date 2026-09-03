@@ -27,15 +27,19 @@ export async function GET(req: NextRequest) {
   const step = req.nextUrl.searchParams.get('step')?.trim() || '';
   const jobSlug = req.nextUrl.searchParams.get('jobSlug')?.trim() || '';
   const idParam = req.nextUrl.searchParams.get('id')?.trim() || '';
+  // Bỏ `step` = timeline GỘP mọi bước của 1 job (soi cả pipeline một lượt thay vì mở từng bước).
+  const wantTimeline = !step && !!jobSlug;
 
-  if (!isPromptStepKey(step)) {
+  if (!wantTimeline && !isPromptStepKey(step)) {
     return NextResponse.json({ error: `Bước không hợp lệ: ${step}` }, { status: 400 });
   }
   // Chưa cấu hình DB thì trả danh sách rỗng thay vì 500: UI hiện "chưa có lượt nào", không vỡ trang.
   if (!DB_ENABLED) return NextResponse.json({ runs: [] });
 
   const db = getDb();
-  const scope = and(eq(aiCallLogs.jobSlug, jobSlug), eq(aiCallLogs.stepKey, step));
+  const scope = wantTimeline
+    ? eq(aiCallLogs.jobSlug, jobSlug)
+    : and(eq(aiCallLogs.jobSlug, jobSlug), eq(aiCallLogs.stepKey, step));
 
   // --- Chế độ 2: 1 lượt đầy đủ ---
   if (idParam) {
@@ -64,6 +68,7 @@ export async function GET(req: NextRequest) {
       model: aiCallLogs.model,
       promptScope: aiCallLogs.promptScope,
       productId: aiCallLogs.productId,
+      stepKey: aiCallLogs.stepKey,
       imageCount: aiCallLogs.imageCount,
       /** Độ dài output thay vì nội dung — đủ để biết lượt đó có trả về gì không. */
       outputLength: sql<number>`COALESCE(CHAR_LENGTH(${aiCallLogs.output}), 0)`,
@@ -72,7 +77,9 @@ export async function GET(req: NextRequest) {
     .from(aiCallLogs)
     .where(scope)
     .orderBy(desc(aiCallLogs.rowId))
-    .limit(KEEP_RUNS);
+    // Timeline gộp nhiều bước × nhiều sản phẩm nên trần phải cao hơn 1 bước; vẫn có trần để
+    // response không phình theo job đã gen lại nhiều lần.
+    .limit(wantTimeline ? KEEP_RUNS * 11 : KEEP_RUNS);
 
   return NextResponse.json({ runs });
 }

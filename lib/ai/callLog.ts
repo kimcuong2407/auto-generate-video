@@ -17,7 +17,7 @@
  * rơi hết vào rỗng một cách im lặng.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { and, desc, eq, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte } from 'drizzle-orm';
 import { getDb } from '../db/client';
 import { DB_ENABLED } from '../db/config';
 import { aiCallLogs } from '../db/schema/aiCallLogs';
@@ -37,6 +37,41 @@ export interface AiCallContext {
   promptScope?: 'job' | 'global' | 'default';
   /** relPath/tên ảnh gửi kèm. chatCompletion chỉ nhận base64 nên tên ảnh PHẢI đi qua đây. */
   imagePaths?: string[];
+  /**
+   * Ô để recordAiCall ghi rowId của dòng log vừa tạo, cho caller đọc lại.
+   *
+   * Vì sao cần: bước v2_field_extract chạy ở TRANG CRAWL, trước cả khi job có tên. Muốn xem log
+   * đó trong job detail thì phải biết dòng nào để gán lại cho job lúc tạo — xem claimAiCallLogs().
+   * Dùng ô mutable thay vì giá trị trả về vì chatCompletion nằm sâu 2-4 tầng dưới caller.
+   *
+   * Đặt qua `withRowId()` chứ đừng tự dựng tay: ghi log chạy KHÔNG await (xem logAiCall ở
+   * chatClient.ts) nên `rowId` gần như luôn CHƯA có ngay sau khi chatCompletion trả về — phải
+   * await `settled` mới đọc được.
+   */
+  out?: RowIdSlot;
+}
+
+/** Ô nhận rowId của dòng log + promise báo đã ghi xong. Dựng bằng withRowId(). */
+export interface RowIdSlot {
+  rowId?: number;
+  /** Resolve khi recordAiCall ghi xong (thành công hay lỗi) — await cái này rồi mới đọc rowId. */
+  settled: Promise<void>;
+  /** Nội bộ recordAiCall gọi để đóng `settled`. */
+  done: () => void;
+}
+
+/**
+ * Dựng ô nhận rowId cho MỘT lượt gọi AI.
+ *
+ * Dùng khi caller cần biết dòng log vừa ghi (để gán lại cho job sau đó). Chỉ những bước thật sự
+ * cần mới dùng — 8 bước còn lại không đợi ghi log, giữ nguyên độ trễ như trước.
+ */
+export function withRowId(): RowIdSlot {
+  let done!: () => void;
+  const settled = new Promise<void>((resolve) => {
+    done = resolve;
+  });
+  return { settled, done };
 }
 
 const store = new AsyncLocalStorage<AiCallContext>();
@@ -88,14 +123,22 @@ export async function recordAiCall(row: {
   durationMs: number;
   attempts: number;
 }): Promise<void> {
-  if (!DB_ENABLED) return;
+  // Đóng `settled` ở MỌI đường ra (kể cả DB tắt / insert lỗi): caller await nó, không đóng là treo.
+  const slot = currentAiCallContext()?.out;
+  if (!DB_ENABLED) {
+    slot?.done();
+    return;
+  }
 
   try {
     const now = new Date().toISOString().replace('T', ' ').replace('Z', '');
-    await getDb().insert(aiCallLogs).values({ ...row, createdAt: now });
+    const [res] = await getDb().insert(aiCallLogs).values({ ...row, createdAt: now });
+    if (slot && typeof res?.insertId === 'number') slot.rowId = res.insertId;
   } catch (err) {
     console.error(`[callLog] ghi log thất bại (${row.stepKey}): ${(err as Error).message}`);
     return;
+  } finally {
+    slot?.done();
   }
 
   try {
@@ -134,4 +177,31 @@ async function pruneAiCallLogs(jobSlug: string, stepKey: PromptStepKey): Promise
 
   if (!cutoff) return; // chưa đủ KEEP_RUNS lượt → không có gì để cắt
   await db.delete(aiCallLogs).where(and(scope, lte(aiCallLogs.rowId, cutoff.rowId)));
+}
+
+/**
+ * GÁN các dòng log đã ghi ở phạm vi toàn hệ thống về cho một job vừa được tạo.
+ *
+ * Vì sao cần: bước v2_field_extract chạy ở TRANG CRAWL và extract chạy lúc ingest — cả hai xảy ra
+ * TRƯỚC khi job tồn tại nên ghi với job_slug = ''. Mr.D lại cần xem chúng trong job detail (đó là
+ * input/output của "bước trước đó" dẫn tới job này). Gán lại là cách duy nhất giữ được log THẬT
+ * mà không phải gọi AI thêm một lượt chỉ để có dấu vết.
+ *
+ * Chỉ gán theo rowId ĐÍCH DANH do caller nắm giữ, KHÔNG quét theo thời gian hay nội dung: Mr.D có
+ * thể mở nhiều tab crawl rồi tạo job lần lượt, đoán theo "lượt gần nhất" sẽ gán log của sản phẩm
+ * khác vào job này — bằng chứng đối chiếu sai còn tệ hơn không có.
+ *
+ * Best-effort: lỗi bị nuốt + log ra console, không chặn việc tạo job.
+ */
+export async function claimAiCallLogs(jobSlug: string, rowIds: number[]): Promise<void> {
+  if (!DB_ENABLED || rowIds.length === 0) return;
+  try {
+    await getDb()
+      .update(aiCallLogs)
+      .set({ jobSlug })
+      // Chỉ nhận dòng CÒN ở phạm vi toàn hệ thống: rowId đã thuộc job khác thì không cướp sang.
+      .where(and(inArray(aiCallLogs.rowId, rowIds), eq(aiCallLogs.jobSlug, '')));
+  } catch (err) {
+    console.error(`[callLog] gán log cho job ${jobSlug} thất bại: ${(err as Error).message}`);
+  }
 }

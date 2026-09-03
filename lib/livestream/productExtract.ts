@@ -14,10 +14,17 @@ export interface ExtractedProduct {
 }
 
 /** Trích xuất tên + mô tả sản phẩm từ 1 đoạn text thô (đã xác định là 1 sản phẩm) qua AI. */
-export async function extractProductInfo(rawText: string): Promise<ExtractedProduct> {
+export async function extractProductInfo(
+  rawText: string,
+  /**
+   * Slug job đang được tạo. Bước này chạy lúc ingest — job đã có slug (sinh ở route trước khi gọi
+   * ingestEntry) dù row DB chưa ghi, nên gắn được ngay để log hiện trong job detail.
+   */
+  jobSlug?: string
+): Promise<ExtractedProduct> {
   const prompts = await loadPromptSet();
   const raw = await withAiCallContext(
-    { stepKey: 'extract', promptScope: prompts.scopeOf('extract') },
+    { stepKey: 'extract', jobSlug, promptScope: prompts.scopeOf('extract') },
     () => chatCompletion(prompts.get('extract'), rawText)
   );
   const parsed = JSON.parse(extractJson(raw)) as Partial<ExtractedProduct>;

@@ -21,7 +21,11 @@ export interface ExtractedProduct {
  * để tự động lấy thông tin sản phẩm từ các nền tảng chặn scraping (VD Shopee), vì không phụ
  * thuộc việc fetch/render trang mà dùng ảnh người dùng tự chụp.
  */
-export async function extractProductFromImage(imageAbsPath: string): Promise<ExtractedProduct> {
+export async function extractProductFromImage(
+  imageAbsPath: string,
+  /** Slug job — gắn log vào job để xem được ở job detail. Bỏ trống = phạm vi toàn hệ thống. */
+  jobSlug?: string
+): Promise<ExtractedProduct> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   if (!visionModel) {
     throw new Error(
@@ -36,6 +40,7 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
   const raw = await withAiCallContext(
     {
       stepKey: 'vision_screenshot',
+      jobSlug,
       promptScope: prompts.scopeOf('vision_screenshot'),
       imagePaths: [path.basename(imageAbsPath)],
     },

@@ -211,7 +211,9 @@ export default function ShopeeCrawlPage() {
           body: JSON.stringify({ text: prefill.rawText }),
         });
         if (res.ok) {
-          const { fields } = await res.json();
+          const { fields, logRowId } = await res.json();
+          // Giữ rowId của lượt AI vừa chạy để job detail xem lại được input/output của bước này.
+          if (typeof logRowId === 'number') prefill.aiLogRowIds = [logRowId];
           if (fields) {
             // AI chỉ ĐẮP vào ô còn trống, không ghi đè dữ liệu Shopee chắc chắn đúng (tên, màu).
             prefill.name = prefill.name || fields.name || '';

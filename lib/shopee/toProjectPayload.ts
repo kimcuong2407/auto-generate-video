@@ -98,6 +98,12 @@ export interface ShopeeV2Prefill {
    * đối chiếu "gốc → AI viết lại". Optional: prefill do bản code cũ ghi vào sessionStorage không có.
    */
   sourceRaw?: unknown;
+  /**
+   * rowId các dòng log lượt gọi AI đã chạy ở trang crawl (bóc tách form V2) — gửi kèm lúc tạo job
+   * để server gán chúng về job đó, xem claimAiCallLogs(). Nhờ vậy Mr.D review được input/output
+   * của bước chạy TRƯỚC khi job tồn tại, ngay trong job detail.
+   */
+  aiLogRowIds?: number[];
 }
 
 /**

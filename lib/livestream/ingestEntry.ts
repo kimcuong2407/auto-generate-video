@@ -43,9 +43,13 @@ export interface IngestEntryResult {
 }
 
 /** Trả về tên + mô tả sản phẩm, kèm cảnh báo mềm nếu AI chuẩn hoá thất bại (vẫn dùng text gốc). */
-async function extractOrFallback(text: string): Promise<{ name: string; description: string; ingestError: string | null }> {
+async function extractOrFallback(
+  text: string,
+  /** Slug job đang tạo — để log lượt AI gắn thẳng vào job, xem được ở job detail. */
+  jobSlug: string
+): Promise<{ name: string; description: string; ingestError: string | null }> {
   try {
-    const info = await extractProductInfo(text);
+    const info = await extractProductInfo(text, jobSlug);
     return { name: info.name, description: info.description, ingestError: null };
   } catch (err) {
     const firstLine = text.split('\n').find((l) => l.trim())?.trim().slice(0, 80) || 'Sản phẩm chưa rõ tên';
@@ -63,6 +67,7 @@ async function ingestTextBlocks(
   targetDurationSec: number,
   warnings: string[],
   sourceFilePath: string | null,
+  jobSlug: string,
   sourceRaw?: unknown
 ): Promise<LivestreamProduct[]> {
   let blocks = splitProductBlocks(text);
@@ -75,7 +80,7 @@ async function ingestTextBlocks(
 
   return Promise.all(
     blocks.map(async (block, blockIndex) => {
-      const info = await extractOrFallback(block);
+      const info = await extractOrFallback(block, jobSlug);
       return buildProduct({
         order: 0,
         sourceType,
@@ -99,7 +104,9 @@ export async function ingestEntry(
   entry: EntryInput,
   form: FormData,
   inputsDir: string,
-  entryIndex: number
+  entryIndex: number,
+  /** Slug job đang tạo — để log lượt AI (chuẩn hoá mô tả / đọc ảnh) gắn thẳng vào job. */
+  jobSlug: string
 ): Promise<IngestEntryResult> {
   const warnings: string[] = [];
   const targetDurationSec = Math.max(1, Math.round(Number(entry.targetDurationSec) || 0) || 60);
@@ -127,7 +134,7 @@ export async function ingestEntry(
         warnings,
       };
     }
-    const info = await extractOrFallback(fetched);
+    const info = await extractOrFallback(fetched, jobSlug);
     return {
       products: [
         buildProduct({
@@ -157,6 +164,7 @@ export async function ingestEntry(
       targetDurationSec,
       warnings,
       null,
+      jobSlug,
       entry.sourceRaw
     );
 
@@ -238,7 +246,10 @@ export async function ingestEntry(
     let name: string | undefined;
     let description: string | undefined;
     try {
-      const info = await extractProductFromImage(path.join(inputsDir, path.basename(savedImagePaths[0])));
+      const info = await extractProductFromImage(
+        path.join(inputsDir, path.basename(savedImagePaths[0])),
+        jobSlug
+      );
       ingestStatus = 'ready';
       ingestError = null;
       name = info.name;
@@ -283,7 +294,8 @@ export async function ingestEntry(
       'file_text',
       targetDurationSec,
       warnings,
-      path.join('inputs', fileName)
+      path.join('inputs', fileName),
+      jobSlug
     );
     return { products, warnings };
   }

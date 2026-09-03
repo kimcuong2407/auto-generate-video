@@ -8,6 +8,7 @@ import { ProductPanel } from '@/components/livestream/ProductPanel';
 import { ConcatPanel } from '@/components/livestream/ConcatPanel';
 import { FlowGuide } from '@/components/livestream/FlowGuide';
 import { PromptSettingsPanel } from '@/components/livestream/PromptSettingsPanel';
+import { AiRunTimeline } from '@/components/livestream/AiRunTimeline';
 import { JobImagePanel } from '@/components/livestream/JobImagePanel';
 import { PromptPreviewModal } from '@/components/livestream/PromptPreviewModal';
 import { V2InputPanel } from '@/components/livestream/V2InputPanel';
@@ -383,6 +384,7 @@ export default function LivestreamDetailPage() {
             <V2InputPanel jobId={jobId} input={v2Input} busy={busy} onRefresh={refresh} />
           )}
           <PromptSettingsPanel jobId={jobId} isV2={!!v2Input} onRefresh={refresh} />
+          <AiRunTimeline jobId={jobId} />
           <JobImagePanel job={job} onRefresh={refresh} />
 
           {job.products.map((product) => (

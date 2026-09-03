@@ -6,7 +6,7 @@
  * usage/material/size/audience và lọc advantages về đúng ưu điểm demo được bằng hình.
  */
 import { chatCompletion } from '../ai/chatClient';
-import { withAiCallContext } from '../ai/callLog';
+import { withAiCallContext, withRowId } from '../ai/callLog';
 import { extractJson } from '../ai/jsonExtract';
 import { V2_FIELD_EXTRACT_SYSTEM_PROMPT } from './promptDefaultsV2';
 import type { LivestreamV2Fields } from './types';
@@ -48,17 +48,28 @@ function normalize(parsed: Partial<LivestreamV2Fields>): LivestreamV2Fields {
  * Tách text thô thành các ô form. KHÔNG ném lỗi: AI hỏng/thiếu cấu hình thì trả về bộ rỗng để
  * người dùng vẫn mở được form và tự điền — chặn ở đây chỉ tổ khiến nút bấm không làm gì cả.
  */
-export async function extractV2Fields(rawText: string): Promise<LivestreamV2Fields> {
-  if (!rawText.trim()) return EMPTY;
+export async function extractV2Fields(
+  rawText: string
+): Promise<{ fields: LivestreamV2Fields; logRowId?: number }> {
+  if (!rawText.trim()) return { fields: EMPTY };
+  // Bước này chạy ở trang crawl (chưa có job) nên log ghi ở phạm vi toàn hệ thống. Giữ rowId để
+  // client gửi lại lúc tạo job → server gán về job đó, xem claimAiCallLogs().
+  const slot = withRowId();
   try {
     const prompts = await loadPromptSet();
     const raw = await withAiCallContext(
-      { stepKey: 'v2_field_extract', promptScope: prompts.scopeOf('v2_field_extract') },
+      { stepKey: 'v2_field_extract', promptScope: prompts.scopeOf('v2_field_extract'), out: slot },
       () => chatCompletion(prompts.get('v2_field_extract'), rawText)
     );
-    return normalize(JSON.parse(extractJson(raw)) as Partial<LivestreamV2Fields>);
+    const fields = normalize(JSON.parse(extractJson(raw)) as Partial<LivestreamV2Fields>);
+    // Ghi log chạy KHÔNG await nên phải đợi ở đây mới có rowId (xem withRowId).
+    await slot.settled;
+    return { fields, logRowId: slot.rowId };
   } catch (err) {
     console.error('[v2FieldExtract] tách field thất bại:', (err as Error).message);
-    return EMPTY;
+    // Lượt lỗi VẪN được log (chatClient ghi cả nhánh thất bại) — trả rowId để job detail xem được
+    // vì sao bước này hỏng, đó đúng là thứ cần soi nhất.
+    await slot.settled;
+    return { fields: EMPTY, logRowId: slot.rowId };
   }
 }

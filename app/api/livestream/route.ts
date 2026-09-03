@@ -8,6 +8,7 @@ import { uploadImageToR2 } from '@/lib/livestream/imageR2';
 import { runWithConcurrency } from '@/lib/concurrency';
 import { INGEST_CONCURRENCY } from '@/lib/livestream/constants';
 import { filterV2JobSlugs, writeV2Input } from '@/lib/livestream/v2Store';
+import { claimAiCallLogs } from '@/lib/ai/callLog';
 import type { LivestreamChaining, LivestreamV2Input } from '@/lib/livestream/types';
 import type { VeoModel } from '@/lib/types';
 
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
   const inputsDir = jobInputsDir(slug);
 
   const results = await runWithConcurrency(entries, INGEST_CONCURRENCY, (entry, index) =>
-    ingestEntry(entry, form, inputsDir, index)
+    ingestEntry(entry, form, inputsDir, index, slug)
   );
 
   const products = results.flatMap((r) => r.products);
@@ -98,6 +99,22 @@ export async function POST(req: NextRequest) {
       await writeV2Input(slug, JSON.parse(v2Raw) as LivestreamV2Input);
     } catch (err) {
       warnings.push(`Không lưu được thông tin buổi live V2: ${(err as Error).message}`);
+    }
+  }
+
+  // Gán các lượt AI đã chạy TRƯỚC khi có job (bóc tách form Shopee ở trang crawl) về cho job này,
+  // để Mr.D xem lại input/output của "bước trước đó" ngay trong job detail. Chỉ nhận rowId đích
+  // danh client gửi kèm — xem claimAiCallLogs(). Best-effort, không chặn tạo job.
+  const claimRaw = String(form.get('aiLogRowIds') || '').trim();
+  if (claimRaw) {
+    try {
+      const ids = (JSON.parse(claimRaw) as unknown[])
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n > 0);
+      await claimAiCallLogs(slug, ids);
+    } catch (err) {
+      // Không đẩy vào warnings: đây là dấu vết để soát chất lượng, hỏng không ảnh hưởng job.
+      console.error(`[livestream] gán log AI cho job ${slug} thất bại: ${(err as Error).message}`);
     }
   }
 

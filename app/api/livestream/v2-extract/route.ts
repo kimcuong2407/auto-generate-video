@@ -16,6 +16,8 @@ export async function POST(req: NextRequest) {
   if (!text) {
     return NextResponse.json({ error: 'Thiếu text sản phẩm' }, { status: 400 });
   }
-  const fields = await extractV2Fields(text);
-  return NextResponse.json({ fields });
+  const { fields, logRowId } = await extractV2Fields(text);
+  // `logRowId` để trang crawl giữ lại rồi gửi kèm lúc tạo job — server gán log về job đó nên
+  // Mr.D xem được input/output của bước này ngay trong job detail.
+  return NextResponse.json({ fields, logRowId });
 }

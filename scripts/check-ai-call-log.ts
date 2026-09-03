@@ -23,6 +23,7 @@ import {
   currentAiCallContext,
   rowIdsToDelete,
   withAiCallContext,
+  withRowId,
 } from '../lib/ai/callLog';
 import { PROMPT_STEPS } from '../lib/livestream/promptSteps';
 
@@ -106,29 +107,72 @@ async function main(): Promise<void> {
     );
   }
 
-  // --- 5. Bước perJob=false phải đọc log ở phạm vi TOÀN HỆ THỐNG ---
-  // Vì sao: các bước này chạy TRƯỚC khi job tồn tại nên recordAiCall ghi với job_slug = ''. Nếu UI
-  // truyền slug của job đang mở vào thì query lệch phạm vi và luôn trả rỗng — hiện y như "chưa
-  // chạy lần nào" dù log đã có. Đúng bug Mr.D gặp ở bước "Chuẩn hoá mô tả sản phẩm".
-  const editorSrc = fs.readFileSync(
-    path.join(process.cwd(), 'components/prompts/PromptStepEditor.tsx'),
+  // --- 5. withRowId: phải resolve `settled` ở MỌI đường ra, kể cả khi ghi log lỗi ---
+  // Vì sao: extractV2Fields await slot.settled để lấy rowId. Không resolve là route treo vĩnh viễn
+  // — trang crawl đứng im, tệ hơn nhiều so với việc mất rowId.
+  const slot = withRowId();
+  slot.done();
+  await slot.settled; // treo ở đây = hỏng hợp đồng
+  assert.equal(slot.rowId, undefined, 'withRowId không được tự bịa rowId khi chưa ghi gì');
+
+  // --- 6. Bước chạy trước khi có job PHẢI nhận được jobSlug để log gắn vào job ---
+  // Vì sao: Mr.D cần review input/output của các bước đó NGAY TRONG job detail. Hai đường:
+  //   - extract / vision_screenshot: job đã có slug lúc ingest → truyền thẳng xuống.
+  //   - v2_field_extract: chạy ở trang crawl (chưa có job) → giữ rowId rồi gán lại lúc tạo job.
+  // Mất một trong hai đường là log lại rơi về phạm vi toàn hệ thống và job detail hiện rỗng.
+  const extractSrc = fs.readFileSync(
+    path.join(process.cwd(), 'lib/livestream/productExtract.ts'),
     'utf8'
   );
   assert.ok(
-    /<AiCallLogView[^>]*jobSlug=\{step\.perJob \? jobSlug : undefined\}/.test(editorSrc),
-    'PromptStepEditor phải truyền jobSlug CÓ ĐIỀU KIỆN (step.perJob ? jobSlug : undefined) — ' +
-      'truyền thẳng jobSlug làm 3 bước chạy trước khi có job luôn hiện rỗng'
+    /stepKey: 'extract',\s*jobSlug/.test(extractSrc),
+    'bước extract phải gắn jobSlug vào context — không thì log không hiện trong job detail'
   );
 
-  // Các bước chạy trước khi job tồn tại — đối chiếu với registry để danh sách không trôi lệch.
-  const preJobSteps = PROMPT_STEPS.filter((s) => !s.perJob).map((s) => s.key);
-  assert.deepEqual(
-    preJobSteps,
-    ['extract', 'vision_screenshot', 'v2_field_extract'],
-    'danh sách bước chạy trước khi có job đã đổi — kiểm lại phạm vi đọc log ở AiCallLogView'
+  const createRouteSrc = fs.readFileSync(
+    path.join(process.cwd(), 'app/api/livestream/route.ts'),
+    'utf8'
+  );
+  assert.ok(
+    createRouteSrc.includes('claimAiCallLogs('),
+    'route tạo job phải gọi claimAiCallLogs để nhận log các lượt AI chạy ở trang crawl'
+  );
+  assert.ok(
+    /ingestEntry\(entry, form, inputsDir, index, slug\)/.test(createRouteSrc),
+    'route tạo job phải truyền slug xuống ingestEntry — không thì bước chuẩn hoá mô tả mất nhãn job'
   );
 
-  console.log(`✅ check-ai-call-log: OK (ALS không rò rỉ, cắt tỉa giữ đúng ${KEEP_RUNS}, ${PROMPT_STEPS.length - NO_LOG.size} bước đã bọc, ${preJobSteps.length} bước đọc log phạm vi toàn hệ thống)`);
+  // Chuỗi truyền rowId từ trang crawl về server, đủ 3 chặng mới hoạt động.
+  const crawlSrc = fs.readFileSync(path.join(process.cwd(), 'app/shopee-crawl/page.tsx'), 'utf8');
+  assert.ok(
+    crawlSrc.includes('prefill.aiLogRowIds'),
+    'trang crawl phải giữ logRowId vào prefill'
+  );
+  const formSrc = fs.readFileSync(
+    path.join(process.cwd(), 'app/livestream-v2/new/page.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    formSrc.includes("form.set('aiLogRowIds'"),
+    'form V2 phải gửi aiLogRowIds lên khi tạo job'
+  );
+
+  // --- 7. Timeline gộp phải đọc được nhãn của MỌI bước (kể cả 2 bước không log) ---
+  // Nhãn lấy từ registry chứ không hardcode: thêm bước mới mà quên nhãn thì timeline hiện step key
+  // thô ('v2_field_extract') thay vì tên tiếng Việt.
+  const timelineSrc = fs.readFileSync(
+    path.join(process.cwd(), 'components/livestream/AiRunTimeline.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    timelineSrc.includes('PROMPT_STEPS'),
+    'AiRunTimeline phải lấy nhãn bước từ registry PROMPT_STEPS, không hardcode'
+  );
+
+  console.log(
+    `✅ check-ai-call-log: OK (ALS không rò rỉ, cắt tỉa giữ đúng ${KEEP_RUNS}, ` +
+      `${PROMPT_STEPS.length - NO_LOG.size} bước đã bọc, log gắn được vào job qua cả 2 đường)`
+  );
 }
 
 function readAllTs(dir: string): string {
