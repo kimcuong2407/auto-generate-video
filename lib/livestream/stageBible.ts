@@ -1,5 +1,6 @@
 import { readJob, updateJob } from './jobStore';
 import { generateScriptText } from '../googleFlow/flowJobs';
+import { withAiCallContext } from '../ai/callLog';
 import { chatCompletion } from '../ai/chatClient';
 import { readImagesAsBase64 } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
@@ -75,7 +76,12 @@ export async function ensureStageBible(
 
   try {
     const prompts = await loadPromptSet(job.slug);
-    const bible = await generateStageBible(job, opts.visualDescription, prompts.get('stage_bible'));
+    const bible = await generateStageBible(
+      job,
+      opts.visualDescription,
+      prompts.get('stage_bible'),
+      prompts.scopeOf('stage_bible')
+    );
     await updateJob(jobId, (j) => {
       j.stageBible = bible;
     });
@@ -104,12 +110,15 @@ export async function ensureStageBible(
  *
  * Best-effort: không có ảnh / đọc lỗi → mảng rỗng, caller vẫn chốt bible bằng text như cũ.
  */
-async function collectStageRefImages(
-  job: LivestreamJob
-): Promise<{ images: Awaited<ReturnType<typeof readImagesAsBase64>>; legend: string }> {
+async function collectStageRefImages(job: LivestreamJob): Promise<{
+  images: Awaited<ReturnType<typeof readImagesAsBase64>>;
+  legend: string;
+  /** relPath các ảnh ĐỊNH gửi — chỉ dùng để ghi log lượt gọi AI (chatCompletion không biết tên ảnh). */
+  relPaths: string[];
+}> {
   // Ưu tiên ảnh Mr.D tick trong modal sinh script (job.scriptRefPaths); rỗng thì tự chọn như cũ.
   const entries = pickScriptRefEntries(job);
-  if (entries.length === 0) return { images: [], legend: '' };
+  if (entries.length === 0) return { images: [], legend: '', relPaths: [] };
 
   await Promise.all(
     entries.map((e) => ensureLocalImage(job.id, e.rel, job.imageR2Urls?.[e.rel]).catch(() => {}))
@@ -120,7 +129,7 @@ async function collectStageRefImages(
     images.length === entries.length
       ? entries.map((e, i) => `  ${i + 1}. ${e.label}`).join('\n')
       : entries.map((e) => e.label).join(', ');
-  return { images, legend };
+  return { images, legend, relPaths: entries.map((e) => e.rel) };
 }
 
 /**
@@ -154,7 +163,9 @@ async function generateStageBible(
   job: LivestreamJob,
   visualDescription?: string,
   /** System prompt của bước này (registry). Bỏ trống = hằng mặc định. */
-  systemPrompt: string = STAGE_BIBLE_SYSTEM_PROMPT
+  systemPrompt: string = STAGE_BIBLE_SYSTEM_PROMPT,
+  /** Tầng prompt đang thắng — chỉ để ghi log lượt gọi AI. */
+  promptScope: 'job' | 'global' | 'default' = 'default'
 ): Promise<LivestreamStageBible> {
   const refs = await collectStageRefImages(job);
   const user = buildStageBibleUserPrompt(
@@ -179,13 +190,21 @@ async function generateStageBible(
       'Không đọc được ảnh người mẫu đã chọn (mất file local và không khôi phục được từ R2) — chốt sân khấu lúc này sẽ bịa ra người dẫn khác. Hãy tải lại ảnh mẫu.'
     );
   }
-  const raw =
-    refs.images.length > 0 && visionModel
-      ? await chatCompletion(systemPrompt, user, {
-          model: visionModel,
-          images: refs.images,
-        })
-      : await generateScriptText(systemPrompt, user);
+  // Bọc CẢ biểu thức ternary bằng 1 lượt withAiCallContext: hai nhánh dưới đây là hai đường tới
+  // cùng một `chatCompletion` (generateScriptText chỉ là lớp mỏng bọc nó), nên bọc ở đây phủ cả
+  // hai mà không phải đụng vào generateScriptText — hàm đó còn dùng chung với luồng /projects.
+  const raw = await withAiCallContext(
+    {
+      stepKey: 'stage_bible',
+      jobSlug: job.slug,
+      promptScope,
+      imagePaths: refs.images.length > 0 ? refs.relPaths : undefined,
+    },
+    () =>
+      refs.images.length > 0 && visionModel
+        ? chatCompletion(systemPrompt, user, { model: visionModel, images: refs.images })
+        : generateScriptText(systemPrompt, user)
+  );
   const parsed = JSON.parse(extractJson(raw)) as Partial<LivestreamStageBible>;
   const required = ['host', 'scene', 'camera', 'voice'] as const;
   for (const key of required) {

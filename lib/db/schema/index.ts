@@ -7,3 +7,4 @@ export * from './livestream';
 export * from './projects';
 export * from './chatgptImage';
 export * from './prompts';
+export * from './aiCallLogs';

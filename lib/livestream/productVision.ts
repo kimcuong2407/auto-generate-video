@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { chatCompletion } from '../ai/chatClient';
 import { readImagesAsBase64, sniffImageMime } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
+import { withAiCallContext, type AiCallContext } from '../ai/callLog';
 
 // Re-export prompt mặc định từ module thuần (promptDefaults) để client import được mà không
 // kéo theo chatClient/node:fs server-only. Đây vẫn là 1 nguồn sự thật duy nhất.
@@ -30,10 +32,19 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
   const buffer = await fs.readFile(imageAbsPath);
   const mimeType = sniffImageMime(buffer);
 
-  const raw = await chatCompletion((await loadPromptSet()).get('vision_screenshot'), 'Đọc ảnh và trích xuất thông tin sản phẩm.', {
-    model: visionModel,
-    images: [{ mimeType, base64: buffer.toString('base64') }],
-  });
+  const prompts = await loadPromptSet();
+  const raw = await withAiCallContext(
+    {
+      stepKey: 'vision_screenshot',
+      promptScope: prompts.scopeOf('vision_screenshot'),
+      imagePaths: [path.basename(imageAbsPath)],
+    },
+    () =>
+      chatCompletion(prompts.get('vision_screenshot'), 'Đọc ảnh và trích xuất thông tin sản phẩm.', {
+        model: visionModel,
+        images: [{ mimeType, base64: buffer.toString('base64') }],
+      })
+  );
 
   const parsed = JSON.parse(extractJson(raw)) as Partial<ExtractedProduct>;
   return {
@@ -55,7 +66,9 @@ export async function extractProductFromImage(imageAbsPath: string): Promise<Ext
 export async function describeProductAppearance(
   imageAbsPaths: string[],
   /** System prompt của bước này (registry: bản riêng job → mặc định → hằng). Bỏ trống = hằng. */
-  systemPrompt: string = PRODUCT_VISUAL_SYSTEM_PROMPT
+  systemPrompt: string = PRODUCT_VISUAL_SYSTEM_PROMPT,
+  /** Nhãn để log lượt gọi AI (job nào, prompt tầng nào). Bỏ trống = không ghi log. */
+  logCtx?: Omit<AiCallContext, 'stepKey' | 'imagePaths'>
 ): Promise<string> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   if (!visionModel) {
@@ -69,11 +82,15 @@ export async function describeProductAppearance(
     throw new Error('Không đọc được ảnh sản phẩm nào để mô tả ngoại hình');
   }
 
-  const raw = await chatCompletion(
-    systemPrompt,
-    // Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau.
-    'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể. Mô tả ngoại hình vật lý của sản phẩm đó.',
-    { model: visionModel, images }
+  const raw = await withAiCallContext(
+    { stepKey: 'product_visual', ...logCtx, imagePaths: imageAbsPaths.map((p) => path.basename(p)) },
+    () =>
+      chatCompletion(
+        systemPrompt,
+        // Nói rõ đây là CÙNG 1 sản phẩm chụp nhiều góc, nếu không model tả thành nhiều món khác nhau.
+        'Các ảnh dưới đây đều là CÙNG 1 sản phẩm chụp từ nhiều góc/biến thể. Mô tả ngoại hình vật lý của sản phẩm đó.',
+        { model: visionModel, images }
+      )
   );
   return raw.trim();
 }

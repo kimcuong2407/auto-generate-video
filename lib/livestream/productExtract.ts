@@ -1,4 +1,5 @@
 import { chatCompletion } from '../ai/chatClient';
+import { withAiCallContext } from '../ai/callLog';
 import { extractJson } from '../ai/jsonExtract';
 
 // Re-export prompt mặc định từ module thuần (promptDefaults) để client import được mà không
@@ -14,7 +15,11 @@ export interface ExtractedProduct {
 
 /** Trích xuất tên + mô tả sản phẩm từ 1 đoạn text thô (đã xác định là 1 sản phẩm) qua AI. */
 export async function extractProductInfo(rawText: string): Promise<ExtractedProduct> {
-  const raw = await chatCompletion((await loadPromptSet()).get('extract'), rawText);
+  const prompts = await loadPromptSet();
+  const raw = await withAiCallContext(
+    { stepKey: 'extract', promptScope: prompts.scopeOf('extract') },
+    () => chatCompletion(prompts.get('extract'), rawText)
+  );
   const parsed = JSON.parse(extractJson(raw)) as Partial<ExtractedProduct>;
   return {
     name: (parsed.name || '').trim() || 'Sản phẩm chưa rõ tên',

@@ -9,6 +9,7 @@
  */
 
 import { readAppSettings } from '../data/appSettingsStore';
+import { currentAiCallContext, recordAiCall } from './callLog';
 
 export class ChatApiError extends Error {}
 
@@ -84,6 +85,49 @@ function isRetriableStatus(status: number): boolean {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Ghi log 1 lượt gọi AI (input/output thật) — chỉ khi lượt đó có nhãn từ withAiCallContext.
+ *
+ * KHÔNG async và caller KHÔNG await: insert DB chậm/treo không được thêm latency vào lượt gen,
+ * cũng không đẩy lùi thời điểm trả kết quả. Đổi lại là process bị kill ngay sau đó có thể mất log
+ * — chấp nhận được cho dữ liệu phụ trợ.
+ *
+ * `.catch()` ở đây là BẮT BUỘC, không phải cho đẹp: promise không await mà reject là unhandled
+ * rejection, Node có thể hạ process và PM2 restart giữa lượt gen 32 đoạn. Đó là hồi quy nghiêm
+ * trọng nhất tính năng log có thể gây ra.
+ */
+function logAiCall(d: {
+  model: string;
+  system: string;
+  user: string;
+  images?: ChatImageInput[];
+  output: string | null;
+  errorMessage: string | null;
+  attempts: number;
+  durationMs: number;
+}): void {
+  const ctx = currentAiCallContext();
+  // Không có nhãn = lượt gọi ngoài 11 bước livestream (VD luồng /projects dùng chung hàm này).
+  // Bỏ qua thay vì bịa nhãn: log gán sai bước còn tệ hơn không có log.
+  if (!ctx) return;
+
+  void recordAiCall({
+    stepKey: ctx.stepKey,
+    jobSlug: ctx.jobSlug ?? '',
+    productId: ctx.productId ?? '',
+    promptScope: ctx.promptScope ?? 'default',
+    model: d.model,
+    systemPrompt: d.system,
+    userPrompt: d.user,
+    output: d.output,
+    errorMessage: d.errorMessage,
+    imageCount: d.images?.length ?? 0,
+    imagePaths: ctx.imagePaths ?? null,
+    durationMs: d.durationMs,
+    attempts: d.attempts,
+  }).catch((err) => console.error(`[callLog] ghi log lỗi ngoài dự kiến: ${(err as Error).message}`));
+}
 
 /** Đọc thân response SSE và nối các mảnh choices[].delta.content thành chuỗi hoàn chỉnh. */
 async function readSseContent(
@@ -276,6 +320,16 @@ export async function chatCompletion(
     try {
       const content = await callOnce(url, apiKey, model, system, user, timeoutMs, opts.onEvent, opts.images);
       console.log(`[chatClient] tổng thời gian ${Date.now() - totalStartedAt}ms (${attempt + 1} lần thử)`);
+      logAiCall({
+        model,
+        system,
+        user,
+        images: opts.images,
+        output: content,
+        errorMessage: null,
+        attempts: attempt + 1,
+        durationMs: Date.now() - totalStartedAt,
+      });
       return content;
     } catch (err) {
       const e = err as ChatApiError & { status?: number };
@@ -296,6 +350,18 @@ export async function chatCompletion(
   // Bổ sung số lần đã thử vào thông điệp cuối để người dùng biết đã tự retry.
   const suffix = MAX_RETRIES > 0 ? ` (đã thử ${maxAttempts} lần)` : '';
   const finalMessage = `${lastError?.message ?? 'Gọi AI API thất bại'}${suffix}`;
+  // Log CẢ lượt thất bại: đây thường là thứ cần soi nhất (prompt nào làm AI trả JSON hỏng, lượt nào
+  // timeout) — chỉ log lượt thành công là mất đúng nửa hữu ích.
+  logAiCall({
+    model,
+    system,
+    user,
+    images: opts.images,
+    output: null,
+    errorMessage: finalMessage,
+    attempts: maxAttempts,
+    durationMs: Date.now() - totalStartedAt,
+  });
   opts.onEvent?.({ type: 'error', message: finalMessage });
   throw new ChatApiError(finalMessage);
 }

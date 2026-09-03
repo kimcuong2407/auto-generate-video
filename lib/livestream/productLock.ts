@@ -1,5 +1,6 @@
 import { readJob, updateJob } from './jobStore';
 import { chatCompletion } from '../ai/chatClient';
+import { withAiCallContext } from '../ai/callLog';
 import { readImagesAsBase64 } from '../data/productVisionExtract';
 import { extractJson } from '../ai/jsonExtract';
 import { ensureLocalImage } from './imageR2';
@@ -91,10 +92,19 @@ export async function ensureProductLock(
     const images = await readImagesAsBase64(refPaths.map((rel) => resolveWithinJob(job.id, rel)));
     if (images.length === 0) return null;
 
-    const raw = await chatCompletion(
-      (await loadPromptSet(job.slug)).get('product_lock'),
-      PRODUCT_LOCK_USER_PROMPT,
-      { model: visionModel, images }
+    const prompts = await loadPromptSet(job.slug);
+    const raw = await withAiCallContext(
+      {
+        stepKey: 'product_lock',
+        jobSlug: job.slug,
+        promptScope: prompts.scopeOf('product_lock'),
+        imagePaths: refPaths,
+      },
+      () =>
+        chatCompletion(prompts.get('product_lock'), PRODUCT_LOCK_USER_PROMPT, {
+          model: visionModel,
+          images,
+        })
     );
     const parsed = JSON.parse(extractJson(raw)) as Partial<LivestreamProductLock>;
     const required = ['shape', 'color', 'material', 'size'] as const;

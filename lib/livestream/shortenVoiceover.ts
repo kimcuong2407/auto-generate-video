@@ -1,4 +1,5 @@
 import { chatCompletion } from '../ai/chatClient';
+import { withAiCallContext, type AiCallContext } from '../ai/callLog';
 import { extractJson } from '../ai/jsonExtract';
 import { countWords, findOverlongSegments } from './segmentSanitize';
 import type { LivestreamSegment } from './types';
@@ -38,7 +39,9 @@ export async function shortenOverlongSegments(
   segments: LivestreamSegment[],
   /** System prompt của bước này (registry: bản riêng job → mặc định → hằng). Bỏ trống = hằng. */
   systemPrompt: string = SHORTEN_SYSTEM_PROMPT,
-  onRound?: (round: number, remaining: number) => void
+  onRound?: (round: number, remaining: number) => void,
+  /** Nhãn để log lượt gọi AI (job/sản phẩm nào). Bỏ trống = không ghi log — xem lib/ai/callLog.ts. */
+  logCtx?: Omit<AiCallContext, 'stepKey'>
 ): Promise<LivestreamSegment[]> {
   let current = segments;
 
@@ -57,9 +60,8 @@ export async function shortenOverlongSegments(
 
     let rewritten: Map<string, string>;
     try {
-      const raw = await chatCompletion(
-        systemPrompt,
-        `Rút gọn các đoạn sau cho đúng giới hạn số từ:\n\n${user}`
+      const raw = await withAiCallContext({ stepKey: 'shorten', ...logCtx }, () =>
+        chatCompletion(systemPrompt, `Rút gọn các đoạn sau cho đúng giới hạn số từ:\n\n${user}`)
       );
       const parsed = JSON.parse(extractJson(raw)) as {
         segments?: Array<{ id?: string; voiceoverVi?: string }>;

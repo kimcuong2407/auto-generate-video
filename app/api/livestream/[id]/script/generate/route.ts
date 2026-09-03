@@ -7,6 +7,7 @@ import { extractJson } from '@/lib/ai/jsonExtract';
 import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { loadPromptSet } from '@/lib/livestream/promptStore';
+import { withAiCallContext } from '@/lib/ai/callLog';
 import { readV2Input } from '@/lib/livestream/v2Store';
 import {
   computeSegmentDurations,
@@ -117,7 +118,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           );
           visualDescription = await describeProductAppearance(
             refPaths.map((rel) => resolveWithinJob(job.id, rel)),
-            prompts.get('product_visual')
+            prompts.get('product_visual'),
+            { jobSlug: job.slug, promptScope: prompts.scopeOf('product_visual') }
           );
         } catch {
           // bỏ qua — script vẫn sinh bình thường không có mô tả ngoại hình bổ sung.
@@ -203,11 +205,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             buildPromptParamValues({ job, product, durations, v2Input })
           );
 
-          const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
-            if (e.type === 'start' || e.type === 'retry') {
-              send({ ...e, productId: product.id });
-            }
-          });
+          const raw = await withAiCallContext(
+            {
+              stepKey: 'script',
+              jobSlug: job.slug,
+              productId: product.id,
+              promptScope: prompts.scopeOf('script'),
+            },
+            () =>
+              generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
+                if (e.type === 'start' || e.type === 'retry') {
+                  send({ ...e, productId: product.id });
+                }
+              })
+          );
 
           const parsed = JSON.parse(extractJson(raw)) as {
             segments?: Array<{ voiceoverVi?: string; veoPrompt?: string }>;
@@ -218,9 +229,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           const rawSegments = sanitizeSegments(parsed.segments, durations);
           // Lời thoại dài quá nhịp nói → Veo đọc không kịp, cắt cụt câu cuối. Ép AI viết lại NGAY
           // tại đây thay vì chỉ cảnh báo rồi bắt người dùng bấm sinh lại (lần sinh lại vẫn hay dư).
-          const segments = await shortenOverlongSegments(rawSegments, prompts.get('shorten'), (round, remaining) => {
-            send({ type: 'shorten_start', productId: product.id, round, remaining });
-          });
+          const segments = await shortenOverlongSegments(
+            rawSegments,
+            prompts.get('shorten'),
+            (round, remaining) => {
+              send({ type: 'shorten_start', productId: product.id, round, remaining });
+            },
+            { jobSlug: job.slug, productId: product.id, promptScope: prompts.scopeOf('shorten') }
+          );
 
           const { result } = await updateJob(id, (j) => {
             const p = j.products.find((x) => x.id === product.id);
@@ -255,7 +271,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           // QA lỗi vật lý + claim. CHỈ CẢNH BÁO: kịch bản đã ghi vào job ở trên rồi, đây là lớp
           // soát cuối để Mr.D biết cảnh nào đáng sửa TRƯỚC khi đốt quota Veo — chặn đúng chỗ tốn
           // tiền nhất. Chỉ chạy cho job V2; best-effort, lỗi thì trả mảng rỗng.
-          const qaIssues = v2Input ? await reviewScriptQuality(segments, prompts.get('script_qa')) : [];
+          const qaIssues = v2Input
+            ? await reviewScriptQuality(segments, prompts.get('script_qa'), {
+                jobSlug: job.slug,
+                productId: product.id,
+                promptScope: prompts.scopeOf('script_qa'),
+              })
+            : [];
           send({ type: 'product_done', productId: product.id, segments, overlong, qaIssues });
         } catch (err) {
           const message =

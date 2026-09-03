@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { PromptParamsHint } from '@/components/livestream/PromptParamsHint';
+import { AiCallLogView } from './AiCallLogView';
 
 /** 1 bước prompt do GET /api/prompts trả về. */
 export interface PromptStepView {
@@ -159,6 +160,10 @@ export function PromptStepEditor({
           </button>
         )}
       </div>
+
+      {/* Input/output THẬT của các lượt đã chạy — đặt ở đây (không phải ở panel) để cả trang
+          /settings/prompts lẫn panel trong job đều có, mà chỉ cắm một chỗ. */}
+      <AiCallLogView stepKey={step.key} jobSlug={jobSlug} />
 
       {/* Job đang dùng bản riêng thì bản mặc định vẫn tồn tại phía dưới — cho xem để biết mình đang
           lệch khỏi cái gì trước khi quyết định bỏ bản riêng. */}

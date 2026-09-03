@@ -1,4 +1,5 @@
 import { chatCompletion } from '../ai/chatClient';
+import { withAiCallContext, type AiCallContext } from '../ai/callLog';
 import { extractJson } from '../ai/jsonExtract';
 import { SCRIPT_QA_SYSTEM_PROMPT } from './promptDefaults';
 import type { LivestreamSegment } from './types';
@@ -44,7 +45,9 @@ function normalizeSeverity(raw: unknown): ScriptQaIssue['severity'] {
 export async function reviewScriptQuality(
   segments: LivestreamSegment[],
   /** System prompt của bước này (registry: bản riêng job → mặc định → hằng). Bỏ trống = hằng. */
-  systemPrompt: string = SCRIPT_QA_SYSTEM_PROMPT
+  systemPrompt: string = SCRIPT_QA_SYSTEM_PROMPT,
+  /** Nhãn để log lượt gọi AI (job/sản phẩm nào). Bỏ trống = không ghi log — xem lib/ai/callLog.ts. */
+  logCtx?: Omit<AiCallContext, 'stepKey'>
 ): Promise<ScriptQaIssue[]> {
   if (segments.length === 0) return [];
 
@@ -60,9 +63,11 @@ export async function reviewScriptQuality(
       .join('\n\n');
 
     try {
-      const raw = await chatCompletion(
-        systemPrompt,
-        `Chấm các cảnh sau. Đánh số cảnh trong kết quả PHẢI trùng đúng số cảnh ghi ở đây:\n\n${user}`
+      const raw = await withAiCallContext({ stepKey: 'script_qa', ...logCtx }, () =>
+        chatCompletion(
+          systemPrompt,
+          `Chấm các cảnh sau. Đánh số cảnh trong kết quả PHẢI trùng đúng số cảnh ghi ở đây:\n\n${user}`
+        )
       );
       const parsed = JSON.parse(extractJson(raw)) as {
         issues?: Array<Record<string, unknown>>;
