@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "check:flow-session-discovery": "tsx scripts/check-flow-session-discovery.ts",
     "check:token-retry": "tsx scripts/check-token-retry.ts",
     "check:segment-merge": "tsx scripts/check-segment-merge.ts",
     "check:content-hash-key": "tsx scripts/check-content-hash-key.ts",

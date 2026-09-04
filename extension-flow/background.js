@@ -61,38 +61,62 @@ async function findLabsTab() {
 // popup chỉ thấy "collect thất bại" và lỗi thật (404/401/path đổi) biến mất. Luôn trả object,
 // kèm `error` để popup hiển thị nguyên văn.
 function collectSessionInMainWorld() {
-  // labs.google dùng /fx/api/auth/session; flow.google.com có thể phục vụ ở gốc khác nhau
-  // tuỳ base path của app → thử lần lượt, path nào trả access_token thì dùng.
-  const PATHS = ['/fx/api/auth/session', '/api/auth/session', '/fx/api/auth/session?'];
+  // flow.google.com đổi base path so với labs.google (mọi path đoán sẵn đều trả HTML), nên
+  // không hardcode: DÒ từ chính trang. Trang Flow tự gọi endpoint session khi load, nên URL
+  // thật nằm trong performance entries; danh sách tĩnh chỉ là fallback khi entries đã bị xoá.
+  const STATIC_PATHS = ['/fx/api/auth/session', '/api/auth/session', '/auth/session'];
+
+  function discoverSessionUrls() {
+    let entries = [];
+    try {
+      entries = performance.getEntries().map((e) => e.name);
+    } catch (_e) {
+      /* performance API bị chặn — bỏ qua, dùng fallback tĩnh */
+    }
+    const found = entries.filter(
+      (u) => typeof u === 'string' && /\/session(\?|$)/.test(u) && u.startsWith(location.origin)
+    );
+    // Dò trước, fallback sau; dedupe giữ nguyên thứ tự ưu tiên.
+    return [...new Set([...found, ...STATIC_PATHS])];
+  }
+
   async function run() {
+    const candidates = discoverSessionUrls();
     const tried = [];
-    for (const path of PATHS) {
+    for (const url of candidates) {
       let res;
       try {
-        res = await fetch(path, { credentials: 'include', headers: { Accept: 'application/json' } });
+        res = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
       } catch (e) {
-        tried.push(path + ' → fetch lỗi: ' + (e && e.message));
+        tried.push(url + ' → fetch lỗi: ' + (e && e.message));
         continue;
       }
       if (!res.ok) {
-        tried.push(path + ' → HTTP ' + res.status);
+        tried.push(url + ' → HTTP ' + res.status);
         continue;
       }
       let data;
       try {
         data = await res.json();
       } catch (_e) {
-        tried.push(path + ' → không phải JSON (có thể bị redirect về trang HTML)');
+        tried.push(url + ' → không phải JSON');
         continue;
       }
       const accessToken = data && (data.access_token || data.accessToken);
       if (!accessToken) {
-        tried.push(path + ' → JSON không có access_token (keys: ' + Object.keys(data || {}).join(',') + ')');
+        tried.push(url + ' → JSON thiếu access_token (keys: ' + Object.keys(data || {}).join(',') + ')');
         continue;
       }
-      return { label: document.title || location.hostname, accessToken, path };
+      return { label: document.title || location.hostname, accessToken, path: url };
     }
-    return { error: 'Không lấy được access_token trên ' + location.origin + '. Đã thử: ' + tried.join(' | ') };
+    return {
+      error:
+        'Không lấy được access_token trên ' +
+        location.origin +
+        '. Đã thử: ' +
+        tried.join(' | ') +
+        '. Mở DevTools tab Flow → Network, lọc "session", tìm request trả JSON có access_token rồi gửi URL đó cho dev.',
+    };
   }
   return run();
 }
