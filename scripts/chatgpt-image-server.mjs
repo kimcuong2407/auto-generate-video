@@ -97,6 +97,8 @@ export function createQueue({ staleMs = DEFAULT_STALE_MS } = {}) {
   function complete(id, { imageBase64, ext, error, file } = {}) {
     const j = jobs.get(id);
     if (!j) return null;
+    // Idempotent: job đã kết thúc thì bỏ qua mọi lần nộp lặp (extension có thể gửi trùng).
+    if (j.status === 'done' || j.status === 'error') return j;
     j.finishedAt = Date.now();
     if (error) {
       j.status = 'error';
@@ -260,6 +262,13 @@ export function createServer(queue, { outputDir } = {}) {
         const body = await readJsonBody(req);
         const jobId = body.jobId;
         if (!jobId) return sendJson(res, 400, { error: 'Thiếu "jobId"' });
+
+        // Nộp lặp cho job đã kết thúc → im lặng bỏ qua (không ghi file lại, không log spam).
+        const existing = queue.get(jobId);
+        if (!existing) return sendJson(res, 404, { error: 'Không thấy job ' + jobId });
+        if (existing.status === 'done' || existing.status === 'error') {
+          return sendJson(res, 200, { ok: true, duplicate: true });
+        }
 
         // Ảnh xong + có thư mục output → ghi thẳng ra file cho pipeline đọc, khỏi giải base64.
         let file;

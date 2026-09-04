@@ -1,6 +1,6 @@
 # ChatGPT Image Standalone
 
-Gen ảnh bằng ChatGPT chỉ với **prompt (JSON) qua API** — **không cần** app review pipeline, **không cần** MySQL, **không cần** SSH tunnel. Toàn bộ logic gen ảnh (đính ảnh ref → gõ prompt → chờ ảnh → lấy bytes) là bản y hệt `extension-chatgpt/imageJob.js`, chỉ thay lớp vận chuyển nặng (Next.js + MySQL) bằng một server nhỏ trong bộ nhớ.
+Công cụ gen ảnh bằng ChatGPT độc lập: đẩy **prompt (JSON) qua API**, extension chạy automation ngay trong tab `chatgpt.com` của bạn rồi trả ảnh về. **Không cần** database, **không cần** Next.js/server nặng — chỉ một server nhỏ giữ hàng đợi trong bộ nhớ + ghi ảnh ra file.
 
 ```
 API/curl của bạn ──POST /jobs──► server nhỏ ──GET /jobs/next──► extension ──tab chatgpt.com──► ảnh
@@ -87,5 +87,5 @@ Trường `imageBase64` vẫn được trả song song (cho popup preview / ai c
 - **Phải mở tab chatgpt.com** đã đăng nhập thì job mới chạy. Không có tab → job bị đánh dấu lỗi ngay.
 - Job `running` quá **25 phút** không có kết quả sẽ tự chuyển `error` (extension đóng tab/chết giữa chừng).
 - Sau khi **Reload** extension ở `chrome://extensions`, content script cũ trên tab thành "orphan" và tự dừng (log cảnh báo là bình thường) — service worker mới nạp lại trong ~60s, hoặc F5 tab cho nhanh.
-- Selector DOM nằm ở `imageJob.js` — là bản copy của `extension-chatgpt/imageJob.js`. ChatGPT đổi giao diện thì cập nhật cả hai.
+- Selector DOM nằm ở `imageJob.js` — ChatGPT đổi giao diện thì sửa ở đó.
 - Self-check hàng đợi: `npm run check:image-server-queue`.

@@ -1,4 +1,4 @@
-// Service worker (MV3) — bản STANDALONE, không dính app review pipeline.
+// Service worker (MV3) — công cụ gen ảnh ChatGPT độc lập.
 //
 // Việc duy nhất: poll server nhỏ (scripts/chatgpt-image-server.mjs) lấy job gen ảnh, chạy
 // automation NGAY trong tab chatgpt.com của người dùng, rồi POST ảnh base64 về server. Đồng thời
@@ -212,8 +212,10 @@ async function reinjectContentScript() {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === KEEPALIVE_ALARM) {
+    // CHỈ poll — KHÔNG inject lại content.js ở đây. Inject mỗi phút sẽ chồng thêm listener
+    // 'message' trong trang → một kết quả gen bị gửi trùng nhiều lần. content.js đã tự nạp qua
+    // content_scripts của manifest khi trang load; reinject chỉ cần một lần lúc SW nạp (dưới đây).
     pollJobsOnce().catch((err) => console.error('[cgimg-standalone]', err));
-    reinjectContentScript();
   }
 });
 

@@ -63,7 +63,10 @@
   // fetch. Chỉ service worker fetch được về app.
   //
   // Nên chuỗi bàn giao là: MAIN world --postMessage--> content script --sendMessage--> SW --fetch--> app.
-  window.addEventListener('message', function (ev) {
+  // Đặt tên hàm để instance sau gỡ được listener này của instance cũ (xem onStop). Nếu KHÔNG gỡ,
+  // mỗi lần content.js được inject lại sẽ chồng thêm 1 listener → một kết quả gen bị gửi về SW
+  // nhiều lần → server nhận trùng hàng loạt (đã gặp: 1 job lỗi bị POST vài chục lần).
+  function onWindowMessage(ev) {
     // Chỉ nhận message do chính trang này gửi, đúng loại của mình.
     if (ev.source !== window) return;
     const d = ev.data;
@@ -81,11 +84,14 @@
     } catch (e) {
       console.warn('[chatgpt-image] lỗi chuyển kết quả:', e && e.message);
     }
-  });
+  }
+  window.addEventListener('message', onWindowMessage);
 
-  // Instance sau sẽ dispatch STOP_EVENT → instance này tự tắt, nhường chỗ.
+  // Instance sau sẽ dispatch STOP_EVENT → instance này tự tắt hẳn (gỡ CẢ timer LẪN listener
+  // message), nhường chỗ. Không gỡ message listener là nguồn gốc lỗi gửi trùng kết quả.
   document.addEventListener(STOP_EVENT, function onStop() {
     document.removeEventListener(STOP_EVENT, onStop);
+    window.removeEventListener('message', onWindowMessage);
     if (timerId != null) clearInterval(timerId);
     timerId = null;
     console.log('[chatgpt-image] instance cũ nhường chỗ cho instance mới');

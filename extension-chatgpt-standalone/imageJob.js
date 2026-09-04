@@ -9,12 +9,11 @@
 //       MAIN world --postMessage--> content.js --sendMessage--> service worker --fetch--> app
 //    (content.js cũng bị CSP chặn fetch; chỉ SW là không.)
 //
-// Đây là bản port của lib/chatgptImage/runner.ts + domScript.ts sang môi trường extension.
-// Vì sao phải copy thay vì import: chrome.scripting.executeScript chỉ nhận được MỘT hàm
-// tự-chứa — nó được serialize sang trang, nên mọi thứ hàm dùng phải nằm gọn bên trong nó.
-// Không có bundler ở đây, và thêm bundler chỉ vì một file là không đáng.
+// Vì sao mọi thứ nằm gọn trong MỘT hàm: chrome.scripting.executeScript chỉ nhận được một hàm
+// tự-chứa — nó được serialize sang trang chatgpt.com, nên mọi hàm con phải nằm bên trong. Không
+// có bundler ở đây.
 //
-// Selector và ngưỡng phải khớp domScript.ts. Đổi bên đó thì đổi cả bên này.
+// Selector và ngưỡng bám theo giao diện chatgpt.com hiện tại — ChatGPT đổi UI thì sửa ngay đây.
 
 /* global chrome */
 
@@ -41,7 +40,7 @@ function runImageJobInPage(job) {
   window.__chatgptImageBusy = true;
 
   // KHÔNG fetch thẳng về app từ đây: CSP của chatgpt.com chỉ cho connect-src tới domain của
-  // họ, mọi request tới localhost/video.homebox.vn đều bị chặn ("Refused to connect because it
+  // họ, mọi request tới localhost / máy chủ ngoài đều bị chặn ("Refused to connect because it
   // violates the document's Content Security Policy"). Chỉ service worker mới fetch được.
   //
   // Nhưng MAIN world không có chrome.runtime để gọi thẳng SW. Đường duy nhất: postMessage lên
@@ -104,7 +103,7 @@ function runImageJobInPage(job) {
     if (!composer) return { ok: false, error: 'Không tìm thấy ô nhập của ChatGPT (trang chưa sẵn sàng hoặc đổi giao diện)' };
 
     // ---------- 1. Đính ảnh tham chiếu ----------
-    // Chỉ dùng chiến lược input[type=file] (giống runner.ts) — 3 chiến lược fallback còn lại
+    // Chỉ dùng chiến lược input[type=file] — 3 chiến lược fallback còn lại
     // trong doc chỉ cần khi input bị ẩn hoàn toàn, chưa gặp thực tế.
     if (job.refImages && job.refImages.length > 0) {
       const input = document.querySelector('input[type="file"]');
@@ -124,7 +123,7 @@ function runImageJobInPage(job) {
       input.dispatchEvent(new Event('change', { bubbles: true }));
 
       // Chờ thumbnail hiện thật rồi mới gửi — dispatch xong không có nghĩa upload xong, gửi sớm
-      // là ChatGPT nhận prompt mà thiếu ảnh ref (runner.ts:151-157 cũng chờ đúng chỗ này).
+      // là ChatGPT nhận prompt mà thiếu ảnh ref.
       const upDeadline = Date.now() + 60000;
       let attached = false;
       while (Date.now() < upDeadline) {

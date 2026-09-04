@@ -87,6 +87,18 @@ import { createQueue, saveImageFile } from './chatgpt-image-server.mjs';
   assert.equal(next.id, fresh.id, 'giao job mới, không kẹt vì job treo');
 }
 
+// --- complete idempotent: nộp lặp KHÔNG ghi đè job đã kết thúc ---
+{
+  const q = createQueue();
+  const j = q.enqueue({ prompt: 'z' });
+  q.claimNext(0);
+  q.complete(j.id, { imageBase64: 'QUJD', ext: 'png' });
+  q.complete(j.id, { error: 'nộp lặp phải bị bỏ qua' }); // đến muộn, không được lật done→error
+  assert.equal(q.get(j.id).status, 'done', 'nộp lặp không lật done→error');
+  assert.equal(q.get(j.id).imageBase64, 'QUJD', 'giữ nguyên ảnh lần nộp đầu');
+  assert.equal(q.get(j.id).error, null);
+}
+
 // --- complete job không tồn tại → null, không ném ---
 {
   const q = createQueue();
