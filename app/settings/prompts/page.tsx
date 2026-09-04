@@ -20,6 +20,10 @@ export default function PromptSettingsPage() {
   // Prompt sinh kịch bản có 2 bản mặc định (V1 và AIDA Shopee V2) — trang này ở cấp hệ thống,
   // không thuộc job nào, nên phải cho chọn đang xem bản nào.
   const [v2, setV2] = useState(false);
+  // Chế độ debug (cờ toàn hệ thống): dừng xin duyệt trước mỗi bước AI của lượt sinh script.
+  // undefined = chưa tải xong, tránh nháy checkbox từ off sang on.
+  const [debugConfirm, setDebugConfirm] = useState<boolean | undefined>(undefined);
+  const [savingDebug, setSavingDebug] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +44,38 @@ export default function PromptSettingsPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    fetch('/api/ai-settings')
+      .then((r) => r.json())
+      .then((d) => setDebugConfirm(d.debugConfirmSteps === true))
+      .catch(() => setDebugConfirm(false));
+  }, []);
+
+  async function toggleDebug(next: boolean) {
+    setSavingDebug(true);
+    // Cập nhật lạc quan rồi trả về giá trị server chốt — checkbox không nên đứng im chờ round-trip.
+    setDebugConfirm(next);
+    try {
+      const res = await fetch('/api/ai-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ debugConfirmSteps: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Lưu chế độ debug thất bại');
+        setDebugConfirm(!next);
+        return;
+      }
+      setDebugConfirm(data.debugConfirmSteps === true);
+    } catch (err) {
+      setError((err as Error).message);
+      setDebugConfirm(!next);
+    } finally {
+      setSavingDebug(false);
+    }
+  }
+
   const customized = steps?.filter((s) => s.scope !== 'default').length ?? 0;
 
   return (
@@ -59,6 +95,29 @@ export default function PromptSettingsPage() {
           </div>
 
           {error && <div className="banner banner-error">{error}</div>}
+
+          <div
+            className="field-group"
+            style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={debugConfirm === true}
+                disabled={debugConfirm === undefined || savingDebug}
+                onChange={(e) => toggleDebug(e.target.checked)}
+                style={{ marginRight: 6 }}
+              />
+              🐞 <strong>Chế độ debug</strong> — dừng xin xác nhận trước MỖI bước gọi AI
+            </label>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              Bật: mỗi lần bấm sinh script, hệ thống dừng lại ở từng bước và hiện đúng prompt sắp
+              gửi để duyệt (chạy / bỏ qua) — 6 bước{' '}
+              <code>product_visual → product_lock → stage_bible → script → shorten → script_qa</code>.
+              Duyệt xong thấy ổn thì tắt đi, mọi job sau chạy thẳng một mạch không hỏi nữa. Không
+              trả lời trong 10 phút thì bước đó tự bỏ qua để khỏi treo. Cờ này áp cho MỌI job.
+            </div>
+          </div>
 
           <div className="field-group">
             <label>

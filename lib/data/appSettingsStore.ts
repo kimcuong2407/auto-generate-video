@@ -17,6 +17,14 @@ export interface AppSettings {
    * background livestream). Null = tôn trọng model lưu trong từng project/job như trước.
    */
   imageModel: string | null;
+  /**
+   * Chế độ debug: dừng lại xin xác nhận TRƯỚC mỗi bước gọi AI trong lượt sinh script, kèm đúng
+   * prompt sắp gửi. Tắt (mặc định) = chạy một mạch như cũ.
+   *
+   * Cờ TOÀN HỆ THỐNG chứ không theo job: mục đích là soi pipeline lúc chưa tin tưởng, duyệt xong
+   * thì tắt một lần cho mọi job — không phải thứ cần bật lẻ từng job.
+   */
+  debugConfirmSteps: boolean;
 }
 
 export function readAppSettings(): AppSettings {
@@ -27,9 +35,10 @@ export function readAppSettings(): AppSettings {
       chatModel: data.chatModel || null,
       veoModel: data.veoModel || null,
       imageModel: data.imageModel || null,
+      debugConfirmSteps: data.debugConfirmSteps === true,
     };
   } catch {
-    return { chatModel: null, veoModel: null, imageModel: null };
+    return { chatModel: null, veoModel: null, imageModel: null, debugConfirmSteps: false };
   }
 }
 

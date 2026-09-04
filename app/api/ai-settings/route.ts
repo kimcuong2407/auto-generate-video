@@ -13,6 +13,7 @@ export async function GET() {
     imageModel: settings.imageModel,
     imageModelOptions: IMAGE_MODEL_OPTIONS,
     defaultImageModel: DEFAULT_STORYBOARD_MODEL,
+    debugConfirmSteps: settings.debugConfirmSteps,
   });
 }
 
@@ -20,6 +21,7 @@ export async function PATCH(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     chatModel?: string | null;
     imageModel?: string | null;
+    debugConfirmSteps?: boolean;
   };
   if (body.chatModel !== undefined && body.chatModel !== null && typeof body.chatModel !== 'string') {
     return NextResponse.json({ error: 'chatModel không hợp lệ' }, { status: 400 });
@@ -35,13 +37,19 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: `Model ảnh không hợp lệ: ${body.imageModel}` }, { status: 400 });
   }
 
+  if (body.debugConfirmSteps !== undefined && typeof body.debugConfirmSteps !== 'boolean') {
+    return NextResponse.json({ error: 'debugConfirmSteps phải là boolean' }, { status: 400 });
+  }
+
   const settings = writeAppSettings({
     ...(body.chatModel === undefined ? {} : { chatModel: body.chatModel?.trim() || null }),
     ...(body.imageModel === undefined ? {} : { imageModel: body.imageModel || null }),
+    ...(body.debugConfirmSteps === undefined ? {} : { debugConfirmSteps: body.debugConfirmSteps }),
   });
   return NextResponse.json({
     chatModel: settings.chatModel,
     defaultModel: process.env.AI_CHAT_API_MODEL || null,
     imageModel: settings.imageModel,
+    debugConfirmSteps: settings.debugConfirmSteps,
   });
 }

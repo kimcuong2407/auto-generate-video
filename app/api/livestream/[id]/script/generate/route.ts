@@ -27,6 +27,11 @@ import { ensureProductLock, formatProductLockBlock } from '@/lib/livestream/prod
 import { reviewScriptQuality } from '@/lib/livestream/scriptQa';
 import { ensureLocalImage } from '@/lib/livestream/imageR2';
 import { resolveWithinJob } from '@/lib/livestream/paths';
+import { readAppSettings } from '@/lib/data/appSettingsStore';
+import { waitForConfirm, abandonGates } from '@/lib/livestream/stepGate';
+import { PRODUCT_LOCK_USER_PROMPT, pickProductLockRefPaths } from '@/lib/livestream/productLock';
+import { buildStageBibleUserPrompt } from '@/lib/livestream/stageBible';
+import { getPromptStep, type PromptStepKey } from '@/lib/livestream/promptSteps';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -81,10 +86,40 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const encoder = new TextEncoder();
 
+  // Khai báo NGOÀI start(): cancel() (client đóng tab / F5 giữa chừng) cũng phải với tới được để
+  // giải phóng cổng đang chờ — không thì waiter nằm lại RAM tới hết 10 phút timeout.
+  const openGates: string[] = [];
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: object) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      };
+
+      // Chế độ debug: dừng xin duyệt TRƯỚC mỗi bước AI, kèm đúng prompt sắp gửi. Đọc 1 lần đầu
+      // lượt chạy — bật/tắt giữa chừng không nên làm nửa lượt chạy theo hai chế độ khác nhau.
+      const debugConfirm = readAppSettings().debugConfirmSteps;
+      /**
+       * Xin duyệt 1 bước. Tắt debug → trả 'run' ngay, không đổi hành vi cũ một chút nào.
+       * 'skip' = Mr.D bấm bỏ qua bước này, caller tự xử theo nhánh best-effort sẵn có.
+       */
+      const confirmStep = async (
+        stepKey: PromptStepKey,
+        prompt: string,
+        note?: string
+      ): Promise<'run' | 'skip'> => {
+        if (!debugConfirm) return 'run';
+        const { gateId, promise } = waitForConfirm({
+          stepKey,
+          label: getPromptStep(stepKey).label,
+          prompt,
+          note,
+        });
+        openGates.push(gateId);
+        send({ type: 'await_confirm', gateId, stepKey, label: getPromptStep(stepKey).label, prompt, note });
+        const decision = await promise;
+        send({ type: 'confirm_resolved', gateId, stepKey, decision });
+        return decision;
       };
 
       // Job V2 (tab Livestream Shopee) có bản ghi input riêng → dùng bộ prompt AIDA theo skill.
@@ -111,7 +146,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         chosenForScript.length > 0
           ? chosenForScript.filter((rel) => (job.selectedRefImagePaths ?? []).includes(rel))
           : (job.selectedRefImagePaths ?? []);
-      if (refPaths.length > 0) {
+      if (
+        refPaths.length > 0 &&
+        (await confirmStep(
+          'product_visual',
+          prompts.get('product_visual'),
+          `Đọc ${refPaths.length} ảnh sản phẩm để tả ngoại hình: ${refPaths.join(', ')}`
+        )) === 'run'
+      ) {
         try {
           await Promise.all(
             refPaths.map((rel) => ensureLocalImage(job.id, rel, job.imageR2Urls?.[rel]))
@@ -132,7 +174,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Best-effort: null (chưa chọn ảnh / thiếu AI_VISION_MODEL / lỗi) thì user prompt rơi về
       // dùng visualDescription như cũ, không chặn sinh script.
       let productLockBlock: string | undefined;
-      if (v2Input) {
+      if (
+        v2Input &&
+        (await confirmStep(
+          'product_lock',
+          `===== SYSTEM =====\n${prompts.get('product_lock')}\n\n===== USER =====\n${PRODUCT_LOCK_USER_PROMPT}`,
+          job.productLock
+            ? 'Job đã có product lock — nếu chưa stale thì bước này dùng lại bản cũ, KHÔNG tốn lượt AI.'
+            : `Chốt từ ${pickProductLockRefPaths(job).length} ảnh đã chọn.`
+        )) === 'run'
+      ) {
         const lock = await ensureProductLock(id);
         if (lock) {
           productLockBlock = formatProductLockBlock(lock);
@@ -146,13 +197,39 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // TRỪ khi input đã đổi (ensureStageBible tự phát hiện qua fingerprint và chốt lại, xem ở đó).
       // Báo trước cho UI biết vì sao sắp tốn 1 lượt AI: bible cũ không còn khớp ảnh/mô tả hiện tại.
       if (body.forceStageBible || isStageBibleStale(job)) send({ type: 'stage_bible_stale' });
+      const needBible = body.forceStageBible || isStageBibleStale(job) || !job.stageBible;
+      const bibleDecision = await confirmStep(
+        'stage_bible',
+        `===== SYSTEM =====\n${prompts.get('stage_bible')}\n\n===== USER =====\n${buildStageBibleUserPrompt(job, visualDescription)}`,
+        needBible
+          ? 'Sắp chốt sân khấu MỚI (người dẫn/bối cảnh/góc máy/giọng) — quyết định toàn bộ video trông như thế nào.'
+          : 'Job đã có sân khấu còn khớp — bước này dùng lại bản cũ, KHÔNG tốn lượt AI.'
+      );
       send({ type: 'stage_bible_start' });
-      let bible: Awaited<ReturnType<typeof ensureStageBible>>;
+      let bible: Awaited<ReturnType<typeof ensureStageBible>> = null;
       try {
+        if (bibleDecision === 'skip') {
+          // Bấm bỏ qua ở lượt "chốt LẠI sân khấu" = huỷ hẳn lượt chạy, KHÔNG rơi xuống sinh script
+          // bằng bible cũ: cả lượt này tồn tại chỉ để thay bible, chạy tiếp sẽ ghi đè toàn bộ
+          // script bằng đúng sân khấu cũ mà Mr.D vừa từ chối giữ.
+          if (body.forceStageBible) {
+            send({
+              type: 'fatal',
+              message: 'Đã bỏ qua bước chốt lại sân khấu nên dừng luôn — chạy tiếp sẽ ghi đè script bằng sân khấu cũ, đúng thứ lượt chạy này định thay.',
+            });
+            abandonGates(openGates);
+            controller.close();
+            return;
+          }
+          // Bỏ qua ở lượt thường = dùng bible cũ nếu có; không có thì rơi xuống nhánh cảnh báo
+          // bên dưới y như khi ensureStageBible trả null.
+          bible = job.stageBible ?? null;
+        } else {
         bible = await ensureStageBible(id, {
           visualDescription,
           force: body.forceStageBible,
         });
+        }
       } catch (err) {
         // Chỉ tới được đây khi forceStageBible=true (ensureStageBible chỉ ném khi force).
         // DỪNG HẲN: sinh script tiếp với prompt THIẾU khối sân khấu thì LLM tự bịa người dẫn khác
@@ -161,6 +238,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           type: 'fatal',
           message: `Chốt lại sân khấu thất bại nên KHÔNG sinh script (tránh ghi đè script bằng người dẫn bịa): ${(err as Error).message}`,
         });
+        abandonGates(openGates);
         controller.close();
         return;
       }
@@ -206,6 +284,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             buildPromptParamValues({ job, product, durations, v2Input })
           );
 
+          if (
+            (await confirmStep(
+              'script',
+              `===== SYSTEM PROMPT =====\n${systemPrompt}\n\n===== USER PROMPT =====\n${userPrompt}`,
+              `Sản phẩm "${product.name}" (${index + 1}/${job.products.length}) — ${durations.length} đoạn.`
+            )) === 'skip'
+          ) {
+            // Bỏ qua = KHÔNG đụng vào script cũ của sản phẩm này. Trả scriptStatus về nguyên trạng
+            // vì phía trên đã set 'generating'; để nguyên thì UI kẹt spinner vĩnh viễn.
+            await updateJob(id, (j) => {
+              const p = j.products.find((x) => x.id === product.id);
+              if (p) p.scriptStatus = product.scriptStatus;
+            });
+            send({ type: 'product_skipped', productId: product.id });
+            continue;
+          }
+
           const raw = await withAiCallContext(
             {
               stepKey: 'script',
@@ -230,14 +325,37 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           const rawSegments = sanitizeSegments(parsed.segments, durations);
           // Lời thoại dài quá nhịp nói → Veo đọc không kịp, cắt cụt câu cuối. Ép AI viết lại NGAY
           // tại đây thay vì chỉ cảnh báo rồi bắt người dùng bấm sinh lại (lần sinh lại vẫn hay dư).
-          const segments = await shortenOverlongSegments(
-            rawSegments,
-            prompts.get('shorten'),
-            (round, remaining) => {
-              send({ type: 'shorten_start', productId: product.id, round, remaining });
-            },
-            { jobSlug: job.slug, productId: product.id, promptScope: prompts.scopeOf('shorten') }
-          );
+          // Chỉ hỏi khi THỰC SỰ có đoạn vượt — không đoạn nào vượt thì bước này không gọi AI,
+          // hỏi cũng chỉ tổ bắt Mr.D bấm thừa.
+          // Chỉ hỏi khi THỰC SỰ có đoạn vượt: không đoạn nào vượt thì shortenOverlongSegments
+          // break ngay mà không gọi AI, hỏi cũng chỉ tổ bắt Mr.D bấm thừa một nhịp.
+          const willShorten = findOverlongSegments(rawSegments);
+          const shortenDecision =
+            willShorten.length > 0
+              ? await confirmStep(
+                  'shorten',
+                  prompts.get('shorten'),
+                  `${willShorten.length} đoạn vượt giới hạn từ: ${willShorten
+                    .map((o) => `${o.id} (${o.words}/${o.maxWords} từ)`)
+                    .join(', ')}.\nBỏ qua = giữ nguyên lời thoại dài, Veo có thể đọc không kịp và cắt cụt câu cuối.`
+                )
+              : 'run';
+
+          const segments =
+            shortenDecision === 'skip'
+              ? rawSegments
+              : await shortenOverlongSegments(
+                  rawSegments,
+                  prompts.get('shorten'),
+                  (round, remaining) => {
+                    send({ type: 'shorten_start', productId: product.id, round, remaining });
+                  },
+                  {
+                    jobSlug: job.slug,
+                    productId: product.id,
+                    promptScope: prompts.scopeOf('shorten'),
+                  }
+                );
 
           const { result } = await updateJob(id, (j) => {
             const p = j.products.find((x) => x.id === product.id);
@@ -272,7 +390,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           // QA lỗi vật lý + claim. CHỈ CẢNH BÁO: kịch bản đã ghi vào job ở trên rồi, đây là lớp
           // soát cuối để Mr.D biết cảnh nào đáng sửa TRƯỚC khi đốt quota Veo — chặn đúng chỗ tốn
           // tiền nhất. Chỉ chạy cho job V2; best-effort, lỗi thì trả mảng rỗng.
-          const qaIssues = v2Input
+          const qaIssues =
+            v2Input &&
+            (await confirmStep(
+              'script_qa',
+              prompts.get('script_qa'),
+              `Soát ${segments.length} đoạn vừa sinh của "${product.name}". Script ĐÃ được lưu — bước này chỉ cảnh báo, bỏ qua không mất gì.`
+            )) === 'run'
             ? await reviewScriptQuality(segments, prompts.get('script_qa'), {
                 jobSlug: job.slug,
                 productId: product.id,
@@ -296,7 +420,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       send({ type: 'all_done' });
+      abandonGates(openGates);
       controller.close();
+    },
+    // Client ngắt kết nối giữa chừng: bước đang chờ duyệt sẽ không bao giờ có người trả lời nữa.
+    cancel() {
+      abandonGates(openGates);
     },
   });
 

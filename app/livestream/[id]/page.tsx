@@ -12,6 +12,7 @@ import { AiRunTimeline } from '@/components/livestream/AiRunTimeline';
 import { JobImagePanel } from '@/components/livestream/JobImagePanel';
 import { PromptPreviewModal } from '@/components/livestream/PromptPreviewModal';
 import { V2InputPanel } from '@/components/livestream/V2InputPanel';
+import { StepConfirmModal, type PendingStepInfo } from '@/components/livestream/StepConfirmModal';
 import type { LivestreamV2Input } from '@/lib/livestream/types';
 
 /** Đọc SSE response của route script/generate (fetch thường, không dùng EventSource vì cần POST). */
@@ -23,6 +24,12 @@ async function streamScriptGeneration(
     type: string;
     productId?: string;
     message?: string;
+    /** Chế độ debug — bước đang dừng chờ duyệt, xem lib/livestream/stepGate.ts. */
+    gateId?: string;
+    stepKey?: string;
+    label?: string;
+    prompt?: string;
+    note?: string;
     overlong?: Array<{ id: string; words: number; duration: number; maxWords: number }>;
     qaIssues?: Array<{
       scene: number;
@@ -90,6 +97,10 @@ export default function LivestreamDetailPage() {
   // Input Shopee của job V2 — null = job V1 (tab Livestream Script cũ), khi đó không hiện panel V2
   // và mọi thứ giữ nguyên hành vi cũ. undefined = chưa tải xong.
   const [v2Input, setV2Input] = useState<LivestreamV2Input | null | undefined>(undefined);
+  // Bước AI đang dừng chờ duyệt (chế độ debug). null = không có bước nào đang chờ.
+  const [pendingStep, setPendingStep] = useState<PendingStepInfo | null>(null);
+  // Đếm số bước đã đi qua trong lượt chạy hiện tại — chỉ để đánh số trên modal.
+  const [stepSeq, setStepSeq] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -118,6 +129,7 @@ export default function LivestreamDetailPage() {
     } else {
       setScriptingAll(true);
     }
+    setStepSeq(0);
     const overlongAll: string[] = [];
     const qaAll: string[] = [];
     // LỖI phải nổi lên UI. Trước đây chỉ bắt 'stage_bible_stale' và 'product_done', nên khi server
@@ -131,6 +143,19 @@ export default function LivestreamDetailPage() {
         // Ảnh/mô tả sản phẩm đã đổi từ lần chốt trước → server đang chốt lại sân khấu. Báo cho
         // Mr.D biết vì sao lần này chậm hơn và vì sao người dẫn có thể khác lần trước.
         if (e.type === 'stage_bible_stale') bibleRechecked = true;
+        // Server đang ĐỨNG CHỜ ở bước này — mở modal duyệt. Không trả lời thì stream treo tới
+        // hết timeout 10 phút phía server, nên modal không cho đóng kiểu bỏ lửng.
+        if (e.type === 'await_confirm' && e.gateId) {
+          setStepSeq((n) => n + 1);
+          setPendingStep({
+            gateId: e.gateId,
+            stepKey: e.stepKey ?? '',
+            label: e.label ?? e.stepKey ?? 'Bước AI',
+            prompt: e.prompt ?? '',
+            note: e.note,
+          });
+        }
+        if (e.type === 'confirm_resolved') setPendingStep(null);
         if (e.type === 'fatal') fatal = e.message ?? 'Sinh script dừng giữa chừng';
         if (e.type === 'stage_bible_missing' && e.message) failures.push(e.message);
         if (e.type === 'product_error') {
@@ -442,6 +467,17 @@ export default function LivestreamDetailPage() {
           onClose={() => setBulkPreview(null)}
         />
       )}
+      {/* Modal duyệt bước — ĐỨNG NGOÀI mọi modal preview khác: nó xuất hiện GIỮA lượt chạy, khi
+          server đang chờ, chứ không phải trước khi bấm chạy. */}
+      {pendingStep && (
+        <StepConfirmModal
+          jobId={jobId}
+          step={pendingStep}
+          index={stepSeq}
+          onDecided={() => setPendingStep(null)}
+        />
+      )}
+
       {bulkPreview?.kind === 'gen-all' && firstSegmentRef && (
         <PromptPreviewModal
           jobId={jobId}
