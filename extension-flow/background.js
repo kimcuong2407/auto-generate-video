@@ -4,9 +4,9 @@
 //  A. Session (cookie + access_token): định kỳ ~5 phút POST /api/flow-auth/session.
 //  B. reCAPTCHA token on-demand: khi content.js gửi 'POLL_TOKENS' (mỗi ~1.5s), fetch
 //     GET /api/flow-auth/token-request; với mỗi pending → mint token trong MAIN world
-//     của tab labs.google (executeScript) → POST token về /api/flow-auth/token-request.
+//     của tab Flow (executeScript) → POST token về /api/flow-auth/token-request.
 //
-// Vì sao mọi fetch + mint đều ở SW (không ở content script): CSP của labs.google chặn
+// Vì sao mọi fetch + mint đều ở SW (không ở content script): CSP của trang Flow chặn
 // content script fetch cross-origin tới localhost và chặn inject <script> từ
 // chrome-extension://. SW không bị CSP của trang ràng buộc và có host_permissions.
 
@@ -17,6 +17,11 @@ const ALARM_NAME = 'flow-session-refresh';
 const POLL_ALARM_NAME = 'flow-poll-keepalive';
 
 const SITE_KEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
+
+// Google đã đổi domain Flow từ labs.google sang flow.google.com. Giữ cả hai vì tài khoản
+// cũ vẫn còn phiên trên labs.google — mọi chỗ tìm tab / đọc cookie đều dùng list này.
+const FLOW_TAB_PATTERNS = ['https://labs.google/*', 'https://flow.google.com/*'];
+const FLOW_COOKIE_URLS = ['https://labs.google', 'https://flow.google.com'];
 const MINT_GAP_MS = 200;
 
 function getConfig() {
@@ -40,10 +45,10 @@ async function getBase() {
   }
 }
 
-/** Tìm tab labs.google đang mở. */
+/** Tìm tab Flow đang mở (labs.google hoặc flow.google.com). */
 async function findLabsTab() {
-  const tabs = await chrome.tabs.query({ url: 'https://labs.google/*' });
-  return tabs.find((t) => t.url && t.url.startsWith('https://labs.google')) || null;
+  const tabs = await chrome.tabs.query({ url: FLOW_TAB_PATTERNS });
+  return tabs[0] || null;
 }
 
 // ---------- A. Session (cookie + access_token) ----------
@@ -54,16 +59,24 @@ function collectSessionInMainWorld() {
     if (!res.ok) throw new Error('GET session HTTP ' + res.status);
     const data = await res.json();
     if (!data.access_token) throw new Error('Không có access_token trong session');
-    return { label: document.title || 'labs.google', accessToken: data.access_token };
+    return { label: document.title || 'flow.google.com', accessToken: data.access_token };
   }
   return run();
 }
 
 function getCookieHeader() {
-  return new Promise((resolve) => {
-    chrome.cookies.getAll({ url: 'https://labs.google' }, (cookies) => {
-      resolve((cookies || []).map((c) => `${c.name}=${c.value}`).join('; '));
-    });
+  // Gộp cookie của cả 2 domain, dedupe theo tên (domain mới thắng vì xét sau).
+  return Promise.all(
+    FLOW_COOKIE_URLS.map(
+      (url) =>
+        new Promise((resolve) => {
+          chrome.cookies.getAll({ url }, (cookies) => resolve(cookies || []));
+        })
+    )
+  ).then((lists) => {
+    const byName = new Map();
+    for (const c of lists.flat()) byName.set(c.name, c.value);
+    return [...byName].map(([name, value]) => `${name}=${value}`).join('; ');
   });
 }
 
@@ -98,7 +111,7 @@ async function refreshSessionOnce() {
 
 // ---------- B. reCAPTCHA token on-demand ----------
 
-/** Mint 1 token trong MAIN world của tab labs.google. */
+/** Mint 1 token trong MAIN world của tab Flow. */
 function mintInMainWorld(siteKey, action) {
   const READY_TIMEOUT_MS = 20000;
   function ensureEnterprise() {
@@ -155,10 +168,10 @@ async function pollTokensOnce() {
     const requests = (data && data.requests) || [];
     if (requests.length === 0) return;
 
-    // Chỉ cần tab labs.google khi thực sự phải mint.
+    // Chỉ cần tab Flow khi thực sự phải mint.
     const tab = await findLabsTab();
     if (!tab) {
-      console.warn('[flow-grabber] có pending nhưng không thấy tab labs.google để mint');
+      console.warn('[flow-grabber] có pending nhưng không thấy tab Flow để mint');
       return;
     }
 
@@ -218,7 +231,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
     refreshSessionOnce().catch((err) => console.error('[flow-grabber]', err));
   }
-  // Alarm đánh thức SW kể cả khi tab labs.google ở nền (content script bị Chrome
+  // Alarm đánh thức SW kể cả khi tab Flow ở nền (content script bị Chrome
   // throttle xuống >=60s/tick). Poll ở đây giữ lastPollAt phía server luôn tươi,
   // nên lệnh gen không bị fail-fast oan vì "không thấy poll".
   if (alarm.name === POLL_ALARM_NAME) {
@@ -228,7 +241,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 /**
- * Nạp lại content.js vào mọi tab labs.google đang mở.
+ * Nạp lại content.js vào mọi tab Flow đang mở.
  *
  * Vì sao cần: reload extension ở chrome://extensions làm content script CŨ trên tab đang mở
  * bị orphan ("Extension context invalidated") — nó tự dừng vòng tick vĩnh viễn và trước đây
@@ -238,7 +251,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
  */
 async function reinjectContentScript() {
   try {
-    const tabs = await chrome.tabs.query({ url: 'https://labs.google/*' });
+    const tabs = await chrome.tabs.query({ url: FLOW_TAB_PATTERNS });
     for (const tab of tabs) {
       try {
         await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });

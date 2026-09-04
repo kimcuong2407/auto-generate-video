@@ -1,11 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Google Flow Session Grabber",
-  "version": "1.1.0",
-  "description": "Lấy cookie/access_token + mint reCAPTCHA token on-demand từ labs.google, đẩy về app review pipeline.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs", "alarms", "cookies"],
+  "version": "1.2.0",
+  "description": "Lấy cookie/access_token + mint reCAPTCHA token on-demand từ labs.google / flow.google.com, đẩy về app review pipeline.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "alarms",
+    "cookies"
+  ],
   "host_permissions": [
     "https://labs.google/*",
+    "https://flow.google.com/*",
     "https://*.google.com/*",
     "https://*.googleapis.com/*",
     "http://localhost:3000/*",
@@ -17,8 +25,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://labs.google/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://labs.google/*",
+        "https://flow.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],

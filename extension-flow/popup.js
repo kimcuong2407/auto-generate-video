@@ -34,8 +34,11 @@ sendBtn.addEventListener('click', async () => {
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !/^https:\/\/labs\.google\//i.test(tab.url || '')) {
-      setStatus('Tab hiện tại không phải labs.google. Hãy mở https://labs.google (đã đăng nhập) rồi thử lại.', 'err');
+    if (!tab || !/^https:\/\/(labs\.google|flow\.google\.com)\//i.test(tab.url || '')) {
+      setStatus(
+        'Tab hiện tại không phải trang Flow. Hãy mở https://flow.google.com (hoặc https://labs.google) đã đăng nhập rồi thử lại.',
+        'err'
+      );
       return;
     }
 

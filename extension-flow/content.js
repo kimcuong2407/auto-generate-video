@@ -1,13 +1,13 @@
-// Content script trên tab labs.google (isolated world). Sống theo vòng đời tab.
+// Content script trên tab Flow (labs.google / flow.google.com, isolated world). Sống theo vòng đời tab.
 //
-// CSP của labs.google chặn content script fetch cross-origin tới localhost và chặn
+// CSP của trang Flow chặn content script fetch cross-origin tới localhost và chặn
 // inject <script> từ chrome-extension://. Nên content script KHÔNG tự fetch/mint —
 // nó chỉ giữ NHỊP: mỗi 1.5s gửi 'POLL_TOKENS' cho service worker. Service worker
 // (không bị CSP của trang ràng buộc, có host_permissions localhost) mới fetch
 // /token-request + mint token qua executeScript world:MAIN.
 //
 // Vai trò của content script: đánh thức service worker đều đặn (SW MV3 hay bị kill,
-// nhưng chrome.runtime.sendMessage sẽ wake nó dậy) và neo theo tab labs.google đang mở.
+// nhưng chrome.runtime.sendMessage sẽ wake nó dậy) và neo theo tab Flow đang mở.
 
 (function () {
   const POLL_INTERVAL_MS = 1500;
