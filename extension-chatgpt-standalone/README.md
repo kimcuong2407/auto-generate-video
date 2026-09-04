@@ -1,0 +1,78 @@
+# ChatGPT Image Standalone
+
+Gen ảnh bằng ChatGPT chỉ với **prompt (JSON) qua API** — **không cần** app review pipeline, **không cần** MySQL, **không cần** SSH tunnel. Toàn bộ logic gen ảnh (đính ảnh ref → gõ prompt → chờ ảnh → lấy bytes) là bản y hệt `extension-chatgpt/imageJob.js`, chỉ thay lớp vận chuyển nặng (Next.js + MySQL) bằng một server nhỏ trong bộ nhớ.
+
+```
+API/curl của bạn ──POST /jobs──► server nhỏ ──GET /jobs/next──► extension ──tab chatgpt.com──► ảnh
+       ▲                            ▲                                │
+       └──── GET /jobs/:id ─────────┴──────── POST /jobs/result ─────┘
+```
+
+## 1. Chạy server
+
+```bash
+node scripts/chatgpt-image-server.mjs
+# hoặc: npm run image-server
+# đổi cổng: PORT=5000 node scripts/chatgpt-image-server.mjs
+```
+
+Mặc định `http://localhost:4123`. Hàng đợi nằm trong RAM — tắt process là mất, đúng nhu cầu "đẩy prompt → lấy ảnh".
+
+## 2. Cài extension
+
+1. Chrome → `chrome://extensions` → bật **Developer mode**.
+2. **Load unpacked** → chọn thư mục `extension-chatgpt-standalone/`.
+3. Cài trong **đúng profile Chrome đã đăng nhập ChatGPT**.
+4. Mở popup → **Server URL** để `http://localhost:4123` (hoặc cổng bạn đổi) → **Lưu**.
+5. Mở sẵn 1 tab `https://chatgpt.com` đã đăng nhập và **để mở**.
+
+## 3. Dùng
+
+### Cách A — test nhanh trong popup
+Popup có sẵn ô **prompt** + **ảnh tham chiếu** + nút **Gen ảnh**. Bấm xong, ảnh hiện ngay trong popup kèm nút tải khi ChatGPT trả về (1-3 phút).
+
+### Cách B — qua API (JSON), ghép vào pipeline của bạn
+
+Đẩy job:
+```bash
+curl -X POST http://localhost:4123/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Ảnh sản phẩm chai serum trên nền đá cẩm thạch, ánh sáng studio"}'
+# → {"id":"img-abc123"}
+```
+
+Với ảnh tham chiếu (server tự tải `url` về rồi đính; hoặc gửi thẳng `dataUrl` base64):
+```bash
+curl -X POST http://localhost:4123/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+        "prompt":"Giữ đúng sản phẩm này, đặt trong bối cảnh phòng tắm sang trọng",
+        "refImages":[{"url":"https://example.com/san-pham.jpg"}]
+      }'
+```
+
+Lấy ảnh (poll tới khi `status: "done"`):
+```bash
+curl http://localhost:4123/jobs/img-abc123
+# → {"id":"img-abc123","status":"done","imageBase64":"<base64>","ext":"png"}
+#   hoặc {"status":"running"} / {"status":"error","error":"..."}
+```
+
+## Hợp đồng JSON
+
+| Route | Body / Kết quả |
+|---|---|
+| `POST /jobs` | `{ prompt, refImages?: [{ url } \| { dataUrl, name? }] }` → `{ id }` |
+| `GET /jobs/next` | *(extension dùng)* → `{ job }` hoặc `{}` |
+| `POST /jobs/result` | *(extension dùng)* `{ jobId, imageBase64, ext }` \| `{ jobId, error }` |
+| `GET /jobs/:id` | `{ status, imageBase64?, ext?, error? }` |
+| `GET /jobs` | danh sách debug (không kèm base64) |
+| `GET /health` | `{ ok, total, queued, running, done, error }` |
+
+## Lưu ý
+
+- **Phải mở tab chatgpt.com** đã đăng nhập thì job mới chạy. Không có tab → job bị đánh dấu lỗi ngay.
+- Job `running` quá **25 phút** không có kết quả sẽ tự chuyển `error` (extension đóng tab/chết giữa chừng).
+- Sau khi **Reload** extension ở `chrome://extensions`, content script cũ trên tab thành "orphan" và tự dừng (log cảnh báo là bình thường) — service worker mới nạp lại trong ~60s, hoặc F5 tab cho nhanh.
+- Selector DOM nằm ở `imageJob.js` — là bản copy của `extension-chatgpt/imageJob.js`. ChatGPT đổi giao diện thì cập nhật cả hai.
+- Self-check hàng đợi: `npm run check:image-server-queue`.

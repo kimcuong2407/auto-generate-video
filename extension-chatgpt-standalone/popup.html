@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px -apple-system, system-ui, sans-serif; width: 340px; padding: 12px; margin: 0; }
+      h1 { font-size: 14px; margin: 0 0 4px; }
+      .hint { color: #888; font-size: 11px; margin: 0 0 10px; }
+      label { display: block; margin: 10px 0 3px; color: #555; font-size: 12px; }
+      input, textarea { width: 100%; box-sizing: border-box; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; font-family: inherit; }
+      textarea { resize: vertical; min-height: 60px; }
+      .row { display: flex; gap: 6px; }
+      .row input { flex: 1; }
+      button { margin-top: 8px; padding: 8px 10px; border: 0; border-radius: 4px; background: #10a37f; color: #fff; font-size: 13px; cursor: pointer; }
+      button.secondary { background: #eee; color: #333; margin-top: 0; }
+      button:disabled { background: #9bbdb3; cursor: default; }
+      #msg { margin-top: 8px; font-size: 12px; white-space: pre-wrap; }
+      #status { margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 12px; color: #555; white-space: pre-wrap; }
+      #preview { margin-top: 8px; }
+      #preview img.thumb { max-width: 100%; border-radius: 6px; border: 1px solid #eee; display: block; }
+      #preview a.dl { display: inline-block; margin-top: 6px; font-size: 12px; color: #10a37f; }
+      .muted { color: #aaa; font-size: 12px; }
+      .ok { color: #0a7a5c; }
+      .err { color: #c02626; }
+      hr { border: 0; border-top: 1px solid #eee; margin: 12px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>ChatGPT Image Standalone</h1>
+    <p class="hint">Gen ảnh trong tab chatgpt.com. Cần mở sẵn 1 tab chatgpt.com đã đăng nhập + chạy server.</p>
+
+    <label for="server">Server URL</label>
+    <div class="row">
+      <input id="server" type="text" placeholder="http://localhost:4123" />
+      <button id="save" class="secondary">Lưu</button>
+    </div>
+
+    <hr />
+
+    <label for="prompt">Test nhanh — prompt</label>
+    <textarea id="prompt" placeholder="Mô tả ảnh muốn gen..."></textarea>
+    <label for="refs">Ảnh tham chiếu (tuỳ chọn)</label>
+    <input id="refs" type="file" accept="image/*" multiple />
+    <button id="gen">Gen ảnh</button>
+
+    <div id="msg"></div>
+    <div id="status"></div>
+    <div id="preview"></div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -63,7 +63,9 @@
     "check:ai-call-log": "tsx scripts/check-ai-call-log.ts",
     "check:prompt-blocks": "tsx scripts/check-prompt-blocks.ts",
     "check:prompt-block-spans": "tsx scripts/check-prompt-block-spans.ts",
-    "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts"
+    "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts",
+    "check:image-server-queue": "node scripts/check-image-server-queue.mjs",
+    "image-server": "node scripts/chatgpt-image-server.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",
