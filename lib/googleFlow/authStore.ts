@@ -12,10 +12,24 @@ export interface FlowAccount {
   label: string;
   /** Full Cookie header của labs.google (chứa __Secure-1PSID...). */
   cookie: string;
-  /** access_token từ GET /fx/api/auth/session. Có thể null, sẽ tự refresh. */
+  /**
+   * @deprecated Kiến trúc Bearer + aisandbox-pa.googleapis.com đã bị Google gỡ (2026-09).
+   * Giữ field để account cũ đọc lên không mất dữ liệu; không còn code nào gửi nó đi.
+   */
   accessToken: string | null;
-  /** Epoch ms lúc lấy accessToken — dùng để refresh trước khi Google hết hạn (~1h). */
   accessTokenAt?: number;
+  /** XSRF token (WIZ_global_data.SNlM0e) — bắt buộc cho mọi call batchexecute. */
+  at?: string | null;
+  /** Session id BOQ (WIZ_global_data.FdrFJe) → query f.sid. */
+  fsid?: string | null;
+  /** Build label (WIZ_global_data.cfb2h) → query bl. Google đổi vài ngày/lần. */
+  bl?: string | null;
+  /** Base path RPC (WIZ_global_data.Im6cmf), vd /_/AiSandboxAngularFrontend. */
+  rpcPath?: string | null;
+  /** Origin thu được (https://flow.google.com). */
+  origin?: string | null;
+  /** Epoch ms lúc thu at — at gắn với phiên, cũ quá thì phải xin lại từ extension. */
+  atAt?: number;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -26,6 +40,8 @@ export interface FlowAccountPublic {
   label: string;
   hasCookie: boolean;
   hasAccessToken: boolean;
+  hasAt: boolean;
+  bl: string | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -64,6 +80,8 @@ export function toPublic(a: FlowAccount): FlowAccountPublic {
     label: a.label,
     hasCookie: !!a.cookie,
     hasAccessToken: !!a.accessToken,
+    hasAt: !!a.at,
+    bl: a.bl ?? null,
     isDefault: a.isDefault,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
@@ -86,7 +104,27 @@ export interface UpsertAccountInput {
   label: string;
   cookie: string;
   accessToken?: string | null;
+  at?: string | null;
+  fsid?: string | null;
+  bl?: string | null;
+  rpcPath?: string | null;
+  origin?: string | null;
   isDefault?: boolean;
+}
+
+/**
+ * Gán các field batchexecute lên account. Chỉ ghi đè khi input thực sự mang giá trị:
+ * refresh session một phần (vd trang chưa kịp lộ cfb2h) không được xoá `bl` đang dùng tốt.
+ */
+function applyFlowFields(target: FlowAccount, input: UpsertAccountInput): void {
+  if (input.at) {
+    target.at = input.at;
+    target.atAt = Date.now();
+  }
+  if (input.fsid) target.fsid = input.fsid;
+  if (input.bl) target.bl = input.bl;
+  if (input.rpcPath) target.rpcPath = input.rpcPath;
+  if (input.origin) target.origin = input.origin;
 }
 
 export function upsertAccount(input: UpsertAccountInput): FlowAccount {
@@ -101,6 +139,7 @@ export function upsertAccount(input: UpsertAccountInput): FlowAccount {
     existing.label = input.label || existing.label;
     if (input.cookie) existing.cookie = input.cookie;
     if (input.accessToken !== undefined) existing.accessToken = input.accessToken || null;
+    applyFlowFields(existing, input);
     if (input.isDefault !== undefined) existing.isDefault = input.isDefault;
     existing.updatedAt = now;
     if (existing.isDefault) {
@@ -120,6 +159,7 @@ export function upsertAccount(input: UpsertAccountInput): FlowAccount {
     createdAt: now,
     updatedAt: now,
   };
+  applyFlowFields(account, input);
   if (isDefault) {
     for (const a of accounts) a.isDefault = false;
   }
@@ -159,4 +199,40 @@ export function updateAccessToken(id: string, accessToken: string | null): void 
   a.accessTokenAt = accessToken ? Date.now() : undefined;
   a.updatedAt = new Date().toISOString();
   writeAll(accounts);
+}
+
+/** Credential đủ để gọi batchexecute. */
+export interface FlowBatchCreds {
+  cookie: string;
+  at: string;
+  fsid: string | null;
+  bl: string | null;
+  rpcPath: string;
+  origin: string;
+}
+
+/**
+ * Rút credential batchexecute từ account, hoặc trả lý do vì sao chưa dùng được.
+ * Trả { creds } | { error } thay vì throw để caller (route status / client) chọn cách báo.
+ */
+export function batchCredsOf(a: FlowAccount): { creds: FlowBatchCreds } | { error: string } {
+  if (!a.cookie) return { error: `Tài khoản "${a.label}" chưa có cookie — bấm gửi session từ extension.` };
+  if (!a.at) {
+    return {
+      error:
+        `Tài khoản "${a.label}" chưa có at token (WIZ_global_data.SNlM0e). Google đã bỏ ` +
+        `kiến trúc access_token cũ; mở tab https://flow.google.com đã đăng nhập rồi bấm ` +
+        `gửi session ở popup extension (bản 2.0.0 trở lên).`,
+    };
+  }
+  return {
+    creds: {
+      cookie: a.cookie,
+      at: a.at,
+      fsid: a.fsid ?? null,
+      bl: a.bl ?? null,
+      rpcPath: a.rpcPath || '/_/AiSandboxAngularFrontend',
+      origin: a.origin || 'https://flow.google.com',
+    },
+  };
 }

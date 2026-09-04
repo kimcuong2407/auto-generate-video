@@ -35,3 +35,9 @@ next-env.d.ts
 .mcp.json
 dbutils-config.yaml
 .scratch/
+
+# HAR export chứa cookie/token đăng nhập thật — không bao giờ commit
+*.har
+
+# backup .env sinh tự động — chứa secret
+.env.local.bak-*

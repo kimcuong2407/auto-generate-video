@@ -61,7 +61,8 @@
     "check:prompt-wiring": "tsx scripts/check-prompt-wiring.ts",
     "check:source-raw": "tsx scripts/check-source-raw.ts",
     "check:ai-call-log": "tsx scripts/check-ai-call-log.ts",
-    "check:prompt-blocks": "tsx scripts/check-prompt-blocks.ts"
+    "check:prompt-blocks": "tsx scripts/check-prompt-blocks.ts",
+    "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

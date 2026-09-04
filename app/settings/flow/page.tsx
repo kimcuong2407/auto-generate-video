@@ -17,6 +17,8 @@ interface AccountRow {
   label: string;
   hasCookie: boolean;
   hasAccessToken: boolean;
+  hasAt: boolean;
+  bl: string | null;
   isDefault: boolean;
   recaptchaImage: boolean;
   recaptchaVideo: boolean;
@@ -32,7 +34,6 @@ export default function FlowAuthPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [cookie, setCookie] = useState('');
-  const [accessToken, setAccessToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -91,7 +92,6 @@ export default function FlowAuthPage() {
     setEditId(null);
     setLabel('');
     setCookie('');
-    setAccessToken('');
     setMessage(null);
     setShowForm(true);
   }
@@ -100,7 +100,6 @@ export default function FlowAuthPage() {
     setEditId(acc.id);
     setLabel(acc.label);
     setCookie('');
-    setAccessToken('');
     setMessage(null);
     setShowForm(true);
   }
@@ -117,7 +116,6 @@ export default function FlowAuthPage() {
           id: editId || undefined,
           label,
           cookie: cookie || undefined,
-          accessToken: accessToken || null,
         }),
       });
       const data = await res.json();
@@ -208,7 +206,8 @@ export default function FlowAuthPage() {
                 <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
                   <th style={{ padding: '8px 6px' }}>Tài khoản</th>
                   <th style={{ padding: '8px 6px' }}>Cookie</th>
-                  <th style={{ padding: '8px 6px' }}>Access token</th>
+                  <th style={{ padding: '8px 6px' }}>at token</th>
+                  <th style={{ padding: '8px 6px' }}>Build (bl)</th>
                   <th style={{ padding: '8px 6px' }}>reCAPTCHA</th>
                   <th style={{ padding: '8px 6px' }}>Thao tác</th>
                 </tr>
@@ -221,7 +220,10 @@ export default function FlowAuthPage() {
                       {acc.isDefault && <span className="badge badge-done">Mặc định</span>}
                     </td>
                     <td style={{ padding: '8px 6px' }}>{acc.hasCookie ? '✅' : '—'}</td>
-                    <td style={{ padding: '8px 6px' }}>{acc.hasAccessToken ? '✅' : '—'}</td>
+                    <td style={{ padding: '8px 6px' }}>{acc.hasAt ? '✅' : '—'}</td>
+                    <td style={{ padding: '8px 6px', fontSize: 11, opacity: 0.75 }}>
+                      {acc.bl ? acc.bl.replace('boq_labs-ai-sandbox-frontend_', '') : '—'}
+                    </td>
                     <td style={{ padding: '8px 6px', fontSize: 12 }}>
                       <span title="IMAGE_GENERATION">{acc.recaptchaImage ? '🖼️' : '○'}</span>{' '}
                       <span title="VIDEO_GENERATION">{acc.recaptchaVideo ? '🎥' : '○'}</span>
@@ -261,15 +263,15 @@ export default function FlowAuthPage() {
                   placeholder="Dán full cookie. Để trống nếu chỉ cập nhật nhãn."
                 />
               </div>
-              <div className="field-group">
-                <label>Access token (access_token từ /fx/api/auth/session)</label>
-                <textarea
-                  rows={2}
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder="Có thể để trống — app tự refresh."
-                />
-              </div>
+              {/*
+                Ô nhập access_token cũ đã bỏ: Google gỡ /fx/api/auth/session (2026-09).
+                Thay thế là `at` token, gắn với phiên và đổi mỗi lần load trang — không có
+                cách nào dán tay cho đúng, bắt buộc lấy qua extension.
+              */}
+              <p style={{ fontSize: 12, opacity: 0.75, margin: 0 }}>
+                <strong>at token</strong> không nhập tay được (gắn với phiên, đổi mỗi lần load trang).
+                Mở tab <code>flow.google.com</code> đã đăng nhập rồi bấm gửi session ở popup extension.
+              </p>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
                   {saving ? 'Đang lưu...' : '💾 Lưu'}

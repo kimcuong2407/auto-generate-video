@@ -1,7 +1,7 @@
 // Background service worker.
 //
 // 2 nhiệm vụ:
-//  A. Session (cookie + access_token): định kỳ ~5 phút POST /api/flow-auth/session.
+//  A. Session (cookie + at token từ WIZ_global_data): định kỳ ~5 phút POST /api/flow-auth/session.
 //  B. reCAPTCHA token on-demand: khi content.js gửi 'POLL_TOKENS' (mỗi ~1.5s), fetch
 //     GET /api/flow-auth/token-request; với mỗi pending → mint token trong MAIN world
 //     của tab Flow (executeScript) → POST token về /api/flow-auth/token-request.
@@ -54,71 +54,64 @@ async function findLabsTab() {
   return tabs.find((t) => (t.url || '').startsWith('https://flow.google.com')) || tabs[0] || null;
 }
 
-// ---------- A. Session (cookie + access_token) ----------
+// ---------- A. Session (cookie + at token) ----------
 
 // Chạy trong MAIN world của tab Flow.
 // KHÔNG throw: hàm truyền qua executeScript mà reject thì results[0].result = undefined,
-// popup chỉ thấy "collect thất bại" và lỗi thật (404/401/path đổi) biến mất. Luôn trả object,
-// kèm `error` để popup hiển thị nguyên văn.
+// popup chỉ thấy "collect thất bại" và lỗi thật biến mất. Luôn trả object, kèm `error`.
 function collectSessionInMainWorld() {
-  // flow.google.com đổi base path so với labs.google (mọi path đoán sẵn đều trả HTML), nên
-  // không hardcode: DÒ từ chính trang. Trang Flow tự gọi endpoint session khi load, nên URL
-  // thật nằm trong performance entries; danh sách tĩnh chỉ là fallback khi entries đã bị xoá.
-  const STATIC_PATHS = ['/fx/api/auth/session', '/api/auth/session', '/auth/session'];
-
-  function discoverSessionUrls() {
-    let entries = [];
-    try {
-      entries = performance.getEntries().map((e) => e.name);
-    } catch (_e) {
-      /* performance API bị chặn — bỏ qua, dùng fallback tĩnh */
-    }
-    const found = entries.filter(
-      (u) => typeof u === 'string' && /\/session(\?|$)/.test(u) && u.startsWith(location.origin)
-    );
-    // Dò trước, fallback sau; dedupe giữ nguyên thứ tự ưu tiên.
-    return [...new Set([...found, ...STATIC_PATHS])];
-  }
-
-  async function run() {
-    const candidates = discoverSessionUrls();
-    const tried = [];
-    for (const url of candidates) {
-      let res;
-      try {
-        res = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json' } });
-      } catch (e) {
-        tried.push(url + ' → fetch lỗi: ' + (e && e.message));
-        continue;
-      }
-      if (!res.ok) {
-        tried.push(url + ' → HTTP ' + res.status);
-        continue;
-      }
-      let data;
-      try {
-        data = await res.json();
-      } catch (_e) {
-        tried.push(url + ' → không phải JSON');
-        continue;
-      }
-      const accessToken = data && (data.access_token || data.accessToken);
-      if (!accessToken) {
-        tried.push(url + ' → JSON thiếu access_token (keys: ' + Object.keys(data || {}).join(',') + ')');
-        continue;
-      }
-      return { label: document.title || location.hostname, accessToken, path: url };
-    }
+  // Google đã gỡ hẳn kiến trúc cũ (/fx/api/auth/session → Bearer ya29 → aisandbox-pa
+  // .googleapis.com): HAR ngày 2026-09-04 không còn MỘT request nào tới các endpoint đó.
+  // Flow giờ chạy hoàn toàn qua BatchExecute trên chính flow.google.com, auth = cookie +
+  // `at` token. Cả 3 tham số bắt buộc đều nằm trong window.WIZ_global_data mà trang tự
+  // nhúng vào HTML:
+  //   SNlM0e → `at`    (XSRF token, đi trong body form; thiếu nó Google trả 400/401)
+  //   FdrFJe → `f.sid` (session id của phiên BOQ)
+  //   cfb2h  → `bl`    (build label, Google đổi vài ngày/lần)
+  //   Im6cmf → base path RPC, vd "/_/AiSandboxAngularFrontend"
+  // Đọc thẳng từ biến này thay vì fetch endpoint nào đó — không có request mạng nào để
+  // hỏng, và nó chính là nguồn mà trang thật đang dùng.
+  const w = window.WIZ_global_data;
+  if (!w || typeof w !== 'object') {
     return {
       error:
-        'Không lấy được access_token trên ' +
-        location.origin +
-        '. Đã thử: ' +
-        tried.join(' | ') +
-        '. Mở DevTools tab Flow → Network, lọc "session", tìm request trả JSON có access_token rồi gửi URL đó cho dev.',
+        'Không thấy window.WIZ_global_data trên ' +
+        location.href +
+        '. Trang có thể chưa load xong hoặc đây không phải trang Flow đã đăng nhập. ' +
+        'Mở https://flow.google.com/project/<id> (đã đăng nhập), đợi trang hiện xong rồi thử lại.',
     };
   }
-  return run();
+
+  const at = w.SNlM0e;
+  const fsid = w.FdrFJe;
+  const bl = w.cfb2h;
+  const rpcPath = w.Im6cmf;
+
+  // `at` là thứ duy nhất không thể thiếu — vắng nó nghĩa là chưa đăng nhập.
+  if (!at) {
+    return {
+      error:
+        'WIZ_global_data có mặt nhưng thiếu SNlM0e (at token) — thường là do chưa đăng nhập ' +
+        'Google trên tab này. Đăng nhập lại tại https://flow.google.com rồi thử lại.',
+    };
+  }
+
+  const missing = [];
+  if (!fsid) missing.push('FdrFJe (f.sid)');
+  if (!bl) missing.push('cfb2h (bl)');
+  if (!rpcPath) missing.push('Im6cmf (rpc path)');
+
+  return {
+    label: document.title || location.hostname,
+    origin: location.origin,
+    at,
+    fsid: fsid || null,
+    bl: bl || null,
+    rpcPath: rpcPath || '/_/AiSandboxAngularFrontend',
+    // Không chặn cứng: Google có thể đổi tên key phụ, gửi được gì thì gửi, server sẽ báo
+    // rõ nếu thật sự thiếu. Chỉ `at` mới là điều kiện dừng.
+    warning: missing.length ? 'Thiếu key phụ trong WIZ_global_data: ' + missing.join(', ') : undefined,
+  };
 }
 
 function getCookieHeader() {
@@ -140,31 +133,56 @@ function getCookieHeader() {
 async function refreshSessionOnce() {
   const { endpoint, label } = await getConfig();
   const tab = await findLabsTab();
-  if (!tab) return { ok: false, error: 'no-tab' };
+  if (!tab) {
+    return { ok: false, error: "Không thấy tab Flow nào đang mở. Mở https://flow.google.com (đã đăng nhập) rồi thử lại." };
+  }
 
   let collected;
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      world: 'MAIN',
+      world: "MAIN",
       func: collectSessionInMainWorld,
     });
     collected = results && results[0] && results[0].result;
   } catch (err) {
     return { ok: false, error: String(err && err.message ? err.message : err) };
   }
-  if (!collected || !collected.accessToken) {
-    return { ok: false, error: (collected && collected.error) || 'collect thất bại (executeScript không trả kết quả)' };
+  if (!collected || !collected.at) {
+    return {
+      ok: false,
+      error: (collected && collected.error) || "collect thất bại (executeScript không trả kết quả)",
+    };
   }
-  console.log('[flow-grabber] lấy được access_token từ', tab.url, 'qua path', collected.path);
+  if (collected.warning) console.warn("[flow-grabber]", collected.warning);
+  console.log("[flow-grabber] lấy được at token từ", tab.url, "| bl:", collected.bl);
 
   const cookie = await getCookieHeader();
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label: label || collected.label, cookie, accessToken: collected.accessToken }),
-  });
-  return { ok: res.ok, status: res.status };
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: label || collected.label,
+        cookie,
+        origin: collected.origin,
+        at: collected.at,
+        fsid: collected.fsid,
+        bl: collected.bl,
+        rpcPath: collected.rpcPath,
+      }),
+    });
+  } catch (e) {
+    return { ok: false, error: "Không gọi được " + endpoint + ": " + (e && e.message) + " (app đang chạy chưa?)" };
+  }
+  // Server từ chối thì phải lộ nguyên văn — trước đây chỉ trả status trần, popup báo
+  // "Gửi thất bại" và nguyên nhân thật (thiếu field, sai origin) biến mất.
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    return { ok: false, status: res.status, error: "App trả HTTP " + res.status + (body ? ": " + body.slice(0, 300) : "") };
+  }
+  return { ok: true, status: res.status };
 }
 
 // ---------- B. reCAPTCHA token on-demand ----------
