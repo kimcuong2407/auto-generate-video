@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Google Flow Session Grabber",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Lấy cookie/access_token + mint reCAPTCHA token on-demand từ labs.google / flow.google.com, đẩy về app review pipeline.",
   "permissions": [
     "activeTab",

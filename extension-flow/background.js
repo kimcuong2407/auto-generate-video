@@ -45,21 +45,54 @@ async function getBase() {
   }
 }
 
-/** Tìm tab Flow đang mở (labs.google hoặc flow.google.com). */
+/**
+ * Tìm tab Flow đang mở. Ưu tiên flow.google.com (domain mới) vì tab labs.google cũ còn
+ * mở thường đã hết phiên — vớ phải nó là collect/mint fail dù tab mới vẫn đăng nhập tốt.
+ */
 async function findLabsTab() {
   const tabs = await chrome.tabs.query({ url: FLOW_TAB_PATTERNS });
-  return tabs[0] || null;
+  return tabs.find((t) => (t.url || '').startsWith('https://flow.google.com')) || tabs[0] || null;
 }
 
 // ---------- A. Session (cookie + access_token) ----------
 
+// Chạy trong MAIN world của tab Flow.
+// KHÔNG throw: hàm truyền qua executeScript mà reject thì results[0].result = undefined,
+// popup chỉ thấy "collect thất bại" và lỗi thật (404/401/path đổi) biến mất. Luôn trả object,
+// kèm `error` để popup hiển thị nguyên văn.
 function collectSessionInMainWorld() {
+  // labs.google dùng /fx/api/auth/session; flow.google.com có thể phục vụ ở gốc khác nhau
+  // tuỳ base path của app → thử lần lượt, path nào trả access_token thì dùng.
+  const PATHS = ['/fx/api/auth/session', '/api/auth/session', '/fx/api/auth/session?'];
   async function run() {
-    const res = await fetch('/fx/api/auth/session', { credentials: 'include' });
-    if (!res.ok) throw new Error('GET session HTTP ' + res.status);
-    const data = await res.json();
-    if (!data.access_token) throw new Error('Không có access_token trong session');
-    return { label: document.title || 'flow.google.com', accessToken: data.access_token };
+    const tried = [];
+    for (const path of PATHS) {
+      let res;
+      try {
+        res = await fetch(path, { credentials: 'include', headers: { Accept: 'application/json' } });
+      } catch (e) {
+        tried.push(path + ' → fetch lỗi: ' + (e && e.message));
+        continue;
+      }
+      if (!res.ok) {
+        tried.push(path + ' → HTTP ' + res.status);
+        continue;
+      }
+      let data;
+      try {
+        data = await res.json();
+      } catch (_e) {
+        tried.push(path + ' → không phải JSON (có thể bị redirect về trang HTML)');
+        continue;
+      }
+      const accessToken = data && (data.access_token || data.accessToken);
+      if (!accessToken) {
+        tried.push(path + ' → JSON không có access_token (keys: ' + Object.keys(data || {}).join(',') + ')');
+        continue;
+      }
+      return { label: document.title || location.hostname, accessToken, path };
+    }
+    return { error: 'Không lấy được access_token trên ' + location.origin + '. Đã thử: ' + tried.join(' | ') };
   }
   return run();
 }
@@ -97,8 +130,9 @@ async function refreshSessionOnce() {
     return { ok: false, error: String(err && err.message ? err.message : err) };
   }
   if (!collected || !collected.accessToken) {
-    return { ok: false, error: (collected && collected.error) || 'collect thất bại' };
+    return { ok: false, error: (collected && collected.error) || 'collect thất bại (executeScript không trả kết quả)' };
   }
+  console.log('[flow-grabber] lấy được access_token từ', tab.url, 'qua path', collected.path);
 
   const cookie = await getCookieHeader();
   const res = await fetch(endpoint, {
