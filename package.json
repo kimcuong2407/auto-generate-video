@@ -22,6 +22,7 @@
     "db:push": "drizzle-kit push",
     "db:import": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/migrate-json-to-db.ts",
     "check:extension": "node scripts/check-poller-staleness.mjs && node scripts/check-content-handoff.mjs",
+    "check:schema-columns": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/check-schema-columns.ts",
     "check:step-gate": "tsx scripts/check-step-gate.ts",
     "check:global-veo-model": "tsx scripts/check-global-veo-model.ts",
     "check:global-image-model": "tsx scripts/check-global-image-model.ts",

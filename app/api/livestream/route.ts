@@ -27,6 +27,26 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    return await createJob(req);
+  } catch (err) {
+    // Trước đây exception ở đây rơi thẳng ra ngoài thành 500 body RỖNG, client chỉ thấy
+    // "Tạo job thất bại (HTTP 500)" — không đủ để biết hỏng ở bước nào. Log đầy đủ ở server và
+    // trả message thật về client: route này chỉ Mr.D dùng, giấu nguyên nhân không được lợi gì.
+    console.error('[livestream] tạo job thất bại:', err);
+    // Drizzle bọc lỗi DB thật vào `cause` — message ngoài chỉ là câu query, không nói lý do.
+    const cause = (err as { cause?: Error }).cause;
+    if (cause) console.error('[livestream] nguyên nhân gốc:', cause.message);
+    return NextResponse.json(
+      {
+        error: `Tạo job thất bại: ${((err as { cause?: Error }).cause ?? (err as Error)).message}`,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function createJob(req: NextRequest) {
   const form = await req.formData();
 
   const name = String(form.get('name') || '').trim();
