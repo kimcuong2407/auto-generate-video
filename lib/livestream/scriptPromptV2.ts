@@ -6,6 +6,7 @@
  */
 import { maxWordsFor } from './segmentSanitize';
 import { isBlockEnabled } from './promptBlocks';
+import { recordBlock, type PromptBlockSink } from './promptBlockSpans';
 import type { AidaStage, LivestreamV2Input } from './types';
 
 const STAGE_LABEL: Record<AidaStage, string> = {
@@ -154,16 +155,24 @@ export function buildLivestreamV2UserPrompt(
   /** Khối "khoá ngoại hình sản phẩm" (formatProductLockBlock) — bỏ trống nếu chưa chốt được. */
   productLockBlock?: string,
   /** Khối người dùng đã TẮT — xem lib/livestream/promptBlocks.ts. Bỏ trống = bật hết. */
-  disabledBlocks?: readonly string[]
+  disabledBlocks?: readonly string[],
+  /** Sổ ghi chuỗi từng khối cho preview — xem promptBlockSpans.ts. Route gen thật không truyền. */
+  blockSink?: PromptBlockSink
 ): string {
   const stages = allocateAidaStages(durations.length);
   const ranges = sceneTimeRanges(durations);
   const { byScene: uspByScene, dropped: uspDropped } = assignUspToScenes(stages, input.advantages);
 
-  const bibleBlock =
-    stageBibleBlock && isBlockEnabled(disabledBlocks, 'sc_bible') ? `${stageBibleBlock}\n\n` : '';
+  const bibleBlock = recordBlock(
+    blockSink,
+    'sc_bible',
+    stageBibleBlock && isBlockEnabled(disabledBlocks, 'sc_bible') ? `${stageBibleBlock}\n\n` : ''
+  );
 
-  const positionBlock = position && isBlockEnabled(disabledBlocks, 'sc_position')
+  const positionBlock = recordBlock(
+    blockSink,
+    'sc_position',
+    position && isBlockEnabled(disabledBlocks, 'sc_position')
     ? position.index === 0
       ? `Đây là sản phẩm MỞ ĐẦU (1/${position.total}) của buổi live — được phép chào khán giả.\n\n`
       : `Đây là sản phẩm thứ ${position.index + 1}/${position.total} trong buổi live ĐANG diễn ra${
@@ -173,9 +182,12 @@ export function buildLivestreamV2UserPrompt(
             ? '\nĐây cũng là sản phẩm CUỐI — cảnh cuối khép lại cả buổi live.'
             : '\nĐây CHƯA phải sản phẩm cuối — cảnh cuối chốt đơn ngắn gọn rồi dẫn sang sản phẩm kế, KHÔNG chào tạm biệt kết thúc live.'
         }\n\n`
-    : '';
+    : ''
+  );
 
-  const advantagesBlock =
+  const advantagesBlock = recordBlock(
+    blockSink,
+    'sc_advantages',
     input.advantages.length && isBlockEnabled(disabledBlocks, 'sc_advantages')
     ? `\n\nƯU ĐIỂM SẢN PHẨM (do người bán cung cấp):\n${input.advantages
         .map((a) => `- ${a}`)
@@ -184,7 +196,8 @@ export function buildLivestreamV2UserPrompt(
           ? `\nCác ưu điểm sau KHÔNG đủ cảnh để demo riêng, chỉ nhắc thoáng qua trong lời thoại, KHÔNG dựng cảnh demo cho chúng: ${uspDropped.join('; ')}.`
           : ''
       }`
-    : '';
+    : ''
+  );
 
   // Product lock THAY THẾ visualDescription khi có: cùng nguồn (ảnh thật) nhưng lock là bản đã
   // chốt cố định, đưa cả hai vào là cho LLM hai mô tả cùng món hàng để tự chọn — đúng thứ khoá
@@ -192,11 +205,14 @@ export function buildLivestreamV2UserPrompt(
   // Tắt lock thì visual ĐƯỢC PHÉP hiện lại (nếu chính nó không bị tắt): quan hệ "lock thay thế
   // visual" là để tránh đưa 2 mô tả cùng món hàng cho LLM tự chọn — bỏ lock thì lý do đó hết.
   const lockEnabled = !!productLockBlock && isBlockEnabled(disabledBlocks, 'sc_lock');
-  const lockBlock = lockEnabled ? `\n\n${productLockBlock}` : '';
-  const visualBlock =
+  const lockBlock = recordBlock(blockSink, 'sc_lock', lockEnabled ? `\n\n${productLockBlock}` : '');
+  const visualBlock = recordBlock(
+    blockSink,
+    'sc_visual',
     !lockEnabled && visualDescription && isBlockEnabled(disabledBlocks, 'sc_visual')
       ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
-      : '';
+      : ''
+  );
 
   // Bảng cảnh: giai đoạn AIDA + mốc thời gian + trần số từ, gộp 1 dòng/cảnh cho LLM dễ bám.
   const scenePlan = durations
@@ -207,8 +223,10 @@ export function buildLivestreamV2UserPrompt(
     })
     .join('\n');
 
-  const v2InputBlock = isBlockEnabled(disabledBlocks, 'sc_v2_input')
-    ? `${formatV2InputBlock(input)}\n\n`
-    : '';
+  const v2InputBlock = recordBlock(
+    blockSink,
+    'sc_v2_input',
+    isBlockEnabled(disabledBlocks, 'sc_v2_input') ? `${formatV2InputBlock(input)}\n\n` : ''
+  );
   return `${bibleBlock}${positionBlock}${v2InputBlock}Mô tả sản phẩm:\n${description}${lockBlock}${advantagesBlock}${visualBlock}\n\nKỊCH BẢN GỒM ĐÚNG ${durations.length} CẢNH, phân bổ AIDA và thời lượng như sau (BÁM ĐÚNG, không tự đổi giai đoạn của cảnh):\n${scenePlan}\n\nMỗi cảnh viết ĐÚNG ${input.dialoguesPerScene} câu thoại MC trong voiceoverVi (câu 1 hook/nối tiếp, câu giữa thông tin chính, câu cuối lợi ích/tương tác/dẫn sang cảnh sau), viết liền thành một đoạn văn nói tự nhiên.\n\nGIỚI HẠN SỐ TỪ BẮT BUỘC cho voiceoverVi từng cảnh đã ghi ở bảng trên — đếm từ, KHÔNG được vượt (vượt là video bị cắt cụt câu). Thà thiếu vài từ còn hơn thừa: ưu tiên câu ngắn, mỗi câu khoảng 5-10 từ.\n\nTrả về đúng ${durations.length} phần tử trong "segments", đúng thứ tự tương ứng bảng cảnh ở trên.`;
 }

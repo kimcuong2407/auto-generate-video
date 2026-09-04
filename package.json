@@ -62,6 +62,7 @@
     "check:source-raw": "tsx scripts/check-source-raw.ts",
     "check:ai-call-log": "tsx scripts/check-ai-call-log.ts",
     "check:prompt-blocks": "tsx scripts/check-prompt-blocks.ts",
+    "check:prompt-block-spans": "tsx scripts/check-prompt-block-spans.ts",
     "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts"
   },
   "dependencies": {

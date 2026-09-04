@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PromptParamsHint } from './PromptParamsHint';
 import { PromptBlocksToggle } from './PromptBlocksToggle';
+import { PromptWithBlocks } from './PromptWithBlocks';
 
 interface PreviewData {
   prompt: string;
@@ -11,6 +12,8 @@ interface PreviewData {
   /** Khối server tự ghép đang bị tắt — xem PreviewPromptResult ở route preview-prompt. */
   disabledBlocks?: string[];
   isV2?: boolean;
+  /** Vị trí từng khối trong `prompt` — xem PreviewPromptResult ở route preview-prompt. */
+  blockSpans?: { key: string; start: number; end: number }[];
   /** Xem PreviewPromptResult ở route preview-prompt. */
   editable?: {
     step: 'script' | 'video' | 'background' | 'stage_bible' | 'product_lock' | 'product_visual' | 'script_qa';
@@ -383,23 +386,12 @@ export function PromptPreviewModal({
               />
             )}
 
-            <pre
-              ref={promptBoxRef}
-              style={{
-                outline: justSaved ? '2px solid var(--accent-glow)' : undefined,
-                whiteSpace: 'pre-wrap',
-                fontSize: 12,
-                lineHeight: 1.5,
-                background: 'var(--bg)',
-                padding: 10,
-                borderRadius: 8,
-                // KHÔNG giới hạn chiều cao riêng: khối cha (.prompt-preview-body) đã cuộn rồi,
-                // thêm một vùng cuộn lồng bên trong khiến lăn chuột mắc kẹt giữa 2 tầng.
-                wordBreak: 'break-word',
-              }}
-            >
-              {data.prompt}
-            </pre>
+            <PromptWithBlocks
+              prompt={data.prompt}
+              spans={data.blockSpans ?? []}
+              boxRef={promptBoxRef}
+              highlight={justSaved}
+            />
 
           </>
         )}

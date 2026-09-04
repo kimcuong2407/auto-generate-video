@@ -7,6 +7,7 @@ import { BACKGROUND_SYSTEM_PROMPT } from './promptDefaults';
 import { pickBackgroundRefEntries } from './refImages';
 import { buildPromptParamValues, fillPromptParams } from './promptParams';
 import { isBlockEnabled } from './promptBlocks';
+import { recordBlock, type PromptBlockSink } from './promptBlockSpans';
 import { loadPromptSet } from './promptStore';
 import type { VisionRefEntry } from './refImages';
 import type { LivestreamJob, LivestreamStageBible } from './types';
@@ -54,24 +55,36 @@ export function buildBackgroundPrompt(
    * Các khối người dùng đã TẮT (job.disabledPromptBlocks) — xem lib/livestream/promptBlocks.ts.
    * Bỏ trống = bật hết, đúng hành vi trước khi có tính năng này.
    */
-  disabledBlocks?: readonly string[]
+  disabledBlocks?: readonly string[],
+  /** Sổ ghi chuỗi từng khối cho preview — xem promptBlockSpans.ts. Route gen thật không truyền. */
+  blockSink?: PromptBlockSink
 ): string {
-  const bibleBlock =
+  const bibleBlock = recordBlock(
+    blockSink,
+    'bg_bible',
     bible && isBlockEnabled(disabledBlocks, 'bg_bible')
     ? `\n\nBẮT BUỘC — khung hình PHẢI khớp đúng sân khấu livestream cố định này (copy y nguyên các mô tả dưới đây, KHÔNG bịa ra người dẫn hay căn phòng khác):\nNgười dẫn: ${bible.host}\nBối cảnh: ${bible.scene}\nMáy quay: ${bible.camera}`
-    : '';
+    : ''
+  );
   // Đánh số vai trò từng ảnh vào prompt: model nhận một chồng ảnh VÔ DANH thì không biết ảnh nào là
   // người cần copy khuôn mặt, ảnh nào là món hàng — kết quả ra người lạ dù ảnh mẫu đã được gửi.
-  const refLegendBlock =
+  const refLegendBlock = recordBlock(
+    blockSink,
+    'bg_ref_legend',
     entries.length > 0 && isBlockEnabled(disabledBlocks, 'bg_ref_legend')
       ? `\n\nẢNH REFERENCE ĐÍNH KÈM (theo đúng thứ tự):\n${entries
           .map((e, i) => `  ${i + 1}. ${e.label}`)
           .join('\n')}\nẢnh reference là NGUỒN SỰ THẬT, ưu tiên hơn MỌI mô tả bằng chữ ở trên. Khuôn mặt, giới tính, kiểu tóc, vóc dáng và trang phục của người dẫn PHẢI copy đúng ảnh NGƯỜI MẪU — nếu mô tả bằng chữ khác ảnh thì theo ẢNH. Sản phẩm trên bàn PHẢI đúng món trong ảnh SẢN PHẨM THẬT, không thay bằng món khác.`
-      : '';
+      : ''
+  );
   // Fill params TRƯỚC khi ghép 3 mảnh còn lại: mảnh server tự ghép (bible/chú giải ảnh) không phải
   // do Mr.D viết, thay `${...}` trong đó chỉ tổ phá chuỗi mô tả model sinh ra.
   const filled = paramValues ? fillPromptParams(basePrompt, paramValues) : basePrompt;
-  const product = isBlockEnabled(disabledBlocks, 'bg_product') ? `\n${productText}` : '';
+  const product = recordBlock(
+    blockSink,
+    'bg_product',
+    isBlockEnabled(disabledBlocks, 'bg_product') ? `\n${productText}` : ''
+  );
   return `${filled}${product}${bibleBlock}${refLegendBlock}`;
 }
 

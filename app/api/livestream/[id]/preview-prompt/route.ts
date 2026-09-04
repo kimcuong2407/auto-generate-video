@@ -6,6 +6,12 @@ import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promp
 import { loadPromptSet } from '@/lib/livestream/promptStore';
 import { isPromptBlockKey } from '@/lib/livestream/promptBlocks';
 import {
+  shiftSpans,
+  spansFromSink,
+  type PromptBlockSink,
+  type PromptBlockSpan,
+} from '@/lib/livestream/promptBlockSpans';
+import {
   PRODUCT_LOCK_USER_PROMPT,
   formatProductLockBlock,
   pickProductLockRefPaths,
@@ -50,6 +56,11 @@ export interface PreviewPromptResult {
   disabledBlocks?: string[];
   /** Job V2 (có bản ghi livestream_v2_inputs) — modal hiện mờ các khối chỉ có ở V2. */
   isV2?: boolean;
+  /**
+   * Vị trí từng khối tự ghép TRONG `prompt` — để modal cắt prompt thành các đoạn có nhãn thay vì
+   * một khối chữ 15k ký tự không biết đoạn nào của khối nào. Xem lib/livestream/promptBlockSpans.ts.
+   */
+  blockSpans?: PromptBlockSpan[];
   /**
    * Dữ liệu để modal cho SỬA TẠI CHỖ trước khi chạy. step='script' có cả prompt lẫn ảnh;
    * step='segment' chỉ có ảnh (veoPrompt đã chốt sẵn trong đoạn, sửa ở ô "Xem prompt").
@@ -157,15 +168,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (filledBase !== basePrompt) {
       bgNotes.push('Prompt có dùng params ${...} — khung bên dưới hiện bản ĐÃ thay giá trị thật.');
     }
+    // Sink để builder ghi lại chuỗi THẬT của từng khối — modal cắt prompt theo đó.
+    const bgSink: PromptBlockSink = {};
+    const bgPrompt = buildBackgroundPrompt(
+      basePrompt,
+      product.description || product.name,
+      bible,
+      entries,
+      paramValues,
+      job.disabledPromptBlocks,
+      bgSink
+    );
     const result: PreviewPromptResult = {
-      prompt: buildBackgroundPrompt(
-        basePrompt,
-        product.description || product.name,
-        bible,
-        entries,
-        paramValues,
-        job.disabledPromptBlocks
-      ),
+      prompt: bgPrompt,
+      blockSpans: spansFromSink(bgPrompt, bgSink),
       refImages: entries.map((e) => ({ rel: e.rel, label: e.label })),
       notes: bgNotes,
       disabledBlocks: job.disabledPromptBlocks ?? [],
@@ -369,6 +385,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       'Khoá ngoại hình sản phẩm chưa được chốt — sẽ được AI vision chốt từ ảnh sản phẩm ở lần sinh script đầu tiên rồi chèn vào đúng vị trí này.'
     );
   }
+  const scriptSink: PromptBlockSink = {};
   const userPrompt = buildScriptUserPrompt({
     description: product.description,
     durations,
@@ -382,6 +399,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     },
     productLockBlock,
     disabledBlocks: job.disabledPromptBlocks,
+    blockSink: scriptSink,
   });
 
   // Ô sửa hiện BẢN GỐC còn `${...}`, còn khung "prompt gửi AI" hiện bản ĐÃ THAY — nếu hiện cùng
@@ -395,10 +413,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     notes.push('System prompt có dùng params ${...} — khung bên dưới hiện bản ĐÃ thay giá trị thật.');
   }
 
+  // Prompt hiển thị = header + system + header + user. Span tính trên CHUỖI USER (nơi khối được
+  // ghép vào) rồi dịch sang toạ độ chuỗi cuối bằng offset của phần user.
+  const scriptPrompt = `===== SYSTEM PROMPT${v2Input ? ' (V2 — kịch bản AIDA Shopee)' : ''} =====\n${systemPromptFilled}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`;
+  const userOffset = scriptPrompt.length - userPrompt.length;
   const result: PreviewPromptResult = {
     // Sinh script gửi system prompt + user prompt TÁCH RIÊNG cho AI; nối lại có nhãn để Mr.D thấy
     // trọn vẹn payload trong 1 khung, đúng thứ tự AI đọc.
-    prompt: `===== SYSTEM PROMPT${v2Input ? ' (V2 — kịch bản AIDA Shopee)' : ''} =====\n${systemPromptFilled}\n\n===== USER PROMPT (sản phẩm "${product.name}") =====\n${userPrompt}`,
+    prompt: scriptPrompt,
+    blockSpans: shiftSpans(spansFromSink(userPrompt, scriptSink), userOffset),
     // Bước sinh script KHÔNG gửi ảnh cho AI viết lời thoại — ảnh chỉ đi vào 2 lượt phụ: vision đọc
     // ngoại hình sản phẩm, và chốt sân khấu. Hiện đúng bộ ảnh của 2 lượt đó để Mr.D kiểm tra.
     refImages: pickScriptRefEntries(job).map((e) => ({ rel: e.rel, label: e.label })),

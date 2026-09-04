@@ -1,5 +1,6 @@
 import { maxWordsFor } from './segmentSanitize';
 import { isBlockEnabled } from './promptBlocks';
+import { recordBlock, type PromptBlockSink } from './promptBlockSpans';
 import { LIVESTREAM_V2_SYSTEM_PROMPT } from './promptDefaultsV2';
 import { buildLivestreamV2UserPrompt } from './scriptPromptV2';
 import type { LivestreamJob, LivestreamV2Input } from './types';
@@ -44,6 +45,8 @@ export function buildScriptUserPrompt(args: {
    * Bỏ trống = bật hết, đúng hành vi trước khi có tính năng này.
    */
   disabledBlocks?: readonly string[];
+  /** Sổ ghi chuỗi từng khối, để preview cắt prompt theo khối — xem promptBlockSpans.ts. */
+  blockSink?: PromptBlockSink;
 }): string {
   const {
     description,
@@ -54,6 +57,7 @@ export function buildScriptUserPrompt(args: {
     position,
     productLockBlock,
     disabledBlocks,
+    blockSink,
   } = args;
   return v2Input
     ? buildLivestreamV2UserPrompt(
@@ -64,7 +68,8 @@ export function buildScriptUserPrompt(args: {
         stageBibleBlock,
         position,
         productLockBlock,
-        disabledBlocks
+        disabledBlocks,
+        blockSink
       )
     : buildLivestreamUserPrompt(
         description,
@@ -72,7 +77,8 @@ export function buildScriptUserPrompt(args: {
         visualDescription,
         stageBibleBlock,
         position,
-        disabledBlocks
+        disabledBlocks,
+        blockSink
       );
 }
 
@@ -85,17 +91,28 @@ export function buildLivestreamUserPrompt(
   /** Vị trí sản phẩm trong buổi live, để LLM viết câu chuyển tiếp thay vì mở màn lại từ đầu. */
   position?: { index: number; total: number; prevProductName?: string },
   /** Khối đã tắt — xem promptBlocks.ts. Bỏ trống = bật hết. */
-  disabledBlocks?: readonly string[]
+  disabledBlocks?: readonly string[],
+  /** Sổ ghi chuỗi từng khối cho preview — xem promptBlockSpans.ts. Route gen thật không truyền. */
+  blockSink?: PromptBlockSink
 ): string {
-  const visualBlock =
+  const visualBlock = recordBlock(
+    blockSink,
+    'sc_visual',
     visualDescription && isBlockEnabled(disabledBlocks, 'sc_visual')
-    ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
-    : '';
-  const bibleBlock =
-    stageBibleBlock && isBlockEnabled(disabledBlocks, 'sc_bible') ? `${stageBibleBlock}\n\n` : '';
+      ? `\n\nMô tả ngoại hình sản phẩm (từ ảnh thật, dùng để mô tả cầm/thao tác chân thực):\n${visualDescription}`
+      : ''
+  );
+  const bibleBlock = recordBlock(
+    blockSink,
+    'sc_bible',
+    stageBibleBlock && isBlockEnabled(disabledBlocks, 'sc_bible') ? `${stageBibleBlock}\n\n` : ''
+  );
   // Sản phẩm thứ 2 trở đi nằm GIỮA buổi live, không phải mở màn — nếu không nói rõ, LLM luôn viết
   // lại lời chào "Chào mọi người đã vào live" khiến ghép lại thành nhiều buổi live rời rạc.
-  const positionBlock = position && isBlockEnabled(disabledBlocks, 'sc_position')
+  const positionBlock = recordBlock(
+    blockSink,
+    'sc_position',
+    position && isBlockEnabled(disabledBlocks, 'sc_position')
     ? position.index === 0
       ? `Đây là sản phẩm MỞ ĐẦU (1/${position.total}) của buổi live — được phép chào khán giả.\n\n`
       : `Đây là sản phẩm thứ ${position.index + 1}/${position.total} trong buổi live ĐANG diễn ra${
@@ -105,7 +122,8 @@ export function buildLivestreamUserPrompt(
             ? '\nĐây cũng là sản phẩm CUỐI — đoạn cuối cùng khép lại cả buổi live.'
             : '\nĐây CHƯA phải sản phẩm cuối — đoạn cuối chốt đơn ngắn gọn rồi dẫn sang sản phẩm kế, KHÔNG chào tạm biệt kết thúc live.'
         }\n\n`
-    : '';
+    : ''
+  );
   // Ràng buộc SỐ TỪ tường minh cho từng đoạn: chỉ nói "khoảng 2-3 từ/giây" thì LLM luôn viết dư
   // (đo thực tế: 24/24 đoạn ra 3.4-4.0 từ/s), Veo đọc không kịp trong 8s nên cắt cụt câu cuối.
   // Trần cứng lấy từ maxWordsFor() — đúng ngưỡng findOverlongSegments() dùng để chấm, nếu 2 chỗ
