@@ -3,7 +3,10 @@
  * Assert thuần, không framework. Chạy: `node scripts/check-image-server-queue.mjs`
  */
 import assert from 'node:assert/strict';
-import { createQueue } from './chatgpt-image-server.mjs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createQueue, saveImageFile } from './chatgpt-image-server.mjs';
 
 // --- Vòng đời cơ bản: enqueue → claim → complete ---
 {
@@ -18,11 +21,26 @@ import { createQueue } from './chatgpt-image-server.mjs';
 
   assert.equal(q.claimNext(1000), null, 'không còn job queued thì trả null');
 
-  q.complete(j.id, { imageBase64: 'QUJD', ext: 'png' });
+  q.complete(j.id, { imageBase64: 'QUJD', ext: 'png', file: '/tmp/x.png' });
   const done = q.get(j.id);
   assert.equal(done.status, 'done', 'complete có ảnh → done');
   assert.equal(done.imageBase64, 'QUJD');
   assert.equal(done.ext, 'png');
+  assert.equal(done.file, '/tmp/x.png', 'complete lưu đường dẫn file');
+}
+
+// --- saveImageFile: ghi đúng bytes, tên theo jobId đã làm sạch ---
+{
+  const dir = mkdtempSync(path.join(tmpdir(), 'cgimg-'));
+  try {
+    // "QUJD" = base64 của "ABC"
+    const file = saveImageFile(dir, 'img/../evil id', 'QUJD', 'png');
+    assert.ok(file.startsWith(dir), 'file nằm trong thư mục output, không thoát ra');
+    assert.ok(!file.includes('..'), 'jobId bẩn bị làm sạch, không có ..');
+    assert.equal(readFileSync(file, 'utf8'), 'ABC', 'ghi đúng nội dung base64 đã giải');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // --- FIFO: job cũ hơn được giao trước ---

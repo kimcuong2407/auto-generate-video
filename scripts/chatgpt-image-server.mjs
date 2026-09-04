@@ -34,6 +34,8 @@
  */
 
 import http from 'node:http';
+import path from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 /** Trần thời gian một job được phép 'running' trước khi coi là hỏng (extension không trả về). */
@@ -58,6 +60,7 @@ export function createQueue({ staleMs = DEFAULT_STALE_MS } = {}) {
       status: 'queued',
       imageBase64: null,
       ext: null,
+      file: null,
       error: null,
       createdAt: Date.now(),
       startedAt: null,
@@ -91,7 +94,7 @@ export function createQueue({ staleMs = DEFAULT_STALE_MS } = {}) {
     return oldest;
   }
 
-  function complete(id, { imageBase64, ext, error } = {}) {
+  function complete(id, { imageBase64, ext, error, file } = {}) {
     const j = jobs.get(id);
     if (!j) return null;
     j.finishedAt = Date.now();
@@ -102,6 +105,7 @@ export function createQueue({ staleMs = DEFAULT_STALE_MS } = {}) {
       j.status = 'done';
       j.imageBase64 = imageBase64 || null;
       j.ext = ext || 'png';
+      j.file = file || null;
     }
     return j;
   }
@@ -164,6 +168,20 @@ async function normalizeRefImages(refImages) {
   return out;
 }
 
+/**
+ * Ghi ảnh base64 ra file trong `dir`, tên theo jobId. Tạo thư mục nếu chưa có. Trả về đường dẫn.
+ * jobId được làm sạch để không thoát khỏi thư mục hay dính ký tự lạ.
+ */
+export function saveImageFile(dir, jobId, base64, ext = 'png') {
+  mkdirSync(dir, { recursive: true });
+  // Bỏ cả dấu chấm khỏi phần jobId để không sinh ".." trong tên (jobId thật không có dấu chấm);
+  // dấu chấm duy nhất là của phần mở rộng ta tự nối bên dưới.
+  const safe = String(jobId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'img';
+  const file = path.join(dir, safe + '.' + (ext || 'png'));
+  writeFileSync(file, Buffer.from(base64, 'base64'));
+  return file;
+}
+
 // ---------- Lớp HTTP ----------
 
 function sendJson(res, code, obj) {
@@ -202,7 +220,7 @@ function readJsonBody(req) {
   });
 }
 
-export function createServer(queue) {
+export function createServer(queue, { outputDir } = {}) {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname.replace(/\/+$/, '') || '/';
@@ -242,10 +260,24 @@ export function createServer(queue) {
         const body = await readJsonBody(req);
         const jobId = body.jobId;
         if (!jobId) return sendJson(res, 400, { error: 'Thiếu "jobId"' });
-        const j = queue.complete(jobId, body);
+
+        // Ảnh xong + có thư mục output → ghi thẳng ra file cho pipeline đọc, khỏi giải base64.
+        let file;
+        if (!body.error && body.imageBase64 && outputDir) {
+          try {
+            file = saveImageFile(outputDir, jobId, body.imageBase64, body.ext);
+          } catch (e) {
+            console.warn('[image-server] ghi file ảnh thất bại:', e && e.message);
+          }
+        }
+
+        const j = queue.complete(jobId, { ...body, file });
         if (!j) return sendJson(res, 404, { error: 'Không thấy job ' + jobId });
-        console.log('[image-server] ✓ job', jobId, j.status === 'done' ? '(đã có ảnh)' : '(lỗi: ' + j.error + ')');
-        return sendJson(res, 200, { ok: true });
+        console.log(
+          '[image-server] ✓ job', jobId,
+          j.status === 'done' ? '→ ' + (file || '(chỉ base64, chưa cấu hình output)') : '(lỗi: ' + j.error + ')'
+        );
+        return sendJson(res, 200, { ok: true, file });
       }
 
       // Debug: danh sách job.
@@ -261,6 +293,7 @@ export function createServer(queue) {
         return sendJson(res, 200, {
           id: j.id,
           status: j.status,
+          file: j.status === 'done' ? j.file || undefined : undefined,
           imageBase64: j.status === 'done' ? j.imageBase64 : undefined,
           ext: j.status === 'done' ? j.ext : undefined,
           error: j.error || undefined,
@@ -282,11 +315,13 @@ export function createServer(queue) {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const port = Number(process.env.PORT || 4123);
+  const outputDir = path.resolve(process.env.IMAGE_OUTPUT_DIR || path.join(process.cwd(), 'output'));
   const queue = createQueue();
-  createServer(queue).listen(port, () => {
+  createServer(queue, { outputDir }).listen(port, () => {
     console.log('[image-server] đang chạy tại http://localhost:' + port);
+    console.log('  Ảnh xong tự lưu vào: ' + outputDir + '  (đổi bằng biến IMAGE_OUTPUT_DIR)');
     console.log('  Đẩy job:   curl -X POST http://localhost:' + port + '/jobs -H "Content-Type: application/json" -d \'{"prompt":"..."}\'');
-    console.log('  Lấy ảnh:   curl http://localhost:' + port + '/jobs/<id>');
+    console.log('  Lấy ảnh:   curl http://localhost:' + port + '/jobs/<id>   (trả cả "file" lẫn "imageBase64")');
     console.log('  Extension trỏ Server URL về: http://localhost:' + port);
   });
 }

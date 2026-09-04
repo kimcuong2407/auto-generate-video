@@ -41,3 +41,6 @@ dbutils-config.yaml
 
 # backup .env sinh tự động — chứa secret
 .env.local.bak-*
+
+# Ảnh gen từ chatgpt-image-server (standalone)
+output/

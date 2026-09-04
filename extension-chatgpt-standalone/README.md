@@ -54,9 +54,22 @@ curl -X POST http://localhost:4123/jobs \
 Lấy ảnh (poll tới khi `status: "done"`):
 ```bash
 curl http://localhost:4123/jobs/img-abc123
-# → {"id":"img-abc123","status":"done","imageBase64":"<base64>","ext":"png"}
+# → {"id":"img-abc123","status":"done","file":"<đường dẫn>/output/img-abc123.png","imageBase64":"<base64>","ext":"png"}
 #   hoặc {"status":"running"} / {"status":"error","error":"..."}
 ```
+
+### Output tự lưu ra file
+
+Ảnh gen xong server **tự ghi ra `output/<jobId>.<ext>`** (cạnh thư mục chạy lệnh). Pipeline chỉ
+việc đọc file theo `file` trả về trong `/jobs/:id`, khỏi giải base64. Đổi thư mục bằng biến môi
+trường:
+
+```bash
+IMAGE_OUTPUT_DIR=/duong/dan/khac node scripts/chatgpt-image-server.mjs
+```
+
+Trường `imageBase64` vẫn được trả song song (cho popup preview / ai cần base64). Thư mục `output/`
+đã nằm trong `.gitignore`.
 
 ## Hợp đồng JSON
 
