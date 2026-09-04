@@ -49,16 +49,28 @@ function normalize(parsed: Partial<LivestreamV2Fields>): LivestreamV2Fields {
  * người dùng vẫn mở được form và tự điền — chặn ở đây chỉ tổ khiến nút bấm không làm gì cả.
  */
 export async function extractV2Fields(
-  rawText: string
+  rawText: string,
+  /**
+   * Slug job đang chạy — chỉ có khi chạy LẠI bước này từ trong job detail. Bỏ trống = luồng gốc ở
+   * trang crawl, lúc đó job chưa tồn tại nên log ghi ở phạm vi toàn hệ thống rồi được gán về job
+   * sau (xem claimAiCallLogs).
+   *
+   * Không có tham số này thì lượt chạy lại trong job ghi log với job_slug rỗng, và timeline của
+   * job không hiện nó — đúng thứ khiến bấm nút xong không thấy dấu vết đâu.
+   */
+  jobSlug?: string
 ): Promise<{ fields: LivestreamV2Fields; logRowId?: number }> {
   if (!rawText.trim()) return { fields: EMPTY };
-  // Bước này chạy ở trang crawl (chưa có job) nên log ghi ở phạm vi toàn hệ thống. Giữ rowId để
-  // client gửi lại lúc tạo job → server gán về job đó, xem claimAiCallLogs().
   const slot = withRowId();
   try {
-    const prompts = await loadPromptSet();
+    const prompts = await loadPromptSet(jobSlug);
     const raw = await withAiCallContext(
-      { stepKey: 'v2_field_extract', promptScope: prompts.scopeOf('v2_field_extract'), out: slot },
+      {
+        stepKey: 'v2_field_extract',
+        jobSlug,
+        promptScope: prompts.scopeOf('v2_field_extract'),
+        out: slot,
+      },
       () => chatCompletion(prompts.get('v2_field_extract'), rawText)
     );
     const fields = normalize(JSON.parse(extractJson(raw)) as Partial<LivestreamV2Fields>);

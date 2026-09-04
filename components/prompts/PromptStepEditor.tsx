@@ -42,6 +42,9 @@ export function PromptStepEditor({
   index,
   onSaved,
   onPreview,
+  onRun,
+  runDisabledReason,
+  running,
 }: {
   step: PromptStepView;
   /** Có = đang ở trong 1 job, hiện thêm nút "Lưu cho job này". */
@@ -51,6 +54,12 @@ export function PromptStepEditor({
   onSaved: () => void | Promise<void>;
   /** Có = hiện nút xem prompt đã ghép params + ảnh ref của bước này. */
   onPreview?: (stepKey: string) => void;
+  /** Có = hiện nút CHẠY RIÊNG bước này (không kéo theo cả pipeline sinh script). */
+  onRun?: (stepKey: string) => void;
+  /** Có = nút chạy bị khoá, và đây là lý do hiện trong tooltip (VD bước chỉ dành cho job V2). */
+  runDisabledReason?: string;
+  /** Bước này đang chạy — khoá nút và đổi nhãn. */
+  running?: boolean;
 }) {
   // null = chưa sửa gì → hiện bản đang có hiệu lực. Chuỗi rỗng là giá trị hợp lệ (tắt hẳn) nên
   // KHÔNG dùng `|| effective`.
@@ -157,6 +166,17 @@ export function PromptStepEditor({
         {onPreview && (
           <button className="btn btn-ghost" disabled={saving} onClick={() => onPreview(step.key)}>
             👁 Xem prompt + ảnh gửi AI
+          </button>
+        )}
+
+        {onRun && (
+          <button
+            className="btn btn-primary"
+            disabled={saving || running || !!runDisabledReason}
+            onClick={() => onRun(step.key)}
+            title={runDisabledReason || 'Chạy RIÊNG bước này — không sinh lại script của sản phẩm nào'}
+          >
+            {running ? '⏳ Đang chạy...' : '▶ Chạy riêng bước này'}
           </button>
         )}
       </div>

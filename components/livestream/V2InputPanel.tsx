@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LIVESTREAM_V2_PLATFORMS, type LivestreamV2Input } from '@/lib/livestream/types';
 
 const GRID: React.CSSProperties = {
@@ -21,17 +21,28 @@ export function V2InputPanel({
   input,
   busy,
   onRefresh,
+  suggestedAdvantages,
 }: {
   jobId: string;
   input: LivestreamV2Input;
   busy: boolean;
   onRefresh: () => Promise<void>;
+  /** Ưu điểm AI vừa bóc tách ở ProductPanel (bước 3) — đắp vào ô đang trống, chưa lưu. */
+  suggestedAdvantages?: string[] | null;
 }) {
   const [draft, setDraft] = useState<LivestreamV2Input>(input);
   const [advantagesText, setAdvantagesText] = useState(input.advantages.join('\n'));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Chỉ đắp khi ô đang TRỐNG — không đè thứ Mr.D đã tự sửa. Vẫn phải bấm Lưu mới persist, để còn
+  // xem lại trước khi ghi đè bản trên server.
+  useEffect(() => {
+    if (!suggestedAdvantages?.length) return;
+    setAdvantagesText((prev) => (prev.trim() ? prev : suggestedAdvantages.join('\n')));
+    setSaved(false);
+  }, [suggestedAdvantages]);
 
   function set<K extends keyof LivestreamV2Input>(key: K, value: LivestreamV2Input[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));

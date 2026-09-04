@@ -48,7 +48,15 @@ function shortTime(iso: string): string {
   return m ? `${m[4]} ${m[3]}/${m[2]}` : iso;
 }
 
-export function AiRunTimeline({ jobId }: { jobId: string }) {
+export function AiRunTimeline({
+  jobId,
+  reloadKey,
+}: {
+  jobId: string;
+  /** Tăng giá trị này để ép nạp lại — timeline vốn chỉ load 1 lần lúc mount, nên sau khi chạy một
+   *  bước AI ở panel khác sẽ không thấy lượt vừa chạy nếu không có cờ này. */
+  reloadKey?: number;
+}) {
   const [runs, setRuns] = useState<RunMeta[] | null>(null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [openRow, setOpenRow] = useState<number | null>(null);
@@ -69,7 +77,9 @@ export function AiRunTimeline({ jobId }: { jobId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+    // reloadKey nằm trong deps để đổi giá trị là chạy lại — nó không được dùng trong thân hàm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, reloadKey]);
 
   useEffect(() => {
     void load();

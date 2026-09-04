@@ -69,8 +69,13 @@ export function pickProductLockRefPaths(
  * mà veoPrompt tả khác nhau giữa các sản phẩm đã gen. Chốt 1 lần rồi tái dùng vừa hết lệch vừa
  * tiết kiệm đúng lượt vision đó ở các lần sinh sau.
  *
- * Best-effort như bản cũ: thiếu AI_VISION_MODEL, chưa chọn ảnh, hay lỗi mạng đều trả null và
- * KHÔNG chặn sinh script — chỉ mất phần mô tả bổ sung, giống hệt hành vi trước đây.
+ * Best-effort ở nhánh KHÔNG force: thiếu AI_VISION_MODEL, chưa chọn ảnh, hay lỗi mạng đều trả
+ * null và KHÔNG chặn sinh script — chỉ mất phần mô tả bổ sung, giống hệt hành vi trước đây.
+ *
+ * `force: true` = Mr.D chủ động bấm chạy riêng bước này, nên NÉM lỗi kèm lý do thật thay vì trả
+ * null. Trả null ở nhánh đó là im lặng nuốt: nút báo thành công trong khi không có gì được chốt,
+ * và cả 3 nguyên nhân (chưa chọn ảnh / thiếu env / AI lỗi) trông y hệt nhau. Cùng chính sách với
+ * ensureStageBible — xem doc-comment ở nhánh catch của nó.
  */
 export async function ensureProductLock(
   jobId: string,
@@ -80,17 +85,37 @@ export async function ensureProductLock(
   if (!opts.force && job.productLock && !isProductLockStale(job)) return job.productLock;
 
   const refPaths = pickProductLockRefPaths(job);
-  if (refPaths.length === 0) return null;
+  if (refPaths.length === 0) {
+    if (opts.force) {
+      throw new Error(
+        'Chưa chọn ảnh sản phẩm nào cho bước này — hãy tick ảnh sản phẩm ở phần cấu hình ảnh của job rồi chạy lại.'
+      );
+    }
+    return null;
+  }
 
   const visionModel = process.env.AI_VISION_MODEL || '';
-  if (!visionModel) return null;
+  if (!visionModel) {
+    if (opts.force) {
+      throw new Error(
+        'Chưa cấu hình AI_VISION_MODEL trong .env.local — không đọc được ảnh để khoá ngoại hình sản phẩm.'
+      );
+    }
+    return null;
+  }
 
   try {
     await Promise.all(
       refPaths.map((rel) => ensureLocalImage(job.id, rel, job.imageR2Urls?.[rel]).catch(() => {}))
     );
     const images = await readImagesAsBase64(refPaths.map((rel) => resolveWithinJob(job.id, rel)));
-    if (images.length === 0) return null;
+    if (images.length === 0) {
+      // Ném cả ở nhánh không force: catch bên dưới sẽ nuốt lại thành null đúng như cũ, còn nhánh
+      // force thì lỗi đi thẳng ra ngoài kèm nguyên nhân.
+      throw new Error(
+        'Không đọc được ảnh sản phẩm nào (mất file local và không khôi phục được từ R2) — hãy tải lại ảnh.'
+      );
+    }
 
     const prompts = await loadPromptSet(job.slug);
     const raw = await withAiCallContext(
@@ -126,6 +151,8 @@ export async function ensureProductLock(
     });
     return lock;
   } catch (err) {
+    // force = Mr.D bấm chạy riêng bước này: phải thấy lý do thật, không nuốt thành null.
+    if (opts.force) throw err;
     // Không chặn luồng sinh script, nhưng phải LOG chứ không im lặng — cùng chính sách với
     // ensureStageBible ở nhánh không force.
     console.error(`[productLock] chốt khoá sản phẩm thất bại cho job ${jobId}: ${(err as Error).message}`);

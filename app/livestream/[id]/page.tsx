@@ -99,6 +99,12 @@ export default function LivestreamDetailPage() {
   const [v2Input, setV2Input] = useState<LivestreamV2Input | null | undefined>(undefined);
   // Bước AI đang dừng chờ duyệt (chế độ debug). null = không có bước nào đang chờ.
   const [pendingStep, setPendingStep] = useState<PendingStepInfo | null>(null);
+  // Tăng để ép AiRunTimeline nạp lại sau khi chạy riêng một bước AI ở PromptSettingsPanel —
+  // timeline chỉ load lúc mount nên nếu không có cờ này, lượt vừa chạy sẽ không hiện.
+  const [aiLogReloadKey, setAiLogReloadKey] = useState(0);
+  // Ưu điểm AI bóc tách được ở ProductPanel (bước 3), chuyển sang form buổi live V2 khi Mr.D bấm
+  // đắp. Giữ ở page vì hai panel là anh em, không có quan hệ cha-con trực tiếp.
+  const [suggestedAdvantages, setSuggestedAdvantages] = useState<string[] | null>(null);
   // Đếm số bước đã đi qua trong lượt chạy hiện tại — chỉ để đánh số trên modal.
   const [stepSeq, setStepSeq] = useState(0);
 
@@ -406,10 +412,21 @@ export default function LivestreamDetailPage() {
 
           <FlowGuide job={job} />
           {v2Input && (
-            <V2InputPanel jobId={jobId} input={v2Input} busy={busy} onRefresh={refresh} />
+            <V2InputPanel
+              jobId={jobId}
+              input={v2Input}
+              busy={busy}
+              onRefresh={refresh}
+              suggestedAdvantages={suggestedAdvantages}
+            />
           )}
-          <PromptSettingsPanel jobId={jobId} isV2={!!v2Input} onRefresh={refresh} />
-          <AiRunTimeline jobId={jobId} />
+          <PromptSettingsPanel
+            jobId={jobId}
+            isV2={!!v2Input}
+            onRefresh={refresh}
+            onRan={() => setAiLogReloadKey((k) => k + 1)}
+          />
+          <AiRunTimeline jobId={jobId} reloadKey={aiLogReloadKey} />
           <JobImagePanel job={job} onRefresh={refresh} />
 
           {job.products.map((product) => (
@@ -421,6 +438,8 @@ export default function LivestreamDetailPage() {
               onRefresh={refresh}
               onGenerateScript={(productId) => handleGenerateScript(productId)}
               scriptBusy={scriptingAll || scriptingProductIds.has(product.id)}
+              isV2={!!v2Input}
+              onSuggestAdvantages={setSuggestedAdvantages}
             />
           ))}
 

@@ -18,6 +18,8 @@ export function ProductPanel({
   onRefresh,
   onGenerateScript,
   scriptBusy,
+  isV2,
+  onSuggestAdvantages,
 }: {
   jobId: string;
   job: LivestreamJob;
@@ -25,6 +27,10 @@ export function ProductPanel({
   onRefresh: () => Promise<void>;
   onGenerateScript: (productId: string) => void;
   scriptBusy: boolean;
+  /** Job V2 — mới có bước bóc tách form Shopee để chạy lại. */
+  isV2?: boolean;
+  /** Đắp danh sách ưu điểm AI vừa tách được sang form thông tin buổi live V2. */
+  onSuggestAdvantages?: (advantages: string[]) => void;
 }) {
   const [busySegmentId, setBusySegmentId] = useState<string | null>(null);
   const [manualDescription, setManualDescription] = useState(product.description);
@@ -39,6 +45,11 @@ export function ProductPanel({
   } | null>(null);
   // Xem trước prompt sinh script của SẢN PHẨM này trước khi bấm sinh.
   const [previewScript, setPreviewScript] = useState(false);
+  // Kết quả bóc tách form V2 chạy lại (bước 3). Không lưu ở đâu: 8/9 field không có cột nào chứa
+  // (lúc tạo job chúng bị nén vào description), nên chỉ hiện ra để Mr.D đọc/copy.
+  const [v2Fields, setV2Fields] = useState<Record<string, unknown> | null>(null);
+  const [extractingV2, setExtractingV2] = useState(false);
+  const [v2Error, setV2Error] = useState<string | null>(null);
 
   async function handleScreenshotUpload(file: File) {
     setUploadingScreenshot(true);
@@ -59,6 +70,28 @@ export function ProductPanel({
       await onRefresh();
     } finally {
       setUploadingScreenshot(false);
+    }
+  }
+
+  /** Chạy lại bước bóc tách form Shopee (V2) từ text gốc đã lưu của sản phẩm này. */
+  async function handleV2Extract() {
+    setExtractingV2(true);
+    setV2Error(null);
+    setV2Fields(null);
+    try {
+      const res = await fetch(`/api/livestream/${jobId}/products/${product.id}/v2-extract`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setV2Error(data.error || `Bóc tách thất bại (HTTP ${res.status})`);
+        return;
+      }
+      setV2Fields(data.fields ?? null);
+    } catch (err) {
+      setV2Error((err as Error).message);
+    } finally {
+      setExtractingV2(false);
     }
   }
 
@@ -164,23 +197,82 @@ export function ProductPanel({
 
       {product.ingestStatus === 'needs_manual' && (
         <div className="banner banner-info">
-          <div>{product.ingestError || 'Cần bổ sung mô tả sản phẩm thủ công.'}</div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer' }}>
-            <input
-              type="file"
-              accept="image/*"
-              disabled={uploadingScreenshot}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleScreenshotUpload(file);
-                e.target.value = '';
-              }}
-              style={{ fontSize: 12 }}
-            />
-            <span style={{ fontSize: 12 }}>
-              {uploadingScreenshot ? '⏳ Đang đọc ảnh...' : '📷 Dán ảnh chụp màn hình sản phẩm (AI tự đọc)'}
-            </span>
-          </label>
+          {product.ingestError || 'Cần bổ sung mô tả sản phẩm thủ công.'}
+        </div>
+      )}
+
+      {/* Bước 2 (đọc ảnh chụp màn hình) — ĐỂ NGOÀI banner needs_manual: route vision không hề
+          kiểm tra ingestStatus, nên chạy lại được cho cả sản phẩm đã ready. Trước đây nút nằm
+          trong banner đó nên sản phẩm ingest xong là mất đường chạy lại bước này. */}
+      <div className="field-group">
+        <label>Bước 2 — Đọc ảnh chụp màn hình sản phẩm (AI điền tên + mô tả)</label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept="image/*"
+            disabled={uploadingScreenshot}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleScreenshotUpload(file);
+              e.target.value = '';
+            }}
+            style={{ fontSize: 12 }}
+          />
+          <span style={{ fontSize: 12 }}>
+            {uploadingScreenshot ? '⏳ Đang đọc ảnh...' : '📷 Chọn ảnh chụp màn hình trang bán'}
+          </span>
+        </label>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          {product.ingestStatus === 'ready'
+            ? '⚠️ Sản phẩm này đã có tên + mô tả — chạy lại sẽ GHI ĐÈ cả hai bằng nội dung AI đọc từ ảnh.'
+            : 'Dùng khi link bị chặn fetch: AI đọc ảnh rồi tự điền tên + mô tả.'}
+        </div>
+      </div>
+
+      {/* Bước 3 (bóc tách form Shopee V2) — chỉ có nghĩa khi job là V2 và sản phẩm còn giữ text
+          gốc. rawText rỗng với sản phẩm tạo từ ảnh hoặc nhập tay. */}
+      {isV2 && (product.rawText || '').trim() !== '' && (
+        <div className="field-group">
+          <label>Bước 3 — Bóc tách form Shopee từ text gốc</label>
+          <div>
+            <button className="btn" onClick={handleV2Extract} disabled={extractingV2}>
+              {extractingV2 ? '⏳ Đang bóc tách...' : '🧩 AI bóc tách lại từ text gốc'}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            Kết quả chỉ để xem/copy — 8/9 ô không có chỗ lưu riêng (lúc tạo job chúng được gộp vào
+            ô Mô tả sản phẩm). Riêng &quot;Ưu điểm&quot; đắp thẳng sang form buổi live được.
+          </div>
+
+          {v2Error && <div className="banner banner-error" style={{ fontSize: 12 }}>{v2Error}</div>}
+
+          {v2Fields && (
+            <div className="banner banner-info" style={{ fontSize: 12 }}>
+              {Object.entries(v2Fields).map(([k, v]) => {
+                const text = Array.isArray(v) ? v.join('\n• ') : String(v ?? '');
+                if (!text.trim()) return null;
+                return (
+                  <div key={k} style={{ marginBottom: 6 }}>
+                    <strong>{k}:</strong>{' '}
+                    <span style={{ whiteSpace: 'pre-wrap' }}>
+                      {Array.isArray(v) ? `\n• ${text}` : text}
+                    </span>
+                  </div>
+                );
+              })}
+              {Array.isArray(v2Fields.advantages) &&
+                (v2Fields.advantages as string[]).length > 0 &&
+                onSuggestAdvantages && (
+                  <button
+                    className="btn"
+                    style={{ marginTop: 6 }}
+                    onClick={() => onSuggestAdvantages(v2Fields.advantages as string[])}
+                  >
+                    ⬆ Đắp {(v2Fields.advantages as string[]).length} ưu điểm sang form buổi live
+                  </button>
+                )}
+            </div>
+          )}
         </div>
       )}
 
