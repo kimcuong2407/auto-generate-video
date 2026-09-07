@@ -494,6 +494,7 @@ export default function LivestreamDetailPage() {
           step={pendingStep}
           index={stepSeq}
           onDecided={() => setPendingStep(null)}
+          onGateLost={setActionError}
         />
       )}
 

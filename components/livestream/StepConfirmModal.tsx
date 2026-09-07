@@ -17,18 +17,27 @@ export interface PendingStepInfo {
  * server ĐANG chờ giữa chừng. Vì vậy KHÔNG đóng được bằng click nền hay nút ✕ — bỏ lửng đồng
  * nghĩa treo request tới hết 10 phút timeout. Mọi đường ra phải là quyết định rõ ràng: chạy hoặc
  * bỏ qua.
+ *
+ * NGOẠI LỆ duy nhất: server trả 409 (cổng không còn ai đợi). Lúc đó không còn request nào để treo
+ * nên modal tự đóng và báo qua `onGateLost` — giữ lại chỉ khiến Mr.D kẹt cứng phải F5.
  */
 export function StepConfirmModal({
   jobId,
   step,
   index,
   onDecided,
+  onGateLost,
 }: {
   jobId: string;
   step: PendingStepInfo;
   /** Thứ tự bước trong lượt chạy này — để Mr.D biết đang ở đâu trong chuỗi. */
   index: number;
   onDecided: () => void;
+  /**
+   * Cổng đã chết (409) — modal tự đóng, caller báo cho Mr.D biết lượt chạy đã dừng và phải sinh
+   * lại. Không có cái này thì modal biến mất im lặng, trông như bước đã chạy xong.
+   */
+  onGateLost?: (message: string) => void;
 }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +53,20 @@ export function StepConfirmModal({
       });
       const data = await res.json();
       if (!res.ok) {
+        // 409 = cổng đã chết (hết 10 phút chờ, hoặc request sinh script đã đứt vì F5 / hot-reload
+        // ở next dev). Giữ modal lại là kẹt cứng: hai nút vẫn bấm được nhưng bấm gì cũng ra đúng
+        // lỗi này, mà modal cố tình không đóng được bằng nền/✕ nên chỉ còn đường F5.
+        //
+        // Lý do "không cho bỏ lửng" ở đầu file chỉ đúng khi cổng CÒN SỐNG — bỏ lửng lúc đó là treo
+        // request tới hết timeout. Với 409 thì chẳng còn request nào để treo, nên đóng là đúng.
+        if (res.status === 409) {
+          setError(null);
+          onGateLost?.(
+            data.error || 'Lượt chạy đã dừng nên bước này không duyệt được nữa. Hãy bấm sinh lại.'
+          );
+          onDecided();
+          return;
+        }
         setError(data.error || `HTTP ${res.status}`);
         return;
       }
