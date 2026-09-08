@@ -1,11 +1,15 @@
 /**
- * Upload ảnh lên Google Flow project (không cần reCAPTCHA) — trả mediaId.
+ * Upload ảnh lên Google Flow project → mediaId.
+ *
+ * 2026-09: endpoint REST /v1/flow/uploadImage đã chết cùng kiến trúc Bearer; giờ đi qua
+ * RPC batchexecute `maseQ` (xem flowRpc.ts). Khác biệt đáng lưu ý: upload NAY CẦN reCAPTCHA
+ * token (trước thì không), nên caller phải mint trước khi gọi.
  */
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { apiRequest, readJson } from './client';
-import { FlowApiError } from './errors';
+import { rpcUploadImage } from './flowRpc';
+import type { FlowBatchCreds } from './authStore';
 
 const MIME_BY_EXT: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -21,36 +25,29 @@ export function mimeFor(filePath: string): string {
 
 /** Upload 1 file ảnh từ đĩa → mediaId. */
 export async function uploadImageFile(
-  accessToken: string,
+  creds: FlowBatchCreds,
   projectId: string,
+  recaptchaToken: string,
   filePath: string
 ): Promise<string> {
   const bytes = await fs.readFile(filePath);
-  return uploadImageBytes(accessToken, projectId, bytes, path.basename(filePath));
+  return uploadImageBytes(creds, projectId, recaptchaToken, bytes, path.basename(filePath));
 }
 
 /** Upload raw image bytes → mediaId. */
 export async function uploadImageBytes(
-  accessToken: string,
+  creds: FlowBatchCreds,
   projectId: string,
+  recaptchaToken: string,
   bytes: Buffer,
   fileName: string
 ): Promise<string> {
-  const res = await apiRequest('/v1/flow/uploadImage', {
-    accessToken,
-    json: {
-      clientContext: { projectId, tool: 'PINHOLE' },
-      imageBytes: bytes.toString('base64'),
-      isUserUploaded: true,
-      isHidden: false,
-      mimeType: mimeFor(fileName),
-      fileName,
-    },
+  return rpcUploadImage({
+    creds,
+    projectId,
+    recaptchaToken,
+    bytes,
+    mimeType: mimeFor(fileName),
+    fileName,
   });
-  const data = await readJson<{ media?: { name?: string } }>(res);
-  const mediaId = data.media?.name;
-  if (!mediaId) {
-    throw new FlowApiError('uploadImage không trả về mediaId');
-  }
-  return mediaId;
 }

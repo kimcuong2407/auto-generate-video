@@ -11,11 +11,10 @@
  * KHÔNG ghi token ra đĩa.
  */
 
-import { getActiveAccount, updateAccessToken } from './authStore';
-import { labsRequest, readJson } from './client';
+import { getActiveAccount, batchCredsOf } from './authStore';
 import { FlowApiError } from './errors';
 import { recaptchaState } from './recaptchaState';
-import type { FlowAccount } from './authStore';
+import type { FlowAccount, FlowBatchCreds } from './authStore';
 
 /** Chờ extension mint token tối đa 20s khi poller đang khoẻ. */
 const MINT_TIMEOUT_MS = 20_000;
@@ -144,33 +143,6 @@ export function listPendingRequests(accountId?: string): Array<{
   return out;
 }
 
-/**
- * access_token của Google (ya29.*) sống ~1 giờ. Refresh sớm ở mốc 45 phút để không bao giờ
- * gửi token đã hết hạn — trước đây token được cache vĩnh viễn, nên chỉ lượt gen đầu chạy
- * được, các lượt sau nhận 401 và trông như "hết session Google Labs".
- */
-const ACCESS_TOKEN_TTL_MS = 45 * 60_000;
-
-/** Trả access_token dùng cho API_BASE, tự refresh khi chưa có hoặc đã quá hạn TTL. */
-export async function resolveAccessToken(account: FlowAccount): Promise<string> {
-  const age = account.accessTokenAt ? Date.now() - account.accessTokenAt : Infinity;
-  if (account.accessToken && age < ACCESS_TOKEN_TTL_MS) return account.accessToken;
-  return refreshAccessToken(account);
-}
-
-/** Gọi GET /fx/api/auth/session với cookie để lấy access_token mới, lưu lại account. */
-export async function refreshAccessToken(account: FlowAccount): Promise<string> {
-  const res = await labsRequest('/fx/api/auth/session', { cookie: account.cookie });
-  const data = await readJson<{ access_token?: string }>(res);
-  const token = data.access_token;
-  if (!token) {
-    throw new FlowApiError('Không lấy được access_token từ /fx/api/auth/session (cookie hết hạn?).');
-  }
-  updateAccessToken(account.id, token);
-  account.accessToken = token;
-  return token;
-}
-
 /** Lấy account đang dùng, throw nếu chưa cấu hình tài khoản nào. */
 export function resolveActiveAccount(): FlowAccount {
   const account = getActiveAccount();
@@ -181,22 +153,27 @@ export function resolveActiveAccount(): FlowAccount {
 }
 
 /**
- * Chạy `fn` với access_token hiện tại; nếu Google trả 401 (UNAUTHENTICATED) thì refresh
- * token rồi chạy lại ĐÚNG 1 LẦN.
+ * Rút credential batchexecute của account đang dùng, hoặc ném lỗi nói rõ thiếu gì.
  *
- * Vì sao cần: `resolveAccessToken` chỉ refresh theo TTL 45 phút. Khi Google thu hồi token
- * sớm hơn hạn đó (đổi cookie ở tab khác, revoke, lệch giờ máy), mọi lượt gọi ăn 401 liên
- * tục cho tới khi TTL trôi hết — nhìn từ UI là đoạn video "poll lỗi tạm thời" mãi không
- * xong. Bắt đúng 401 để refresh là cách sửa ở gốc, dùng chung cho gen video/ảnh và poll.
+ * Thay cho `withTokenRetry` cũ: kiến trúc Bearer đã chết nên không còn access_token nào để
+ * refresh khi gặp 401. Cookie/`at` hết hạn giờ chỉ có một cách chữa — extension gửi lại
+ * session từ tab Flow — nên retry tại chỗ là vô ích, báo lỗi rõ ràng thì hữu ích hơn.
  */
-export async function withTokenRetry<T>(
-  account: FlowAccount,
-  fn: (accessToken: string) => Promise<T>
-): Promise<T> {
-  return runWithTokenRetry(fn, {
-    resolve: () => resolveAccessToken(account),
-    refresh: () => refreshAccessToken(account),
-  });
+export function flowCredsOf(account: FlowAccount): FlowBatchCreds {
+  const r = batchCredsOf(account);
+  if ('error' in r) throw new FlowApiError(r.error, 401);
+  return r.creds;
+}
+
+/**
+ * Mint 1 token reCAPTCHA tươi cho lần gen sắp tới.
+ *
+ * Token sống ~2 phút và one-time-use, nhưng HAR cho thấy trang thật dùng CÙNG một token cho
+ * cả upload ảnh lẫn lệnh gen trong một lần bấm — nên caller mint một lần rồi truyền xuống,
+ * không mint lại giữa chừng.
+ */
+export async function acquireRecaptchaToken(accountId: string, action: string): Promise<string> {
+  return requestFreshToken(accountId, action);
 }
 
 /** Chỉ nhận token 401 của Google — 401 từ nơi khác (nếu có) vẫn ném lên như cũ. */

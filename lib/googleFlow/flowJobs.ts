@@ -9,7 +9,8 @@ import { chatCompletion } from '../ai/chatClient';
 import type { ChatEventHandler } from '../ai/chatClient';
 import type { VeoModel } from '../types';
 import { readAppSettings } from '../data/appSettingsStore';
-import { resolveActiveAccount, withTokenRetry } from './recaptcha';
+import { resolveActiveAccount, flowCredsOf, acquireRecaptchaToken } from './recaptcha';
+import { RECAPTCHA_ACTION_VIDEO } from './client';
 import { createProject } from './projects';
 import { generateImage } from './imageGen';
 import { generateOmniImage } from '../omniroute/imageGen';
@@ -31,9 +32,10 @@ export interface FlowStatusResult {
 export async function getFlowStatus(): Promise<FlowStatusResult> {
   try {
     const account = await resolveActiveAccount();
-    const hasToken = !!account.accessToken;
+    // Điều kiện gen được = cookie + `at` (XSRF). accessToken cũ luôn null kể từ khi Google gỡ
+    // kiến trúc Bearer (2026-09), dựa vào nó là luôn báo "đã kết nối" sai.
     return {
-      flow_connected: hasToken || !!account.cookie,
+      flow_connected: !!account.cookie && !!account.at,
       gemini_connected: false,
       projects: [],
     };
@@ -154,11 +156,13 @@ export async function generateSceneVideo(
     throw new FlowApiError('Chưa có flowProjectId — cần tạo Flow project trước khi gen video');
   }
 
-  const run = (projectId: string, freshUploads: boolean) =>
-    withTokenRetry(account, (accessToken) =>
+  const creds = flowCredsOf(account);
+  // Mint 1 token dùng chung cho upload ảnh + lệnh gen của lần này (trang thật cũng vậy).
+  // Mint lại ở lần thử thứ hai vì token one-time-use: lần đầu đã tiêu nó rồi.
+  const run = async (projectId: string, freshUploads: boolean) =>
       generateVideo({
-        account,
-        accessToken,
+        creds,
+        recaptchaToken: await acquireRecaptchaToken(account.id, RECAPTCHA_ACTION_VIDEO),
         prompt,
         aspect: opts.aspect,
         model,
@@ -168,8 +172,7 @@ export async function generateSceneVideo(
         startImage: freshUploads ? dropCachedMediaId(opts.startImage) : opts.startImage,
         endImage: freshUploads ? dropCachedMediaId(opts.endImage) : opts.endImage,
         seed: opts.seed,
-      })
-    );
+      });
 
   try {
     const result = await run(opts.flowProjectId, false);
@@ -202,13 +205,11 @@ const TMP_VIDEO_DIR = path.join(process.cwd(), 'data', 'tmp', 'flow-video');
  */
 export async function pollJobStatus(jobId: string, projectId: string): Promise<FlowJobStatusResult> {
   const account = await resolveActiveAccount();
-  const result = await withTokenRetry(account, (accessToken) =>
-    pollVideoStatus(accessToken, projectId, jobId)
-  );
+  const result = await pollVideoStatus(flowCredsOf(account), projectId, jobId);
 
   if (result.status === 'done') {
     const dest = path.join(TMP_VIDEO_DIR, `${jobId}-${crypto.randomBytes(4).toString('hex')}.mp4`);
-    const videoPath = await downloadMedia(account.cookie, jobId, dest);
+    const videoPath = await downloadMedia(flowCredsOf(account), projectId, jobId, dest);
     return { status: 'done', phase: result.phase, video_path: videoPath };
   }
   if (result.status === 'error') {
@@ -313,18 +314,16 @@ export async function generateStoryboardImage(params: {
 
   const refImages = params.refImages && params.refImages.length > 0 ? params.refImages : undefined;
   const run = (projectId: string, freshUploads: boolean) =>
-    withTokenRetry(account, (accessToken) =>
       generateImage({
         account,
-        accessToken,
+        accessToken: '',
         prompt: params.prompt,
         aspect: params.aspect,
         model,
         projectId,
         refImages: freshUploads ? refImages?.map((r) => dropCachedMediaId(r)!) : refImages,
         count: 1,
-      })
-    );
+      });
 
   let result;
   let flowProjectId: string;

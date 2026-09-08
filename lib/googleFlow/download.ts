@@ -1,29 +1,32 @@
 /**
  * Resolve + download media từ Google Flow về đĩa.
  *
- * getMediaUrlRedirect trả 3xx → header `Location` là signed CDN URL (flow-content.google).
- * Signed URL không cần cookie khi GET; phải fetch KHÔNG theo redirect để đọc Location trước.
+ * 2026-09: endpoint /fx/api/trpc/media.getMediaUrlRedirect đã chết cùng kiến trúc cũ. URL tải
+ * giờ lấy qua RPC batchexecute `as29s` (xem flowRpc.ts) — cùng một rpcid cho cả ảnh lẫn video.
+ * Signed URL (flow-content.google) không cần cookie khi GET nhưng có `Expires` ~6 giờ, nên
+ * phải tải ngay, đừng cache lại dùng sau.
  */
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { labsRequest, readJson, fetchRetry } from './client';
+import { fetchRetry } from './client';
+import { rpcMediaUrl } from './flowRpc';
 import { FlowApiError } from './errors';
+import type { FlowBatchCreds } from './authStore';
 
-/** Lấy signed URL tải media (không follow redirect). */
-export async function resolveMediaUrl(cookie: string, mediaId: string): Promise<string> {
-  const res = await labsRequest(`/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(mediaId)}`, {
-    cookie,
-  });
-  const location = res.headers.get('location');
-  if (location) return location;
-  // Fallback: đọc body JSON nếu endpoint trả URL trong body thay vì redirect.
-  const data = await readJson<{ url?: string; redirectUrl?: string }>(res).catch(
-    () => ({}) as { url?: string; redirectUrl?: string }
-  );
-  const url = data.url || data.redirectUrl;
+/** Lấy signed URL tải media. `prefer` chọn nhánh video hay ảnh khi cả hai cùng có. */
+export async function resolveMediaUrl(
+  creds: FlowBatchCreds,
+  projectId: string,
+  mediaId: string,
+  prefer: 'video' | 'image' = 'video'
+): Promise<string> {
+  const { imageUrl, videoUrl } = await rpcMediaUrl({ creds, projectId, mediaId });
+  const url = prefer === 'video' ? videoUrl || imageUrl : imageUrl || videoUrl;
   if (!url) {
-    throw new FlowApiError(`Không lấy được URL tải cho media ${mediaId}`);
+    throw new FlowApiError(
+      `Chưa có URL tải cho media ${mediaId} — job có thể chưa render xong, hoặc URL đã hết hạn.`
+    );
   }
   return url;
 }
@@ -47,7 +50,13 @@ export async function downloadUrlTo(url: string, destAbsPath: string): Promise<s
 }
 
 /** Resolve + tải media về destAbsPath. */
-export async function downloadMedia(cookie: string, mediaId: string, destAbsPath: string): Promise<string> {
-  const url = await resolveMediaUrl(cookie, mediaId);
+export async function downloadMedia(
+  creds: FlowBatchCreds,
+  projectId: string,
+  mediaId: string,
+  destAbsPath: string,
+  prefer: 'video' | 'image' = 'video'
+): Promise<string> {
+  const url = await resolveMediaUrl(creds, projectId, mediaId, prefer);
   return downloadUrlTo(url, destAbsPath);
 }

@@ -5,10 +5,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { apiRequest, readJson, RECAPTCHA_ACTION_IMAGE } from './client';
-import { acquireRecaptchaContext } from './recaptcha';
-import { uploadImageFile } from './upload';
-import { downloadUrlTo } from './download';
 import { FlowApiError } from './errors';
 import type { FlowAccount } from './authStore';
 import type { RefImageInput } from './videoGen';
@@ -99,80 +95,25 @@ function assertAspect(buf: Buffer, aspect: ImageAspect): void {
 }
 
 /**
- * Sinh ảnh (đồng bộ). Upload ref images, gọi batchGenerateImages, tải các ảnh kết
- * quả về thư mục tmp rồi trả đường dẫn tuyệt đối.
+ * Sinh ảnh — CHƯA PORT sang batchexecute.
+ *
+ * 2026-09: Google gỡ REST batchGenerateImages cùng kiến trúc Bearer. Luồng video đã chuyển
+ * sang RPC batchexecute (xem flowRpc.ts), nhưng HAR hiện có (docs/flow.google.com.har) chỉ
+ * ghi được thao tác UPLOAD ảnh có sẵn, không có lần nào gen ảnh từ prompt — nên rpcid và
+ * hình dạng payload của text→image vẫn chưa biết.
+ *
+ * Ném lỗi tường minh thay vì gọi host đã chết: đường cũ trả 401 "Expected OAuth 2 access
+ * token", một thông báo dẫn thẳng người đọc đi sửa nhầm phần đăng nhập.
+ *
+ * Để hoàn thiện: capture HAR một lần gen ảnh trên flow.google.com, lấy rpcid + payload, rồi
+ * viết rpcGenerateImage trong flowRpc.ts theo đúng khuôn rpcGenerateVideo.
  */
-export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
-  const imageAspectRatio = ASPECT_MAP[params.aspect] ?? ASPECT_MAP['16:9'];
-  const imageInputs: Array<{ imageInputType: string; name: string }> = [];
-  const uploadedMediaIds: Record<string, string> = {};
-
-  for (const ref of params.refImages || []) {
-    const mediaId =
-      ref.mediaId ?? (await uploadImageFile(params.accessToken, params.projectId, ref.path));
-    if (!ref.mediaId) uploadedMediaIds[ref.path] = mediaId;
-    imageInputs.push({ imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE', name: mediaId });
-  }
-
-  const recaptchaContext = await acquireRecaptchaContext(params.account.id, RECAPTCHA_ACTION_IMAGE);
-  const sessionId = `;${Date.now()}`;
-  const batchId = crypto.randomUUID();
-
-  const body = {
-    clientContext: {
-      ...recaptchaContext,
-      projectId: params.projectId,
-      tool: 'PINHOLE',
-      sessionId,
-    },
-    mediaGenerationContext: { batchId },
-    useNewMedia: true,
-    requests: [
-      {
-        clientContext: {
-          ...recaptchaContext,
-          projectId: params.projectId,
-          tool: 'PINHOLE',
-          sessionId,
-        },
-        imageModelName: resolveImageModel(params.model),
-        imageAspectRatio,
-        structuredPrompt: { parts: [{ text: params.prompt }] },
-        seed: Math.floor(Math.random() * 1_000_000),
-        imageInputs,
-      },
-    ],
-  };
-
-  const res = await apiRequest(`/v1/projects/${params.projectId}/flowMedia:batchGenerateImages`, {
-    accessToken: params.accessToken,
-    json: body,
-    timeoutMs: 10 * 60_000,
-  });
-
-  const data = await readJson<{
-    media?: Array<{ name?: string; image?: { generatedImage?: { fifeUrl?: string } } }>;
-  }>(res);
-
-  const urls = (data.media || [])
-    .map((m) => m.image?.generatedImage?.fifeUrl)
-    .filter((u): u is string => !!u);
-
-  if (urls.length === 0) {
-    throw new FlowApiError('batchGenerateImages không trả về ảnh nào');
-  }
-
-  await fs.mkdir(TMP_DIR, { recursive: true });
-  const paths: string[] = [];
-  for (let i = 0; i < urls.length; i++) {
-    const dest = path.join(TMP_DIR, `img-${crypto.randomBytes(6).toString('hex')}-${i}.png`);
-    await downloadUrlTo(urls[i], dest);
-    assertAspect(await fs.readFile(dest), params.aspect);
-    paths.push(dest);
-  }
-
-  return { dir: TMP_DIR, paths, uploadedMediaIds };
+export async function generateImage(_params: GenerateImageParams): Promise<GenerateImageResult> {
+  throw new FlowApiError(
+    'Gen ảnh qua Google Flow chưa khả dụng: Google đã đổi sang giao thức batchexecute và ' +
+      'phần text→image chưa được port (thiếu HAR của thao tác gen ảnh). Gen video vẫn chạy bình thường.'
+  );
 }
 
-/** Chỉ dùng cho scripts/check-image-aspect.ts — không import ở code chạy thật. */
+/** Chỉ dùng cho scripts/check-image-aspect.ts. */
 export const __testables = { readImageSize, assertAspect };

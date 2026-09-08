@@ -21,6 +21,7 @@
     "check:default-host": "tsx scripts/check-default-host.ts",
     "check:extension": "node scripts/check-poller-staleness.mjs && node scripts/check-content-handoff.mjs",
     "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts",
+    "check:flow-rpc": "tsx scripts/check-flow-rpc.ts",
     "check:flow-session-discovery": "tsx scripts/check-flow-session-discovery.ts",
     "check:global-image-model": "tsx scripts/check-global-image-model.ts",
     "check:global-veo-model": "tsx scripts/check-global-veo-model.ts",

@@ -1,14 +1,19 @@
 /**
- * Sinh video qua các endpoint batchAsyncGenerateVideo* + poll status
- * (aisandbox-pa.googleapis.com).
+ * Sinh video Google Flow qua RPC batchexecute `eb1hJf` + poll `jwpduf` (xem flowRpc.ts).
+ *
+ * 2026-09: Google gỡ hẳn REST batchAsyncGenerateVideo* trên aisandbox-pa.googleapis.com.
+ * Logic dựng videoModelKey bên dưới GIỮ NGUYÊN — HAR gen thật (2026-09-08) cho thấy tên key
+ * không đổi (`veo_3_1_i2v_lite_low_priority`, `abra_i2v_8s` đều khớp quy tắc cũ); chỉ tầng
+ * vận chuyển đổi. aspect/seed không còn chỗ trong payload batchexecute mới (trang thật không
+ * gửi) nên bị bỏ qua — xem ghi chú tại generateVideo.
  */
 
-import crypto from 'node:crypto';
-import { apiRequest, readJson, RECAPTCHA_ACTION_VIDEO } from './client';
-import { acquireRecaptchaContext } from './recaptcha';
+import { RECAPTCHA_ACTION_VIDEO } from './client';
+import { acquireRecaptchaToken } from './recaptcha';
 import { uploadImageFile } from './upload';
+import { rpcGenerateVideo, rpcPollJobs } from './flowRpc';
 import { FlowApiError } from './errors';
-import type { FlowAccount } from './authStore';
+import type { FlowBatchCreds } from './authStore';
 import type { VeoModel } from '../types';
 
 export type VideoAspect = '16:9' | '9:16';
@@ -107,8 +112,9 @@ export interface RefImageInput {
 }
 
 export interface GenerateVideoParams {
-  account: FlowAccount;
-  accessToken: string;
+  creds: FlowBatchCreds;
+  /** Token reCAPTCHA đã mint sẵn — dùng cho cả upload ảnh lẫn lệnh gen trong cùng lần gọi. */
+  recaptchaToken: string;
   prompt: string;
   aspect: VideoAspect;
   model: VeoModel;
@@ -129,116 +135,59 @@ export interface GenerateVideoResult {
 
 /** Trả mediaId có sẵn nếu đã cache, ngược lại upload rồi ghi nhận vào `uploaded`. */
 async function resolveMediaId(
-  accessToken: string,
+  params: GenerateVideoParams,
   projectId: string,
   ref: RefImageInput,
   uploaded: Record<string, string>
 ): Promise<string> {
   if (ref.mediaId) return ref.mediaId;
-  const mediaId = await uploadImageFile(accessToken, projectId, ref.path);
+  const mediaId = await uploadImageFile(params.creds, projectId, params.recaptchaToken, ref.path);
   uploaded[ref.path] = mediaId;
   return mediaId;
 }
 
-interface VideoWorkflowResponse {
-  workflows?: Array<{ name?: string; metadata?: { primaryMediaId?: string } }>;
-  operations?: Array<{ operation?: { name?: string } }>;
-}
-
-/** Tạo batchId + sessionId + recaptchaContext dùng chung cho các endpoint video. */
-async function buildVideoBody(params: GenerateVideoParams, extra: Record<string, unknown>) {
-  const recaptchaContext = await acquireRecaptchaContext(params.account.id, RECAPTCHA_ACTION_VIDEO);
-  const sessionId = `;${Date.now()}`;
-  const batchId = crypto.randomUUID();
-  return {
-    mediaGenerationContext: {
-      batchId,
-      audioFailurePreference: 'BLOCK_SILENCED_VIDEOS',
-    },
-    clientContext: {
-      ...recaptchaContext,
-      projectId: params.projectId,
-      tool: 'PINHOLE',
-      userPaygateTier: 'PAYGATE_TIER_TWO',
-      sessionId,
-    },
-    ...extra,
-  };
-}
-
-/** Extract pending mediaId từ response workflow/operation. */
-function extractMediaId(data: VideoWorkflowResponse): string {
-  const mediaId = data.workflows?.[0]?.metadata?.primaryMediaId ?? data.operations?.[0]?.operation?.name;
-  if (!mediaId) {
-    throw new FlowApiError('Generate video không trả về mediaId để theo dõi');
-  }
-  return mediaId;
-}
-
 /**
- * Sinh video — chọn endpoint theo input:
- * - refPaths → ReferenceImages, start+end → StartAndEndImage, start → StartImage, else Text.
+ * Sinh video.
+ *
+ * Mode vẫn quyết định videoModelKey y như trước (r2v/i2v_se/i2v_s/t2v), nhưng payload
+ * batchexecute chỉ có MỘT chỗ cho ảnh: `startMediaId`. Trang thật không gửi ảnh cuối,
+ * aspect hay seed trong lần gen i2v nào của HAR — nên:
+ *   - ảnh ref / ảnh đầu → startMediaId (ref đầu tiên được dùng),
+ *   - ảnh cuối, aspect, seed: KHÔNG gửi. Bỏ qua có chủ đích, không phải quên. Muốn khôi
+ *     phục thì cần HAR có thao tác tương ứng để biết Google đặt chúng ở chỉ số nào —
+ *     đoán vị trí trong mảng lồng là cách nhanh nhất để Google trả lỗi khó hiểu.
  */
 export async function generateVideo(params: GenerateVideoParams): Promise<GenerateVideoResult> {
-  const aspectRatio = VIDEO_ASPECT_MAP[params.aspect] ?? VIDEO_ASPECT_MAP['16:9'];
-  const textInput = { structuredPrompt: { parts: [{ text: params.prompt }] } };
-  const seed = params.seed ?? Math.floor(Math.random() * 1_000_000);
-
-  const hasRef = params.refImages && params.refImages.length > 0;
+  const hasRef = !!params.refImages && params.refImages.length > 0;
   const hasStart = !!params.startImage;
   const hasEnd = !!params.endImage;
   const uploadedMediaIds: Record<string, string> = {};
 
-  let endpoint: string;
   let mode: VideoMode;
-  let request: Record<string, unknown>;
-  const common = { aspectRatio, textInput, seed, metadata: {} };
+  let startMediaId: string | undefined;
 
   if (hasRef) {
-    endpoint = '/v1/video:batchAsyncGenerateVideoReferenceImages';
     mode = 'r2v';
-    const referenceImages = [];
-    for (const ref of params.refImages!) {
-      const mediaId = await resolveMediaId(params.accessToken, params.projectId, ref, uploadedMediaIds);
-      referenceImages.push({ mediaId, imageUsageType: 'IMAGE_USAGE_TYPE_ASSET' });
-    }
-    request = { ...common, referenceImages };
+    startMediaId = await resolveMediaId(params, params.projectId, params.refImages![0], uploadedMediaIds);
   } else if (hasStart && hasEnd) {
-    endpoint = '/v1/video:batchAsyncGenerateVideoStartAndEndImage';
     mode = 'i2v_se';
-    const startMediaId = await resolveMediaId(params.accessToken, params.projectId, params.startImage!, uploadedMediaIds);
-    const endMediaId = await resolveMediaId(params.accessToken, params.projectId, params.endImage!, uploadedMediaIds);
-    request = {
-      ...common,
-      startImage: { mediaId: startMediaId, cropCoordinates: { top: 0, left: 0, bottom: 1, right: 1 } },
-      endImage: { mediaId: endMediaId, cropCoordinates: { top: 0, left: 0, bottom: 1, right: 1 } },
-    };
+    startMediaId = await resolveMediaId(params, params.projectId, params.startImage!, uploadedMediaIds);
   } else if (hasStart) {
-    endpoint = '/v1/video:batchAsyncGenerateVideoStartImage';
     mode = 'i2v_s';
-    const startMediaId = await resolveMediaId(params.accessToken, params.projectId, params.startImage!, uploadedMediaIds);
-    request = {
-      ...common,
-      startImage: { mediaId: startMediaId, cropCoordinates: { top: 0, left: 0, bottom: 1, right: 1 } },
-    };
+    startMediaId = await resolveMediaId(params, params.projectId, params.startImage!, uploadedMediaIds);
   } else {
-    endpoint = '/v1/video:batchAsyncGenerateVideoText';
     mode = 't2v';
-    request = { ...common };
   }
 
-  const useFl = mode === 'i2v_se';
-  const videoModelKey = resolveVideoModelKey(params.model, mode, params.duration, useFl);
+  const modelKey = resolveVideoModelKey(params.model, mode, params.duration, mode === 'i2v_se');
+  const ids = await rpcGenerateVideo({
+    creds: params.creds,
+    projectId: params.projectId,
+    recaptchaToken: params.recaptchaToken,
+    scenes: [{ prompt: params.prompt, modelKey, startMediaId }],
+  });
 
-  const res = await requestWithModelKeyFallback(
-    endpoint,
-    videoModelKey,
-    params,
-    request,
-    mode
-  );
-  const data = await readJson<VideoWorkflowResponse>(res);
-  return { job_id: extractMediaId(data), uploadedMediaIds };
+  return { job_id: ids[0], uploadedMediaIds };
 }
 
 /**
@@ -269,63 +218,6 @@ function modelKeyCandidates(baseKey: string): string[] {
   return Array.from(new Set(out));
 }
 
-/**
- * Gọi endpoint gen video, tự thử các biến thể videoModelKey khi gặp 404.
- *
- * Trả về Response đầu tiên không-404. Nếu mọi biến thể đều 404 thì trả Response 404 CUỐI CÙNG
- * để readJson ném lỗi như bình thường (giữ nguyên hành vi lỗi cũ, không nuốt lỗi) — caller
- * (generateSceneVideo) bắt 404 đó qua isEntityNotFound và tạo lại Flow project.
- *
- * CẢNH GIÁC KHI ĐỌC LOG: 404 ở đây có HAI nguyên nhân hoàn toàn khác nhau, cùng một mã lỗi —
- * (a) videoModelKey không tồn tại thật, (b) Flow PROJECT đã bị Google xoá/hết hạn (mọi key đều
- * 404). Phân biệt bằng chính danh sách này: chỉ MỘT vài biến thể 404 → nghi key; TOÀN BỘ biến
- * thể đều 404 → gần như chắc chắn là project hết hạn, không phải key. Xem log tổng kết bên dưới.
- */
-async function requestWithModelKeyFallback(
-  endpoint: string,
-  baseKey: string,
-  params: GenerateVideoParams,
-  request: Record<string, unknown>,
-  mode: VideoMode
-): Promise<Response> {
-  const override = process.env.FLOW_VIDEO_MODEL_KEY_OVERRIDE;
-  // Người dùng đã ép key qua env → tôn trọng tuyệt đối, không tự thử biến thể khác.
-  const candidates = override && override.trim() ? [baseKey] : modelKeyCandidates(baseKey);
-
-  let lastRes: Response | null = null;
-  for (const key of candidates) {
-    const body = await buildVideoBody(params, {
-      requests: [{ ...request, videoModelKey: key }],
-      useV2ModelConfig: true,
-    });
-    const res = await apiRequest(endpoint, {
-      accessToken: params.accessToken,
-      json: body,
-      timeoutMs: 60_000,
-    });
-    // Chỉ 404 mới đáng thử key khác (key không tồn tại). Mọi status khác — kể cả 403
-    // PERMISSION_DENIED — là câu trả lời thật của Google về key này, trả về ngay.
-    if (res.status !== 404) {
-      if (key !== baseKey) {
-        console.log('[videoGen] mode=%s: key "%s" bị 404, dùng được "%s"', mode, baseKey, key);
-      }
-      return res;
-    }
-    console.warn('[videoGen] mode=%s: videoModelKey "%s" trả 404', mode, key);
-    lastRes = res;
-  }
-  // Mọi biến thể đều 404 → nhiều khả năng KHÔNG phải do tên key (nếu key sai thì các biến thể có
-  // dạng hậu tố khác nhau khó cùng sai), mà do Flow project đã hết hạn. Nói rõ để người đọc log
-  // không đi sửa nhầm bảng key — caller sẽ tự tạo project mới và chạy lại.
-  console.warn(
-    '[videoGen] mode=%s: TẤT CẢ %d biến thể key đều 404 (%s) — thường là Flow project đã hết hạn, không phải key sai. Caller sẽ tạo project mới và thử lại.',
-    mode,
-    candidates.length,
-    candidates.join(', ')
-  );
-  return lastRes!;
-}
-
 export type VideoPollState = 'pending' | 'running' | 'done' | 'error';
 
 export interface VideoPollResult {
@@ -334,42 +226,26 @@ export interface VideoPollResult {
   error?: string;
 }
 
-const STATUS_MAP: Record<string, VideoPollState> = {
-  MEDIA_GENERATION_STATUS_PENDING: 'pending',
-  MEDIA_GENERATION_STATUS_ACTIVE: 'running',
-  MEDIA_GENERATION_STATUS_SUCCESSFUL: 'done',
-  MEDIA_GENERATION_STATUS_FAILED: 'error',
-};
-
-/** Poll trạng thái 1 mediaId đang generate video (không tải file). */
+/**
+ * Poll trạng thái 1 job đang gen video.
+ *
+ * HAR chỉ quan sát được state 2 (đang chạy) → 3 (xong); KHÔNG có job nào fail nên không biết
+ * mã lỗi trông thế nào. Vì vậy flowRpc chỉ phân biệt done/running, và hàm này không bao giờ
+ * trả 'error': đoán nhầm một mã lạ thành lỗi sẽ giết job đang chạy bình thường, trong khi
+ * đoán nhầm theo chiều ngược lại chỉ tốn thêm vài vòng poll rồi timeout ở tầng gọi.
+ * Bổ sung nhánh 'error' khi bắt được HAR của một lần gen thất bại.
+ */
 export async function pollVideoStatus(
-  accessToken: string,
+  creds: FlowBatchCreds,
   projectId: string,
-  mediaId: string
+  jobId: string
 ): Promise<VideoPollResult> {
-  const res = await apiRequest('/v1/video:batchCheckAsyncVideoGenerationStatus', {
-    accessToken,
-    json: { media: [{ name: mediaId, projectId }] },
-    timeoutMs: 30_000,
-  });
-  const data = await readJson<{
-    media?: Array<{ mediaMetadata?: { mediaStatus?: { mediaGenerationStatus?: string; failureReason?: string } } }>;
-  }>(res);
-
-  const status = data.media?.[0]?.mediaMetadata?.mediaStatus;
-  const raw = status?.mediaGenerationStatus;
-  if (!raw) {
-    throw new FlowApiError('batchCheckAsyncVideoGenerationStatus không trả về trạng thái');
+  const states = await rpcPollJobs({ creds, projectId, operationIds: [jobId] });
+  const state = states[jobId];
+  if (!state) {
+    throw new FlowApiError(`Poll không trả trạng thái cho job ${jobId} (job không thuộc project ${projectId}?)`);
   }
-  const mapped = STATUS_MAP[raw] ?? 'pending';
-  if (mapped === 'error') {
-    console.error(`[flow] mediaId=${mediaId} FAILED, raw response:`, JSON.stringify(data));
-  }
-  return {
-    status: mapped,
-    phase: raw,
-    error: mapped === 'error' ? status.failureReason || raw : undefined,
-  };
+  return { status: state === 'done' ? 'done' : 'running', phase: state };
 }
 
 /** Chỉ dùng cho scripts/check-model-key.ts — không import ở code chạy thật. */

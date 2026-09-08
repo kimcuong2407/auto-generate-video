@@ -14,15 +14,14 @@
  *
  * Auth = cookie + `at` (XSRF token). Cả hai do extension thu từ tab Flow thật.
  *
- * API_BASE/apiRequest bên dưới giữ lại CHỈ để code gen ảnh/video cũ còn compile; chúng
- * gọi vào host đã chết và sẽ fail. Việc port gen sang batchexecute cần HAR có thao tác
- * generate thật (HAR hiện tại chỉ có các RPC lúc mở trang).
+ * Gen video đã port sang batchexecute (xem flowRpc.ts). apiRequest/API_BASE cũ đã xoá vì
+ * host aisandbox-pa không còn tồn tại. labsRequest còn lại phục vụ projects.ts — endpoint
+ * /fx/api/trpc cũng đã chết trong HAR 2026-09-08, cần port nốt khi có HAR tạo project.
  */
 
 import { FlowApiError } from './errors';
 
 export const LABS_BASE = 'https://labs.google';
-export const API_BASE = 'https://aisandbox-pa.googleapis.com';
 
 export const RECAPTCHA_SITE_KEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
 
@@ -86,37 +85,6 @@ export async function labsRequest(
   }
 }
 
-/** Gọi request tới aisandbox-pa.googleapis.com (auth = Bearer accessToken). */
-export async function apiRequest(
-  path: string,
-  opts: {
-    accessToken: string;
-    json?: unknown;
-    contentType?: string;
-    timeoutMs?: number;
-  }
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const headers: Record<string, string> = { Authorization: `Bearer ${opts.accessToken}` };
-  let body: string | undefined;
-
-  if (opts.json !== undefined) {
-    headers['Content-Type'] = opts.contentType ?? 'text/plain;charset=UTF-8';
-    body = JSON.stringify(opts.json);
-  }
-
-  try {
-    return await fetchRetry(`${API_BASE}${path}`, {
-      method: opts.json !== undefined ? 'POST' : 'GET',
-      headers,
-      body,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /** Parse response, throw FlowApiError khi không ok. Trả body JSON đã parse. */
 export async function readJson<T = unknown>(res: Response): Promise<T> {
