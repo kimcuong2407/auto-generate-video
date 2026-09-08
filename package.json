@@ -42,6 +42,7 @@
     "check:prompt-wiring": "tsx scripts/check-prompt-wiring.ts",
     "check:ref-image-priority": "tsx scripts/check-ref-image-priority.ts",
     "check:schema-columns": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/check-schema-columns.ts",
+    "check:script-json-contract": "tsx scripts/check-script-json-contract.ts",
     "check:script-refs": "tsx scripts/check-script-refs.ts",
     "check:segment-merge": "tsx scripts/check-segment-merge.ts",
     "check:segment-preview": "tsx scripts/check-segment-preview.ts",

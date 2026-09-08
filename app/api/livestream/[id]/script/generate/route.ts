@@ -4,7 +4,7 @@ import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { extractJson } from '@/lib/ai/jsonExtract';
-import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildScriptUserPrompt, ensureScriptJsonContract } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { loadPromptSet } from '@/lib/livestream/promptStore';
 import { withAiCallContext } from '@/lib/ai/callLog';
@@ -279,9 +279,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             productLockBlock,
             disabledBlocks: job.disabledPromptBlocks,
           });
-          const systemPrompt = fillPromptParams(
-            systemPromptTemplate,
-            buildPromptParamValues({ job, product, durations, v2Input })
+          // ensureScriptJsonContract: prompt tuỳ chỉnh của Mr.D có thể đánh rơi dòng contract JSON
+          // → AI trả markdown → JSON.parse ném lỗi và chết cả lượt gen. Nối lại ở đây, xem ở đó.
+          const systemPrompt = ensureScriptJsonContract(
+            fillPromptParams(
+              systemPromptTemplate,
+              buildPromptParamValues({ job, product, durations, v2Input })
+            )
           );
 
           if (

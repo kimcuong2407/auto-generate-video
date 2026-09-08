@@ -135,3 +135,24 @@ export function buildLivestreamUserPrompt(
     ', '
   )}.\n\nGIỚI HẠN SỐ TỪ BẮT BUỘC cho voiceoverVi từng đoạn (đếm từ, KHÔNG được vượt — vượt là video bị cắt cụt câu):\n${wordBudget}\nViết ngắn gọn, đúng trọng tâm; thà thiếu vài từ còn hơn thừa.\n\nTrả về đúng ${durations.length} phần tử trong "segments", đúng thứ tự tương ứng với thời lượng đã cho.`;
 }
+
+/**
+ * Dòng contract JSON bắt buộc — hình dạng output là RÀNG BUỘC KỸ THUẬT, không phải phong cách.
+ * Cùng lý do các khối sc_* không có ô tick tắt (xem promptBlocks.ts): thiếu nó thì AI trả markdown
+ * và cả lượt gen chết ở JSON.parse ("Unexpected token '#', \"# KỊCH BẢN\"...").
+ */
+export const SCRIPT_JSON_CONTRACT =
+  'Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thích, đúng format:\n' +
+  '{"segments":[{"voiceoverVi":"...","veoPrompt":"..."}]}';
+
+/**
+ * Nối contract JSON vào cuối system prompt nếu prompt tuỳ chỉnh của người dùng đã đánh rơi nó.
+ *
+ * Nhận diện bằng chuỗi `"segments"` — prompt mặc định V1/V2 đều có, nên bản chưa sửa không bị nối
+ * thêm lần hai. Kiểm tra lỏng có chủ đích: nối thừa một dòng đúng chỉ là dư thừa vô hại, còn thiếu
+ * là hỏng cả lượt gen.
+ */
+export function ensureScriptJsonContract(systemPrompt: string): string {
+  if (systemPrompt.includes('"segments"')) return systemPrompt;
+  return `${systemPrompt.trimEnd()}\n\n${SCRIPT_JSON_CONTRACT}`;
+}

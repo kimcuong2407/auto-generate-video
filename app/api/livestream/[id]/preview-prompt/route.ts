@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobExists, readJob } from '@/lib/livestream/jobStore';
 import { buildBackgroundPrompt } from '@/lib/livestream/backgroundGenerate';
-import { buildScriptUserPrompt } from '@/lib/livestream/scriptPrompt';
+import { buildScriptUserPrompt, ensureScriptJsonContract } from '@/lib/livestream/scriptPrompt';
 import { buildPromptParamValues, fillPromptParams } from '@/lib/livestream/promptParams';
 import { loadPromptSet } from '@/lib/livestream/promptStore';
 import { isPromptBlockKey } from '@/lib/livestream/promptBlocks';
@@ -405,10 +405,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   // Ô sửa hiện BẢN GỐC còn `${...}`, còn khung "prompt gửi AI" hiện bản ĐÃ THAY — nếu hiện cùng
   // một bản thì hoặc Mr.D sửa nhầm vào chuỗi đã fill, hoặc không kiểm tra được param có ăn không.
   const systemPromptTemplate = prompts.get('script', { isV2: !!v2Input });
-  const systemPromptFilled = fillPromptParams(
+  // ensureScriptJsonContract: khớp đúng thứ route generate gửi đi — preview mà thiếu dòng contract
+  // thì bản xem trước lại lệch prompt thật, đúng thứ màn hình này sinh ra để chặn.
+  const systemPromptFilled = ensureScriptJsonContract(fillPromptParams(
     systemPromptTemplate,
     buildPromptParamValues({ job, product, durations, v2Input })
-  );
+  ));
   if (systemPromptFilled !== systemPromptTemplate) {
     notes.push('System prompt có dùng params ${...} — khung bên dưới hiện bản ĐÃ thay giá trị thật.');
   }
