@@ -56,7 +56,7 @@ export const PROMPT_BLOCKS = [
     key: 'sc_bible',
     step: 'script',
     label: 'Sân khấu cố định của buổi live',
-    hint: 'Khối lớn nhất (~1.100 ký tự). Tắt = mỗi sản phẩm có thể ra người dẫn/bối cảnh khác nhau.',
+    hint: 'Khối lớn nhất (~1.100 ký tự). Tắt = mỗi sản phẩm có thể ra người dẫn/bối cảnh khác nhau. Riêng câu khoá GIỚI TÍNH người dẫn vẫn luôn được gửi.',
   },
   {
     key: 'sc_position',

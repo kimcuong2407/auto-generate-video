@@ -21,6 +21,7 @@ import { computeSegmentDurations } from '@/lib/livestream/segmentSanitize';
 import {
   buildStageBibleUserPrompt,
   formatStageBibleBlock,
+  formatHostGenderLock,
   isStageBibleStale,
 } from '@/lib/livestream/stageBible';
 import {
@@ -392,6 +393,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     v2Input,
     visualDescription: visualPlaceholder,
     stageBibleBlock: bible ? formatStageBibleBlock(bible) : undefined,
+    hostGenderLock: bible ? formatHostGenderLock(bible) : undefined,
     position: {
       index,
       total: job.products.length,

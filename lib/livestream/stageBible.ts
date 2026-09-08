@@ -264,19 +264,36 @@ function detectHostGender(host: string): 'nam' | 'nữ' | null {
   return nam ? 'nam' : 'nữ';
 }
 
-/** Khối text ép LLM viết script dùng đúng sân khấu đã chốt — ghép vào user prompt từng sản phẩm. */
-export function formatStageBibleBlock(bible: LivestreamStageBible): string {
+/**
+ * Câu khoá GIỚI TÍNH người dẫn — tách khỏi formatStageBibleBlock để user prompt LUÔN mang nó, kể
+ * cả khi Mr.D bỏ tick khối "Sân khấu cố định" (sc_bible).
+ *
+ * Vì sao tách: gói chung thì tắt sc_bible là mất luôn câu cấm, LLM rơi về "BƯỚC 1 tự chốt người
+ * dẫn" của system prompt và mặc định ra nữ — đã xảy ra trên job combo-100-khay (ảnh mẫu nam,
+ * script ra "young Vietnamese female presenter"). Mô tả sân khấu là lựa chọn phong cách nên tắt
+ * được; giới tính SAI so với ảnh mẫu là lỗi dữ liệu, không phải phong cách.
+ *
+ * Trả '' khi không dò được giới tính từ bible — xem detectHostGender.
+ */
+export function formatHostGenderLock(bible: LivestreamStageBible): string {
   const gender = detectHostGender(bible.host);
+  if (!gender) return '';
   // Câu cấm đặt TRƯỚC mọi thứ khác: model đọc tuần tự, gặp lệnh "tự chốt người dẫn" ở system prompt
   // trước, nên câu huỷ lệnh phải là thứ ĐẦU TIÊN nó thấy trong user prompt, không phải dòng cuối.
-  const genderLock = gender
-    ? `⛔ NGƯỜI DẪN CỦA BUỔI LIVE NÀY LÀ ${gender.toUpperCase()}. Mọi đoạn PHẢI viết người dẫn là ${gender}.
+  return `⛔ NGƯỜI DẪN CỦA BUỔI LIVE NÀY LÀ ${gender.toUpperCase()}. Mọi đoạn PHẢI viết người dẫn là ${gender}.
 TUYỆT ĐỐI KHÔNG viết người dẫn ${gender === 'nam' ? 'nữ/phụ nữ/cô gái, KHÔNG "cô", KHÔNG tóc đuôi ngựa' : 'nam/đàn ông/anh chàng, KHÔNG "anh"'}.
 Dùng đại từ "${gender === 'nam' ? 'anh' : 'cô'}" khi nhắc lại người dẫn trong veoPrompt.
 
-`
-    : '';
-  return `${genderLock}SÂN KHẤU CỐ ĐỊNH CỦA BUỔI LIVE (đã chốt sẵn cho TOÀN BỘ các sản phẩm trong buổi live này —
+`;
+}
+
+/**
+ * Khối text ép LLM viết script dùng đúng sân khấu đã chốt — ghép vào user prompt từng sản phẩm.
+ *
+ * KHÔNG còn chứa câu khoá giới tính: nó nằm ở formatHostGenderLock và được ghép riêng, xem ở đó.
+ */
+export function formatStageBibleBlock(bible: LivestreamStageBible): string {
+  return `SÂN KHẤU CỐ ĐỊNH CỦA BUỔI LIVE (đã chốt sẵn cho TOÀN BỘ các sản phẩm trong buổi live này —
 KHÔNG được tự nghĩ ra người dẫn/bối cảnh/góc máy/giọng khác, KHÔNG diễn đạt lại khác đi):
 
 - Người dẫn (Subject): ${bible.host}

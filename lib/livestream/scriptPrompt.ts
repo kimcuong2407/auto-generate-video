@@ -37,6 +37,11 @@ export function buildScriptUserPrompt(args: {
   v2Input?: LivestreamV2Input | null;
   visualDescription?: string;
   stageBibleBlock?: string;
+  /**
+   * Câu khoá giới tính người dẫn (formatHostGenderLock) — ghép NGOÀI mọi khối tắt được, vì tắt
+   * sc_bible là mất luôn khoá và LLM mặc định viết người dẫn nữ. Xem ở stageBible.ts.
+   */
+  hostGenderLock?: string;
   position?: { index: number; total: number; prevProductName?: string };
   /** Khối khoá ngoại hình sản phẩm (formatProductLockBlock) — chỉ job V2 dùng. */
   productLockBlock?: string;
@@ -54,12 +59,13 @@ export function buildScriptUserPrompt(args: {
     v2Input,
     visualDescription,
     stageBibleBlock,
+    hostGenderLock,
     position,
     productLockBlock,
     disabledBlocks,
     blockSink,
   } = args;
-  return v2Input
+  const body = v2Input
     ? buildLivestreamV2UserPrompt(
         description,
         durations,
@@ -80,6 +86,9 @@ export function buildScriptUserPrompt(args: {
         disabledBlocks,
         blockSink
       );
+  // Prepend chứ không truyền xuống: model đọc tuần tự nên câu cấm phải là thứ ĐẦU TIÊN nó thấy,
+  // trước cả khối sân khấu — cùng lý do đã ghi ở formatHostGenderLock.
+  return hostGenderLock ? `${hostGenderLock}${body}` : body;
 }
 
 export function buildLivestreamUserPrompt(

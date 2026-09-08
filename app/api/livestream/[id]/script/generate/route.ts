@@ -21,6 +21,7 @@ import { describeProductAppearance } from '@/lib/livestream/productVision';
 import {
   ensureStageBible,
   formatStageBibleBlock,
+  formatHostGenderLock,
   isStageBibleStale,
 } from '@/lib/livestream/stageBible';
 import { ensureProductLock, formatProductLockBlock } from '@/lib/livestream/productLock';
@@ -251,6 +252,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         });
       }
       const stageBibleBlock = bible ? formatStageBibleBlock(bible) : undefined;
+      // Khoá giới tính đi RIÊNG, ngoài khối sc_bible tắt được — xem formatHostGenderLock.
+      const hostGenderLock = bible ? formatHostGenderLock(bible) : undefined;
       send({ type: 'stage_bible_done', stageBible: bible });
 
       for (const product of targets) {
@@ -271,6 +274,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             v2Input,
             visualDescription,
             stageBibleBlock,
+            hostGenderLock,
             position: {
               index,
               total: job.products.length,
