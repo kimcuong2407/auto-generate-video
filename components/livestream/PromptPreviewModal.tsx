@@ -77,7 +77,6 @@ export function PromptPreviewModal({
 }) {
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
   // Tăng để nạp lại preview sau khi lưu prompt/ảnh — prompt cuối được ghép SERVER-SIDE nên phải
   // hỏi lại server mới thấy đúng thứ sắp gửi, không tự vá chuỗi ở client.
   const [reloadKey, setReloadKey] = useState(0);
@@ -162,15 +161,13 @@ export function PromptPreviewModal({
     });
   }
 
-  async function handleConfirm() {
+  // Đóng modal TRƯỚC rồi mới chạy: chế độ debug (debugConfirmSteps) khiến server dừng chờ duyệt
+  // ở StepConfirmModal ngay trong lượt chạy — await xong mới đóng thì modal này che mất modal
+  // duyệt, không ai bấm được, server chờ tới hết timeout 10 phút và Mr.D thấy "không có kết quả".
+  function handleConfirm() {
     if (!onConfirm) return;
-    setConfirming(true);
-    try {
-      await onConfirm();
-      onClose();
-    } finally {
-      setConfirming(false);
-    }
+    onClose();
+    void onConfirm();
   }
 
   // Cảnh báo chặn: note bắt đầu bằng ❌ nghĩa là bấm gen chắc chắn hỏng (VD chưa có veoPrompt).
@@ -405,10 +402,10 @@ export function PromptPreviewModal({
               <button
                 className="btn btn-primary"
                 onClick={handleConfirm}
-                disabled={confirming || blocking || savingEdit}
+                disabled={blocking || savingEdit}
                 title={blocking ? 'Còn lỗi chặn ở trên — sửa xong mới chạy được' : undefined}
               >
-                {confirming ? 'Đang chạy...' : (confirmLabel ?? '▶ Chạy bước này')}
+                {confirmLabel ?? '▶ Chạy bước này'}
               </button>
             )}
             <button className="btn btn-ghost" onClick={onClose}>
