@@ -44,3 +44,7 @@ dbutils-config.yaml
 
 # Ảnh gen từ chatgpt-image-server (standalone)
 output/
+
+# storageState ChatGPT — chua cookie dang nhap, KHONG commit
+chatgpt-state*.json
+*storage-state*.json

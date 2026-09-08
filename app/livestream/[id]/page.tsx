@@ -333,13 +333,20 @@ export default function LivestreamDetailPage() {
             <button className="btn btn-ghost" onClick={handleStopAllSegments} disabled={actionBusy || !hasGeneratingSegment}>
               ⏹ Dừng tất cả
             </button>
+            {/* Khi đang chạy, nút đổi thành lối THOÁT chứ không disable cứng: stream SSE có thể
+                đứt mà không bao giờ trả `done` (server restart / hot-reload dev / mạng rớt), lúc
+                đó `finally` không chạy và nút disable vĩnh viễn — chỉ còn đường F5. */}
             <button
               className="btn"
-              onClick={() => setBulkPreview({ kind: 'script-all' })}
-              disabled={scriptingAll || busy || !job.products.length}
-              title="Mở bản xem trước prompt + ảnh (sản phẩm đầu tiên); xác nhận trong đó mới sinh cho toàn bộ sản phẩm"
+              onClick={() => (scriptingAll ? setScriptingAll(false) : setBulkPreview({ kind: 'script-all' }))}
+              disabled={busy || !job.products.length}
+              title={
+                scriptingAll
+                  ? 'Đang theo dõi một lượt sinh script. Bấm để bỏ theo dõi nếu lượt đó đã đứt (server restart / mất mạng) — không dừng được lượt đang chạy thật trên server.'
+                  : 'Mở bản xem trước prompt + ảnh (sản phẩm đầu tiên); xác nhận trong đó mới sinh cho toàn bộ sản phẩm'
+              }
             >
-              {scriptingAll ? 'Đang sinh script...' : '👁 Xem trước → Sinh script tất cả'}
+              {scriptingAll ? '⏹ Đang sinh script... (bấm để bỏ theo dõi)' : '👁 Xem trước → Sinh script tất cả'}
             </button>
             <button
               className="btn btn-ghost"
@@ -494,7 +501,14 @@ export default function LivestreamDetailPage() {
           step={pendingStep}
           index={stepSeq}
           onDecided={() => setPendingStep(null)}
-          onGateLost={setActionError}
+          onGateLost={(msg) => {
+            // Cổng chết = lượt chạy phía server đã đứt hẳn. Stream SSE tương ứng sẽ không bao giờ
+            // trả `done`, nên `finally` của handleGenerateScript không chạy — phải nhả cờ tại đây,
+            // không thì mọi nút sinh script kẹt disable tới khi F5.
+            setActionError(msg);
+            setScriptingAll(false);
+            setScriptingProductIds(new Set());
+          }}
         />
       )}
 
