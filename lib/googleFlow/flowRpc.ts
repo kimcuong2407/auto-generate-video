@@ -4,7 +4,7 @@
  * Google gỡ hẳn REST + Bearer (aisandbox-pa.googleapis.com) vào 2026-09; mọi thao tác gen
  * giờ đi qua batchexecute trên chính flow.google.com với payload là MẢNG LỒNG, không phải
  * JSON có tên trường. Toàn bộ chỉ số dưới đây đọc từ HAR gen thật (docs/flow.google.com.har,
- * 2026-09-08) — không có tài liệu nào khác để đối chiếu, nên mỗi hằng số đều ghi rõ nguồn.
+ * 2026-09-09) — không có tài liệu nào khác để đối chiếu, nên mỗi hằng số đều ghi rõ nguồn.
  *
  * Auth = cookie + `at` (xem authStore.batchCredsOf). reCAPTCHA token nằm TRONG payload,
  * không phải header như kiến trúc cũ.
@@ -30,38 +30,59 @@ export const RPC_MEDIA_URL = 'as29s';
 const CLIENT_TOOL_CODE = 22;
 
 /**
- * Trạng thái job trong response poll, đọc tại [5][8][0].
+ * Trạng thái job trong response poll, đọc tại j[5][8] — LƯU Ý: đây là MỘT MẢNG, không phải số.
  *
- * XÁC MINH: trong HAR, job b5b1f743 giữ giá trị 2 suốt 8 lần poll rồi chuyển 3 ở lần thứ 9,
- * đúng lúc as29s bắt đầu trả URL video. Không quan sát được mã lỗi (không có job nào fail
- * trong HAR) — nên mọi giá trị lạ được coi là 'running' thay vì đoán bừa là lỗi: đoán sai
- * thành 'error' sẽ giết job đang chạy bình thường, đoán sai thành 'running' chỉ tốn thêm
- * vài vòng poll rồi timeout ở tầng trên.
+ * XÁC MINH 2026-09-09 (HAR gen thật docs/flow.google.com.har, 12 lần poll):
+ *   j[5][8] = [6]  → vừa nhận, chưa xếp hàng
+ *   j[5][8] = [2]  → đang render (giữ suốt 10 lần poll)
+ *   j[5][8] = [3]  → xong, as29s bắt đầu trả URL video
+ *   j[5][8] = [4, [null,"Media not found."], ["Media not found."]] → lỗi
+ *
+ * Lỗi cũ đã sửa: code so sánh `state === 3` với chính MẢNG `[3]` → không bao giờ khớp, nên
+ * MỌI job đều bị map thành 'running' và chỉ kết thúc bằng timeout. Nay đọc phần tử [0].
  */
+const STATE_QUEUED = 6;
 const STATE_RUNNING = 2;
 const STATE_DONE = 3;
 
 /**
- * State 4 = JOB LỖI. XÁC MINH 2026-09-09 bằng response thô từ Google:
- *   j[5][8] = [4, [13, "NOT_FOUND"], ["NOT_FOUND"]]
- * Ba job liên tiếp của job combo-100-khay…f46090 đều trả đúng dạng này.
+ * State 4 = job lỗi.
  *
- * Trước đây mọi giá trị != 3 bị map thành 'running' (ghi chú cũ nói không quan sát được mã
- * lỗi nào trong HAR nên chọn hướng an toàn). Hệ quả rất tệ: job fail NGAY nhưng app tưởng
- * đang render, chờ tới hết timeout rồi mới bỏ cuộc — người dùng bấm gen lại, lặp 17 lần mà
- * không hề biết Google đã báo lỗi ngay từ đầu.
+ * XÁC MINH 2026-09-09 từ HAR: job 6730c9c7 trả state 4 "Media not found." ở lần poll ĐẦU
+ * (5s sau khi gen), rồi lần poll thứ hai đã là [2] và render xong bình thường. Tức state 4
+ * kèm "Media not found." NGAY SAU khi gen là race — mediaId ảnh chưa kịp propagate sang
+ * backend render, KHÔNG phải job chết.
  *
- * Giữ nguyên tinh thần thận trọng cũ cho các mã CHƯA biết: chỉ 4 mới là lỗi, mã lạ khác vẫn
- * coi là 'running' (đoán nhầm thành lỗi sẽ giết job đang chạy thật).
+ * Vì vậy lỗi được chia hai loại (xem TRANSIENT_ERROR_PATTERNS): lỗi tạm thì báo 'running'
+ * để vòng poll tiếp tục; lỗi khác báo 'error' ngay như trước.
+ *
+ * Giữ tinh thần thận trọng cho mã CHƯA biết: chỉ 4 là lỗi, mã lạ khác vẫn coi 'running'.
  */
 const STATE_ERROR = 4;
 
-/** Đường dẫn tới chi tiết lỗi trong response poll: j[5][8][1] = [code, "TÊN_LỖI"]. */
-const PATH_JOB_ERROR = [5, 8, 1] as const;
+/**
+ * Lỗi được coi là TẠM THỜI — poll tiếp thay vì giết job.
+ *
+ * "Media not found." là trường hợp duy nhất đã quan sát được (bằng chứng ở trên). Không thêm
+ * mẫu nào theo suy đoán: coi nhầm một lỗi chết thành tạm thời nghĩa là job treo tới hết
+ * timeout, đúng kiểu bug đã tốn nhiều vòng chẩn đoán trước đây.
+ */
+const TRANSIENT_ERROR_PATTERNS = [/media not found/i];
+
+/**
+ * Khoảng thời gian đầu đời của job còn khoan dung với lỗi tạm.
+ *
+ * 90s: trong HAR lỗi tự khỏi sau 5s (1 vòng poll). Lấy dư rộng vì mạng/tải backend có thể
+ * chậm hơn nhiều, mà cái giá của việc chờ thừa chỉ là vài vòng poll — rẻ hơn hẳn so với
+ * giết nhầm một job đang render tốt.
+ */
+export const TRANSIENT_ERROR_GRACE_MS = 90_000;
 
 /** Đường dẫn mảng lồng — tách hằng số để chỗ sửa khi Google đổi layout là DUY NHẤT. */
 const PATH_POLL_JOBS = [2] as const;
 const PATH_JOB_STATE = [5, 8, 0] as const;
+/** Chi tiết lỗi khi state = 4: j[5][8][1] = [code|null, "Mô tả lỗi"] (HAR: [null,"Media not found."]). */
+const PATH_JOB_ERROR = [5, 8, 1] as const;
 const PATH_MEDIA_IMAGE_URL = [5, 10] as const;
 const PATH_MEDIA_VIDEO_URL = [7, 0, 8] as const;
 const PATH_UPLOAD_MEDIA_ID = [0, 0] as const;
@@ -182,13 +203,32 @@ export async function rpcGenerateVideo(opts: {
 
 export type FlowJobState = 'running' | 'done' | 'error';
 
-/** Poll nhiều operationId cùng lúc → map id → trạng thái. */
+export interface FlowJobStatus {
+  state: FlowJobState;
+  /** Mô tả lỗi Google trả kèm state 4, vd "Media not found.". Null khi không có lỗi. */
+  error: string | null;
+  /** true khi lỗi thuộc nhóm tạm thời (xem TRANSIENT_ERROR_PATTERNS) — caller được phép chờ thêm. */
+  transient: boolean;
+}
+
+/**
+ * Poll nhiều operationId cùng lúc → map id → trạng thái.
+ *
+ * Payload: `[null, null, [[id1],[id2],…]]` — mỗi id nằm trong MẢNG RIÊNG. XÁC MINH từ HAR
+ * 2026-09-09: trang thật gửi `[["1e583222-…"],["6730c9c7-…"]]` cho 2 job. Code cũ gửi
+ * `[[id1,id2]]` (một mảng chứa mọi id) — trùng khớp tình cờ khi chỉ có 1 job, nên bug ẩn
+ * cho tới khi poll nhiều job một lượt.
+ */
+function buildPollPayload(operationIds: string[]): unknown[] {
+  return [null, null, operationIds.map((id) => [id])];
+}
+
 export async function rpcPollJobs(opts: {
   creds: FlowBatchCreds;
   projectId: string;
   operationIds: string[];
-}): Promise<Record<string, FlowJobState>> {
-  const payload = [null, null, [opts.operationIds]];
+}): Promise<Record<string, FlowJobStatus>> {
+  const payload = buildPollPayload(opts.operationIds);
   const res = await batchExecute(RPC_POLL, payload, {
     creds: opts.creds,
     sourcePath: `/project/${opts.projectId}`,
@@ -196,25 +236,41 @@ export async function rpcPollJobs(opts: {
   });
 
   const jobs = at(res, PATH_POLL_JOBS);
-  const out: Record<string, FlowJobState> = {};
+  const out: Record<string, FlowJobStatus> = {};
   if (Array.isArray(jobs)) {
     for (const job of jobs) {
       const id = Array.isArray(job) ? job[0] : null;
       if (typeof id !== 'string') continue;
-      out[id] = mapJobState(at(job, PATH_JOB_STATE));
+      out[id] = jobStatusOf(job);
     }
   }
   return out;
 }
 
-/** Map state number → trạng thái. Mã lạ (không phải 3/4) vẫn coi là đang chạy — xem STATE_ERROR. */
-function mapJobState(state: unknown): FlowJobState {
+/** Đọc state + lý do lỗi của 1 job trong response poll. */
+export function jobStatusOf(job: unknown): FlowJobStatus {
+  const state = mapJobState(at(job, PATH_JOB_STATE));
+  if (state !== 'error') return { state, error: null, transient: false };
+  const error = jobErrorReason(job);
+  const transient = !!error && TRANSIENT_ERROR_PATTERNS.some((re) => re.test(error));
+  return { state, error, transient };
+}
+
+/**
+ * Map state → trạng thái. Mã lạ (không phải 3/4) vẫn coi là đang chạy — xem STATE_ERROR.
+ *
+ * Nhận CẢ số lẻ lẫn mảng `[n, …]`: HAR cho thấy Google gửi mảng, nhưng chấp nhận số trần
+ * để không vỡ nếu Google đổi lại — rẻ hơn nhiều so với một lần chẩn đoán "job nào cũng
+ * running" như bug vừa sửa.
+ */
+function mapJobState(raw: unknown): FlowJobState {
+  const state = Array.isArray(raw) ? raw[0] : raw;
   if (state === STATE_DONE) return 'done';
   if (state === STATE_ERROR) return 'error';
   return 'running';
 }
 
-/** Lý do lỗi Google trả kèm state 4, vd "NOT_FOUND". Null nếu không đọc được. */
+/** Lý do lỗi Google trả kèm state 4, vd "Media not found.". Null nếu không đọc được. */
 export function jobErrorReason(job: unknown): string | null {
   const err = at(job, PATH_JOB_ERROR);
   if (Array.isArray(err)) {
@@ -247,4 +303,15 @@ export async function rpcMediaUrl(opts: {
 }
 
 /** Chỉ dùng cho scripts/check-flow-rpc.ts. */
-export const __testables = { at, buildScene, clientContext, mapJobState, STATE_RUNNING, STATE_DONE, STATE_ERROR };
+export const __testables = {
+  at,
+  buildScene,
+  clientContext,
+  mapJobState,
+  jobStatusOf,
+  buildPollPayload,
+  STATE_QUEUED,
+  STATE_RUNNING,
+  STATE_DONE,
+  STATE_ERROR,
+};

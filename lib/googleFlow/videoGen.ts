@@ -11,7 +11,7 @@
 import { RECAPTCHA_ACTION_VIDEO } from './client';
 import { acquireRecaptchaToken } from './recaptcha';
 import { uploadImageFile } from './upload';
-import { rpcGenerateVideo, rpcPollJobs } from './flowRpc';
+import { rpcGenerateVideo, rpcPollJobs, TRANSIENT_ERROR_GRACE_MS } from './flowRpc';
 import { FlowApiError } from './errors';
 import type { FlowBatchCreds } from './authStore';
 import type { VeoModel } from '../types';
@@ -251,27 +251,41 @@ export interface VideoPollResult {
 /**
  * Poll trạng thái 1 job đang gen video.
  *
- * CẬP NHẬT 2026-09-09: đã bắt được job fail thật — Google trả state 4 kèm
- * [4, [13, "NOT_FOUND"], ["NOT_FOUND"]] (xem STATE_ERROR trong flowRpc). Nhánh 'error' giờ
- * hoạt động, nên job hỏng bị báo NGAY thay vì chờ hết timeout.
+ * CẬP NHẬT 2026-09-09 (đọc từ HAR gen thật, không suy đoán):
+ *   - state nằm trong MẢNG j[5][8] (`[2]`/`[3]`/`[4,…]`), trước đây so sánh với số trần nên
+ *     không bao giờ khớp → job nào cũng 'running' tới hết timeout. Đã sửa trong flowRpc.
+ *   - state 4 kèm "Media not found." xuất hiện ở lần poll ĐẦU rồi tự khỏi ở lần thứ hai
+ *     (mediaId ảnh chưa propagate). Nên job còn trẻ hơn TRANSIENT_ERROR_GRACE_MS thì lỗi tạm
+ *     được báo 'running' để vòng poll tiếp tục; quá ngưỡng mới coi là lỗi thật.
  *
- * Các mã CHƯA từng quan sát vẫn được coi là 'running' theo tinh thần thận trọng cũ: đoán
- * nhầm một mã lạ thành lỗi sẽ giết job đang chạy bình thường.
+ * `jobAgeMs` = job đã chạy bao lâu. Không truyền → không khoan dung (lỗi tạm bị coi là lỗi
+ * thật ngay), giữ hành vi cũ cho caller không biết mốc bắt đầu.
  */
 export async function pollVideoStatus(
   creds: FlowBatchCreds,
   projectId: string,
-  jobId: string
+  jobId: string,
+  jobAgeMs = Number.POSITIVE_INFINITY
 ): Promise<VideoPollResult> {
-  const states = await rpcPollJobs({ creds, projectId, operationIds: [jobId] });
-  const state = states[jobId];
-  if (!state) {
+  const statuses = await rpcPollJobs({ creds, projectId, operationIds: [jobId] });
+  const st = statuses[jobId];
+  if (!st) {
     throw new FlowApiError(`Poll không trả trạng thái cho job ${jobId} (job không thuộc project ${projectId}?)`);
   }
-  if (state === 'error') {
-    return { status: 'error', phase: state, error: 'Google báo job lỗi (state 4)' };
+  if (st.state === 'error') {
+    if (st.transient && jobAgeMs <= TRANSIENT_ERROR_GRACE_MS) {
+      // Log đủ số liệu để lần sau điều tra được bằng dữ liệu: lỗi gì, job bao nhiêu tuổi, ngưỡng nào.
+      console.warn(
+        `[flow poll] job ${jobId}: Google báo lỗi TẠM THỜI "${st.error}" khi job mới ` +
+          `${Math.round(jobAgeMs / 1000)}s tuổi (ngưỡng ${TRANSIENT_ERROR_GRACE_MS / 1000}s) → ` +
+          'coi là đang chạy, poll tiếp'
+      );
+      return { status: 'running', phase: 'transient-error' };
+    }
+    const reason = st.error ? `Google báo job lỗi: ${st.error}` : 'Google báo job lỗi (state 4)';
+    return { status: 'error', phase: 'error', error: reason };
   }
-  return { status: state === 'done' ? 'done' : 'running', phase: state };
+  return { status: st.state === 'done' ? 'done' : 'running', phase: st.state };
 }
 
 /** Chỉ dùng cho scripts/check-model-key.ts — không import ở code chạy thật. */

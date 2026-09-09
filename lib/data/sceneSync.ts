@@ -43,6 +43,16 @@ function isHardTimedOut(scene: Scene): boolean {
 }
 
 /**
+ * Tuổi scene theo ms — để pollJobStatus biết có nên khoan dung lỗi tạm của Google không
+ * (xem pollVideoStatus). Thiếu/hỏng lastUpdatedAt → 0 (coi là vừa tạo, khoan dung).
+ */
+function ageMs(scene: Scene): number {
+  const startedAt = scene.lastUpdatedAt ? new Date(scene.lastUpdatedAt).getTime() : 0;
+  if (!startedAt || Number.isNaN(startedAt)) return 0;
+  return Date.now() - startedAt;
+}
+
+/**
  * Poll mọi scene đang generating của 1 project, cập nhật status trong project.json (nguyên
  * tử qua updateProject). Trả về id các scene vừa chuyển 'done' để caller chạy chaining
  * (KHÔNG nhét chaining vào đây: updateProject có write-queue tuần tự theo projectId, nested
@@ -60,7 +70,11 @@ export async function syncGeneratingScenes(projectId: string): Promise<SyncResul
     await Promise.all(
       generatingScenes.map(async (scene) => {
         try {
-          const jobStatus = await pollJobStatus(scene.jobId as string, project.flowProjectId as string);
+          const jobStatus = await pollJobStatus(
+            scene.jobId as string,
+            project.flowProjectId as string,
+            ageMs(scene)
+          );
 
           if (jobStatus.status === 'done') {
             // Ưu tiên kết quả poll: đã SUCCESSFUL thì set 'done' bất kể quá hạn hay chưa.

@@ -202,10 +202,17 @@ const TMP_VIDEO_DIR = path.join(process.cwd(), 'data', 'tmp', 'flow-video');
 /**
  * Poll trạng thái 1 job (mediaId). Khi done, tải video về thư mục tmp và trả
  * video_path (đường dẫn tuyệt đối) — route status sẽ copy vào outputs của project.
+ *
+ * `jobAgeMs`: job đã chạy bao lâu — chỉ dùng để khoan dung với lỗi tạm của Google trong ít
+ * phút đầu (xem pollVideoStatus). Bỏ trống thì không khoan dung, y như trước.
  */
-export async function pollJobStatus(jobId: string, projectId: string): Promise<FlowJobStatusResult> {
+export async function pollJobStatus(
+  jobId: string,
+  projectId: string,
+  jobAgeMs?: number
+): Promise<FlowJobStatusResult> {
   const account = await resolveActiveAccount();
-  const result = await pollVideoStatus(flowCredsOf(account), projectId, jobId);
+  const result = await pollVideoStatus(flowCredsOf(account), projectId, jobId, jobAgeMs);
 
   if (result.status === 'done') {
     const dest = path.join(TMP_VIDEO_DIR, `${jobId}-${crypto.randomBytes(4).toString('hex')}.mp4`);

@@ -53,6 +53,16 @@ function ageMinutes(segment: LivestreamSegment): number {
 }
 
 /**
+ * Tuổi đoạn theo ms — để pollJobStatus biết có nên khoan dung lỗi tạm của Google không.
+ * Thiếu/hỏng lastUpdatedAt → 0 (coi là vừa tạo, khoan dung), an toàn hơn là giết job.
+ */
+function ageMs(segment: LivestreamSegment): number {
+  const startedAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
+  if (!startedAt || Number.isNaN(startedAt)) return 0;
+  return Date.now() - startedAt;
+}
+
+/**
  * Log một dòng cho mỗi lần poll, kèm SỐ LIỆU quyết định (Google trả gì, đã chờ bao lâu,
  * ngưỡng bao nhiêu) chứ không chỉ "đã xảy ra".
  *
@@ -103,7 +113,7 @@ export async function syncOneSegment(
   opts: { checkTimeout: boolean }
 ): Promise<{ becameDone: boolean }> {
   try {
-    const jobStatus = await pollJobStatus(segment.jobId as string, flowProjectId);
+    const jobStatus = await pollJobStatus(segment.jobId as string, flowProjectId, ageMs(segment));
     if (jobStatus.status === 'done') {
       // Ưu tiên kết quả poll: đã SUCCESSFUL thì set 'done' bất kể quá hạn hay chưa.
       // Nếu copy/download lỗi → GIỮ 'generating' + ghi error để lần poll sau tải lại
