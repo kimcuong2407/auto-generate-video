@@ -41,6 +41,24 @@ const CLIENT_TOOL_CODE = 22;
 const STATE_RUNNING = 2;
 const STATE_DONE = 3;
 
+/**
+ * State 4 = JOB LỖI. XÁC MINH 2026-09-09 bằng response thô từ Google:
+ *   j[5][8] = [4, [13, "NOT_FOUND"], ["NOT_FOUND"]]
+ * Ba job liên tiếp của job combo-100-khay…f46090 đều trả đúng dạng này.
+ *
+ * Trước đây mọi giá trị != 3 bị map thành 'running' (ghi chú cũ nói không quan sát được mã
+ * lỗi nào trong HAR nên chọn hướng an toàn). Hệ quả rất tệ: job fail NGAY nhưng app tưởng
+ * đang render, chờ tới hết timeout rồi mới bỏ cuộc — người dùng bấm gen lại, lặp 17 lần mà
+ * không hề biết Google đã báo lỗi ngay từ đầu.
+ *
+ * Giữ nguyên tinh thần thận trọng cũ cho các mã CHƯA biết: chỉ 4 mới là lỗi, mã lạ khác vẫn
+ * coi là 'running' (đoán nhầm thành lỗi sẽ giết job đang chạy thật).
+ */
+const STATE_ERROR = 4;
+
+/** Đường dẫn tới chi tiết lỗi trong response poll: j[5][8][1] = [code, "TÊN_LỖI"]. */
+const PATH_JOB_ERROR = [5, 8, 1] as const;
+
 /** Đường dẫn mảng lồng — tách hằng số để chỗ sửa khi Google đổi layout là DUY NHẤT. */
 const PATH_POLL_JOBS = [2] as const;
 const PATH_JOB_STATE = [5, 8, 0] as const;
@@ -162,7 +180,7 @@ export async function rpcGenerateVideo(opts: {
   return ids;
 }
 
-export type FlowJobState = 'running' | 'done';
+export type FlowJobState = 'running' | 'done' | 'error';
 
 /** Poll nhiều operationId cùng lúc → map id → trạng thái. */
 export async function rpcPollJobs(opts: {
@@ -183,10 +201,27 @@ export async function rpcPollJobs(opts: {
     for (const job of jobs) {
       const id = Array.isArray(job) ? job[0] : null;
       if (typeof id !== 'string') continue;
-      out[id] = at(job, PATH_JOB_STATE) === STATE_DONE ? 'done' : 'running';
+      out[id] = mapJobState(at(job, PATH_JOB_STATE));
     }
   }
   return out;
+}
+
+/** Map state number → trạng thái. Mã lạ (không phải 3/4) vẫn coi là đang chạy — xem STATE_ERROR. */
+function mapJobState(state: unknown): FlowJobState {
+  if (state === STATE_DONE) return 'done';
+  if (state === STATE_ERROR) return 'error';
+  return 'running';
+}
+
+/** Lý do lỗi Google trả kèm state 4, vd "NOT_FOUND". Null nếu không đọc được. */
+export function jobErrorReason(job: unknown): string | null {
+  const err = at(job, PATH_JOB_ERROR);
+  if (Array.isArray(err)) {
+    const name = err.find((x) => typeof x === 'string');
+    if (typeof name === 'string') return name;
+  }
+  return typeof err === 'string' ? err : null;
 }
 
 /**
@@ -212,4 +247,4 @@ export async function rpcMediaUrl(opts: {
 }
 
 /** Chỉ dùng cho scripts/check-flow-rpc.ts. */
-export const __testables = { at, buildScene, clientContext, STATE_RUNNING, STATE_DONE };
+export const __testables = { at, buildScene, clientContext, mapJobState, STATE_RUNNING, STATE_DONE, STATE_ERROR };

@@ -229,11 +229,12 @@ export interface VideoPollResult {
 /**
  * Poll trạng thái 1 job đang gen video.
  *
- * HAR chỉ quan sát được state 2 (đang chạy) → 3 (xong); KHÔNG có job nào fail nên không biết
- * mã lỗi trông thế nào. Vì vậy flowRpc chỉ phân biệt done/running, và hàm này không bao giờ
- * trả 'error': đoán nhầm một mã lạ thành lỗi sẽ giết job đang chạy bình thường, trong khi
- * đoán nhầm theo chiều ngược lại chỉ tốn thêm vài vòng poll rồi timeout ở tầng gọi.
- * Bổ sung nhánh 'error' khi bắt được HAR của một lần gen thất bại.
+ * CẬP NHẬT 2026-09-09: đã bắt được job fail thật — Google trả state 4 kèm
+ * [4, [13, "NOT_FOUND"], ["NOT_FOUND"]] (xem STATE_ERROR trong flowRpc). Nhánh 'error' giờ
+ * hoạt động, nên job hỏng bị báo NGAY thay vì chờ hết timeout.
+ *
+ * Các mã CHƯA từng quan sát vẫn được coi là 'running' theo tinh thần thận trọng cũ: đoán
+ * nhầm một mã lạ thành lỗi sẽ giết job đang chạy bình thường.
  */
 export async function pollVideoStatus(
   creds: FlowBatchCreds,
@@ -244,6 +245,9 @@ export async function pollVideoStatus(
   const state = states[jobId];
   if (!state) {
     throw new FlowApiError(`Poll không trả trạng thái cho job ${jobId} (job không thuộc project ${projectId}?)`);
+  }
+  if (state === 'error') {
+    return { status: 'error', phase: state, error: 'Google báo job lỗi (state 4)' };
   }
   return { status: state === 'done' ? 'done' : 'running', phase: state };
 }
