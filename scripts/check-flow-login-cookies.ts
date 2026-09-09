@@ -64,4 +64,23 @@ const asHeader = (names: string[]) => names.map((n) => `${n}=v_${n}`).join('; ')
     'phải chịu được khoảng trắng thừa và dấu ; ở cuối');
 }
 
+// --- Guard phía extension (background.js) phải cho cùng kết luận với guard phía server.
+//
+// Hai chỗ kiểm tra độc lập bằng hai cách khác nhau (server tách theo ';', extension dùng
+// regex '(^|; )NAME='), nên rất dễ lệch nhau khi sửa một bên. Ca nguy hiểm nhất vẫn là
+// __Secure-1PSID: regex thiếu neo đầu chuỗi sẽ khớp nhầm nó thành SID.
+{
+  const extensionMissing = (cookie: string) =>
+    REQUIRED_LOGIN_COOKIES.filter((n) => !new RegExp('(^|; )' + n + '=').test(cookie));
+
+  for (const names of [HAR_COOKIE_NAMES, BROKEN_COOKIE_NAMES, ['__Secure-1PSID', 'SIDCC', 'SSID']]) {
+    const header = asHeader(names);
+    assert.deepEqual(
+      extensionMissing(header).sort(),
+      missingLoginCookies(header).sort(),
+      'guard extension và guard server phải cho cùng kết quả trên: ' + names.join(',')
+    );
+  }
+}
+
 console.log('check-flow-login-cookies: OK');

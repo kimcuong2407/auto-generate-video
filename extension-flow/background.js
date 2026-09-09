@@ -187,6 +187,28 @@ async function refreshSessionOnce() {
   console.log("[flow-grabber] lấy được at token từ", tab.url, "| bl:", collected.bl);
 
   const cookie = await getCookieHeader();
+
+  // Chặn tại nguồn: thiếu nhóm cookie đăng nhập thì gửi lên cũng vô dụng (Google coi phiên
+  // là ẩn danh → mọi lệnh gen 401). Báo ngay ở popup, kèm cách sửa, thay vì để server từ
+  // chối rồi Mr.D phải đoán xem hỏng ở đâu.
+  //
+  // Nguyên nhân thường gặp khi guard này nổ: Chrome chưa cấp host permission cho
+  // google.com sau khi manifest đổi — Reload extension chưa đủ, phải Remove rồi Load
+  // unpacked lại (Chrome KHÔNG tự xin thêm quyền cho extension đã cài).
+  const missingLogin = ['SID', 'HSID', 'SAPISID', 'APISID'].filter(
+    (n) => !new RegExp('(^|; )' + n + '=').test(cookie)
+  );
+  if (missingLogin.length > 0) {
+    return {
+      ok: false,
+      error:
+        'Không đọc được cookie đăng nhập Google (' + missingLogin.join(', ') + '). ' +
+        'Chrome chưa cấp quyền cookie trên google.com cho extension. Vào chrome://extensions, ' +
+        'XOÁ extension rồi Load unpacked lại thư mục extension-flow (bản 2.2.0) — chỉ bấm ' +
+        'Reload là chưa đủ vì manifest vừa đổi host_permissions.',
+    };
+  }
+
   let res;
   try {
     res = await fetch(endpoint, {
