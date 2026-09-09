@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Google Flow Session Grabber",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Lấy cookie + at/f.sid/bl (WIZ_global_data) từ flow.google.com + mint reCAPTCHA token on-demand, đẩy về app review pipeline.",
   "permissions": [
     "activeTab",

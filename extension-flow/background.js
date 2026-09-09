@@ -22,6 +22,20 @@ const SITE_KEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
 // cũ vẫn còn phiên trên labs.google — mọi chỗ tìm tab / đọc cookie đều dùng list này.
 const FLOW_TAB_PATTERNS = ['https://labs.google/*', 'https://flow.google.com/*'];
 const FLOW_COOKIE_URLS = ['https://labs.google', 'https://flow.google.com'];
+
+/**
+ * Domain phải quét thêm bằng `{ domain }` thay vì `{ url }`.
+ *
+ * XÁC MINH 2026-09-09: getAll({url:'https://flow.google.com'}) trả về ĐỦ nhóm __Secure-*
+ * nhưng THIẾU SID, HSID, APISID, SIDCC — nhóm cookie đăng nhập không có tiền tố __Secure,
+ * set trên domain cha `.google.com`. Hệ quả: GET flow.google.com bằng bộ cookie thu được
+ * trả HTML ẩn danh (không có SNlM0e) và mọi batchexecute trả 401, trong khi chính cookie đó
+ * lại đăng nhập được labs.google — nên trông như "gửi session thành công mà vẫn 401".
+ *
+ * Đối chiếu HAR gen thật: trình duyệt gửi 24 cookie, ta chỉ gom được 17 + 1 của labs.
+ * Quét theo domain lấy được cả cookie host-only lẫn cookie domain cha.
+ */
+const FLOW_COOKIE_DOMAINS = ['google.com'];
 const MINT_GAP_MS = 200;
 
 function getConfig() {
@@ -115,18 +129,33 @@ function collectSessionInMainWorld() {
 }
 
 function getCookieHeader() {
-  // Gộp cookie của cả 2 domain, dedupe theo tên (domain mới thắng vì xét sau).
+  // Gộp cookie theo cả url lẫn domain, dedupe theo tên (nguồn xét sau thắng).
+  //
+  // Quét domain google.com là BẮT BUỘC, không phải phòng xa: thiếu nó thì mất SID/HSID/
+  // APISID/SIDCC và toàn bộ phiên Flow thành ẩn danh (xem ghi chú FLOW_COOKIE_DOMAINS).
+  const queries = [
+    ...FLOW_COOKIE_URLS.map((url) => ({ url })),
+    ...FLOW_COOKIE_DOMAINS.map((domain) => ({ domain })),
+  ];
   return Promise.all(
-    FLOW_COOKIE_URLS.map(
-      (url) =>
+    queries.map(
+      (q) =>
         new Promise((resolve) => {
-          chrome.cookies.getAll({ url }, (cookies) => resolve(cookies || []));
+          chrome.cookies.getAll(q, (cookies) => resolve(cookies || []));
         })
     )
   ).then((lists) => {
     const byName = new Map();
-    for (const c of lists.flat()) byName.set(c.name, c.value);
-    return [...byName].map(([name, value]) => `${name}=${value}`).join('; ');
+    for (const c of lists.flat()) {
+      // Cookie cùng tên có thể tồn tại ở nhiều domain (vd SID trên .google.com và
+      // accounts.google.com). Ưu tiên bản có domain DÀI hơn — tức khớp sát host hơn —
+      // thay vì để thứ tự duyệt quyết định ngẫu nhiên.
+      const prev = byName.get(c.name);
+      if (!prev || (c.domain || '').length >= prev.domain.length) {
+        byName.set(c.name, { value: c.value, domain: c.domain || '' });
+      }
+    }
+    return [...byName].map(([name, c]) => `${name}=${c.value}`).join('; ');
   });
 }
 

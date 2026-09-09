@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertAccount } from '@/lib/googleFlow/authStore';
+import { missingLoginCookies } from '@/lib/googleFlow/cookieCheck';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,6 +38,25 @@ export async function POST(req: NextRequest) {
       {
         error:
           'Thiếu at token (WIZ_global_data.SNlM0e). Extension đang chạy bản cũ — cập nhật thư mục extension-flow lên bản 2.0.0 rồi Reload ở chrome://extensions.',
+      },
+      { status: 400 }
+    );
+  }
+
+  // Cookie đăng nhập Google KHÔNG có tiền tố __Secure- (SID/HSID/APISID/SIDCC) nằm trên
+  // domain cha `.google.com`. Extension bản cũ gom cookie bằng getAll({url}) nên thiếu đúng
+  // nhóm này: session vẫn lưu được, at vẫn hợp lệ, nhưng mọi batchexecute trả 401 vì với
+  // Google phiên là ẩn danh. Chặn tại đây để lỗi lộ ra lúc GỬI SESSION — nơi Mr.D sửa được
+  // bằng cách reload extension — thay vì lúc gen video, nơi nó trông như lỗi Veo.
+  const missingLogin = missingLoginCookies(cookie);
+  if (missingLogin.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          `Cookie gửi lên thiếu ${missingLogin.join(', ')} — đây là cookie đăng nhập Google trên ` +
+          `domain .google.com. Extension đang gom cookie theo url nên bỏ sót chúng, phiên sẽ bị ` +
+          `Google coi là ẩn danh và mọi lệnh gen trả HTTP 401. Cập nhật thư mục extension-flow ` +
+          `(bản có FLOW_COOKIE_DOMAINS) rồi Reload ở chrome://extensions và gửi session lại.`,
       },
       { status: 400 }
     );
