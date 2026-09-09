@@ -22,7 +22,7 @@ import {
   SEGMENT_RETRY_BACKOFF_MS,
 } from '../constants';
 import { segmentVideoFileName } from './segmentSanitize';
-import type { LivestreamJob, LivestreamSegment } from './types';
+import type { LivestreamSegment } from './types';
 
 export interface SyncResult {
   justDoneSegmentIds: string[];
@@ -127,58 +127,9 @@ export async function syncOneSegment(
  * updateJob). Trả về id các đoạn vừa chuyển 'done' để caller chạy chaining (KHÔNG nhét
  * chaining vào đây: updateJob có write-queue tuần tự theo jobId, nested sẽ deadlock).
  */
-/**
- * Thời gian tối thiểu một đoạn được phép ở 'generating' mà KHÔNG có jobId trước khi bị coi là
- * mồ côi. Đủ dài để không cắt ngang cửa sổ ghi bình thường (trigger đặt status và jobId trong
- * cùng một updateJob, nhưng lần gen thật mất vài chục giây kể từ lúc người dùng bấm), đủ ngắn
- * để Mr.D không phải ngồi chờ. Poller chạy mỗi 15s nên thực tế phát hiện trong vòng ~2 phút.
- */
-const ORPHAN_GENERATING_MS = Number(process.env.ORPHAN_GENERATING_MS || 2 * 60 * 1000);
-
-/**
- * Đoạn kẹt 'generating' nhưng KHÔNG có jobId — trạng thái không ai chữa được.
- *
- * XÁC MINH 2026-09-09 trên job combo-100-khay…f46090: seg1 nằm 'generating' với jobId rỗng,
- * đứng yên nhiều giờ, attempts=13. Nó lọt qua CẢ BA đường tự phục hồi:
- *   - syncGeneratingSegments lọc `generating && s.jobId` → không poll (không có gì để poll),
- *   - resumeStalledJob thoát ngay ở `some(status === 'generating')` → không nối lại dây chuyền,
- *   - cascade chỉ chạy cho đoạn VỪA done → không có đoạn nào done.
- * Hệ quả: cả job đứng im vĩnh viễn, UI hiển thị "đang chạy" nên nhìn như Veo render lâu.
- *
- * Chữa bằng cách hạ về 'failed': đó là trạng thái CÓ đường phục hồi (shouldAutoTrigger cho
- * retry, có trần attempts và backoff), thay vì tự trigger lại ở đây — trigger thẳng sẽ bỏ qua
- * trần retry và đốt quota Veo nếu nguyên nhân gốc còn nguyên.
- */
-function reclaimOrphanGenerating(job: LivestreamJob, now = Date.now()): number {
-  let reclaimed = 0;
-  for (const product of job.products) {
-    for (const segment of product.segments) {
-      if (segment.status !== 'generating' || segment.jobId) continue;
-      const lastAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
-      // lastUpdatedAt rỗng/không parse được → coi như rất cũ, thu hồi luôn (đứng yên vô thời hạn
-      // vẫn tệ hơn thu hồi sớm một đoạn chưa kịp ghi jobId).
-      if (lastAt && now - lastAt < ORPHAN_GENERATING_MS) continue;
-      segment.status = 'failed';
-      segment.error =
-        'Đoạn kẹt ở trạng thái đang chạy nhưng không có job Flow nào (lệnh gen chưa gửi được lên Google). ' +
-        'Đã tự thu hồi để chạy lại.';
-      segment.lastUpdatedAt = new Date().toISOString();
-      reclaimed++;
-    }
-  }
-  return reclaimed;
-}
-
 export async function syncGeneratingSegments(jobId: string): Promise<SyncResult> {
   const justDoneSegmentIds: string[] = [];
   await updateJob(jobId, async (job) => {
-    // Thu hồi TRƯỚC khi kiểm tra flowProjectId: đoạn mồ côi phải được chữa kể cả ở job chưa
-    // có project Flow (đúng ca đang gặp — lệnh gen chưa bao giờ gửi lên được thì cũng chưa có
-    // project). Đặt sau `if (!job.flowProjectId) return` là bug y hệt bug đang sửa.
-    const reclaimed = reclaimOrphanGenerating(job);
-    if (reclaimed > 0) {
-      console.warn(`[livestream poller] job ${jobId}: thu hồi ${reclaimed} đoạn kẹt generating không có jobId`);
-    }
     if (!job.flowProjectId) return;
     const generatingSegments = job.products.flatMap((p) =>
       p.segments.filter((s) => s.status === 'generating' && s.jobId)
@@ -364,6 +315,3 @@ export async function resumeStalledJob(jobId: string): Promise<string | null> {
     return null;
   }
 }
-
-/** Chỉ dùng cho scripts/check-orphan-generating.ts. */
-export const __testables = { reclaimOrphanGenerating, ORPHAN_GENERATING_MS };
