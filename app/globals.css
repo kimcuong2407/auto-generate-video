@@ -683,3 +683,26 @@ main {
   word-break: break-word;
   color: var(--text);
 }
+
+/* Card cấu hình gấp được (CollapsibleCard) — dùng 1 lần rồi gấp lại cho trang detail ngắn đi. */
+.collapsible-card { padding: 0; }
+.collapsible-card-summary {
+  cursor: pointer;
+  padding: 16px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+.collapsible-card-summary::-webkit-details-marker { display: none; }
+.collapsible-card-summary::before { content: '▸ '; color: var(--text-muted); }
+.collapsible-card[open] > .collapsible-card-summary {
+  border-bottom: 1px solid var(--border);
+}
+.collapsible-card[open] > .collapsible-card-summary::before { content: '▾ '; }
+/* Card con bên trong tự render .card riêng — gỡ viền/nền/margin để không thành card lồng card. */
+.collapsible-card > .card {
+  border: none;
+  background: transparent;
+  margin-bottom: 0;
+}

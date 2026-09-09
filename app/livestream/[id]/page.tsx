@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useLivestreamPolling } from '@/hooks/useLivestreamPolling';
 import { ProductPanel } from '@/components/livestream/ProductPanel';
 import { ConcatPanel } from '@/components/livestream/ConcatPanel';
+import { CollapsibleCard } from '@/components/livestream/CollapsibleCard';
 import { FlowGuide } from '@/components/livestream/FlowGuide';
 import { PromptSettingsPanel } from '@/components/livestream/PromptSettingsPanel';
 import { AiRunTimeline } from '@/components/livestream/AiRunTimeline';
@@ -102,6 +103,7 @@ export default function LivestreamDetailPage() {
   // Tăng để ép AiRunTimeline nạp lại sau khi chạy riêng một bước AI ở PromptSettingsPanel —
   // timeline chỉ load lúc mount nên nếu không có cờ này, lượt vừa chạy sẽ không hiện.
   const [aiLogReloadKey, setAiLogReloadKey] = useState(0);
+  const [showStageBible, setShowStageBible] = useState(false);
   // Ưu điểm AI bóc tách được ở ProductPanel (bước 3), chuyển sang form buổi live V2 khi Mr.D bấm
   // đắp. Giữ ở page vì hai panel là anh em, không có quan hệ cha-con trực tiếp.
   const [suggestedAdvantages, setSuggestedAdvantages] = useState<string[] | null>(null);
@@ -381,59 +383,102 @@ export default function LivestreamDetailPage() {
             </div>
           )}
           {actionError && <div className="banner">{actionError}</div>}
-          {/* Công tắc cascade. Ảnh ref là cấp JOB (selectedRefImagePaths) nên mọi đoạn tự dùng
-              chung đúng bộ ảnh đã chọn — chỉ thứ tự chạy là do chaining quyết. */}
+          {/* Cascade + sân khấu đã chốt gộp 1 hàng mỏng: cả hai chỉ để LIẾC trạng thái, trước
+              đây chiếm 2 banner dày đẩy hết phần làm việc xuống dưới màn hình.
+              Sân khấu hiện ra để bắt sai NGAY lúc sinh script (VD ảnh mẫu nam mà host tả "woman")
+              thay vì chỉ biết sau khi gen video hỏng — xem isStageBibleStale ở lib/livestream/stageBible.ts. */}
           <div
             className="banner"
-            style={{ background: '#f6f8fa', color: '#444', display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{
+              background: '#f6f8fa',
+              color: '#444',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              fontSize: 13,
+            }}
           >
             <label htmlFor="chaining-select">
-              <b>🔁 Tự động gen đoạn tiếp theo:</b>
+              <b>🔁 Tự động gen đoạn tiếp:</b>
             </label>
             <select
               id="chaining-select"
               value={job.chaining}
               disabled={actionBusy}
               onChange={(e) => handleChangeChaining(e.target.value)}
+              title={
+                job.chaining === 'off'
+                  ? 'Các đoạn chạy song song, không dùng khung hình cuối của đoạn trước.'
+                  : 'Gen xong 1 đoạn sẽ tự kích đoạn kế (cùng ảnh tham chiếu, prompt riêng từng đoạn) và nối khung hình cuối.'
+              }
             >
-              <option value="continuous">Bật — chạy nối tiếp toàn bộ job</option>
-              <option value="per_product">Bật — chỉ nối tiếp trong cùng sản phẩm</option>
-              <option value="off">Tắt — gen song song, tự bấm từng đoạn</option>
+              <option value="continuous">Bật — toàn bộ job</option>
+              <option value="per_product">Bật — trong cùng sản phẩm</option>
+              <option value="off">Tắt — gen song song</option>
             </select>
-            <span style={{ fontSize: 13, opacity: 0.75 }}>
-              {job.chaining === 'off'
-                ? 'Các đoạn chạy song song, không dùng khung hình cuối của đoạn trước.'
-                : 'Gen xong 1 đoạn sẽ tự kích đoạn kế (cùng ảnh tham chiếu, prompt riêng từng đoạn) và nối khung hình cuối.'}
-            </span>
+            {job.stageBible && (
+              <>
+                <span style={{ opacity: 0.4 }}>|</span>
+                <span
+                  title={`Người dẫn: ${job.stageBible.host}\n\nGiọng: ${job.stageBible.voice}`}
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    maxWidth: 520,
+                  }}
+                >
+                  🎬 <b>Sân khấu:</b> {job.stageBible.host}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowStageBible((v) => !v)}
+                  style={{ fontSize: 12 }}
+                >
+                  {showStageBible ? 'Thu gọn' : 'Xem đầy đủ'}
+                </button>
+              </>
+            )}
           </div>
-          {/* Sân khấu đã chốt: hiện ra để phát hiện sai NGAY lúc sinh script (VD ảnh mẫu nam mà
-              host tả "woman"), thay vì chỉ biết sau khi gen video hỏng. Bible tự chốt lại khi ảnh
-              hoặc mô tả sản phẩm đổi — xem isStageBibleStale ở lib/livestream/stageBible.ts. */}
-          {job.stageBible && (
-            <div className="banner" style={{ background: '#f6f8fa', color: '#444' }}>
-              🎬 Sân khấu đã chốt — <b>Người dẫn:</b> {job.stageBible.host}
+          {showStageBible && job.stageBible && (
+            <div className="banner" style={{ background: '#f6f8fa', color: '#444', fontSize: 13 }}>
+              <b>Người dẫn:</b> {job.stageBible.host}
               <br />
               <b>Giọng:</b> {job.stageBible.voice}
             </div>
           )}
 
           <FlowGuide job={job} />
+          {/* 3 card cấu hình dưới đây gấp mặc định: chỉ động tới lúc setup / debug, để mở toang
+              thì phần làm việc thật (ảnh + sản phẩm) bị đẩy xuống ~2500px dưới màn hình. */}
           {v2Input && (
-            <V2InputPanel
-              jobId={jobId}
-              input={v2Input}
-              busy={busy}
-              onRefresh={refresh}
-              suggestedAdvantages={suggestedAdvantages}
-            />
+            <CollapsibleCard id="v2-input" title="🛒 Thông tin buổi live Shopee (V2)">
+              {() => (
+              <V2InputPanel
+                jobId={jobId}
+                input={v2Input}
+                busy={busy}
+                onRefresh={refresh}
+                suggestedAdvantages={suggestedAdvantages}
+              />
+              )}
+            </CollapsibleCard>
           )}
-          <PromptSettingsPanel
-            jobId={jobId}
-            isV2={!!v2Input}
-            onRefresh={refresh}
-            onRan={() => setAiLogReloadKey((k) => k + 1)}
-          />
-          <AiRunTimeline jobId={jobId} reloadKey={aiLogReloadKey} />
+          <CollapsibleCard id="prompt-settings" title="⚙️ System prompt AI (nâng cao)">
+            {() => (
+            <PromptSettingsPanel
+              jobId={jobId}
+              isV2={!!v2Input}
+              onRefresh={refresh}
+              onRan={() => setAiLogReloadKey((k) => k + 1)}
+            />
+            )}
+          </CollapsibleCard>
+          <CollapsibleCard id="ai-runs" title="🧠 Các lượt gọi AI của job này">
+            {() => <AiRunTimeline jobId={jobId} reloadKey={aiLogReloadKey} />}
+          </CollapsibleCard>
           <JobImagePanel job={job} onRefresh={refresh} />
 
           {job.products.map((product) => (

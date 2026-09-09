@@ -13,6 +13,7 @@
     "check:background-ref-legend": "tsx scripts/check-background-ref-legend.ts",
     "check:background-refs": "tsx scripts/check-background-refs.ts",
     "check:background-required": "tsx scripts/check-background-required.ts",
+    "check:card-state": "tsx scripts/check-card-state.ts",
     "check:cascade-resume": "tsx scripts/check-cascade-resume.ts",
     "check:chat-timeout": "tsx scripts/check-chat-timeout.ts",
     "check:chatgpt-extension": "tsx scripts/check-chatgpt-extension.ts",
