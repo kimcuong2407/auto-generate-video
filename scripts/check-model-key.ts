@@ -42,8 +42,13 @@ for (const k of cands) {
   assert.ok(!k.endsWith('_low_priority'), `ứng viên "${k}" sẽ trả 403 và giết cả lần gen`);
 }
 
-// 7. r2v giữ nguyên quy tắc ép tier lite đã biết.
-assert.equal(resolveVideoModelKey('veo_3_1_fast', 'r2v', 8, false), 'veo_3_1_r2v_lite_low_priority');
+// 7. r2v dùng key i2v — batchexecute KHÔNG có key r2v riêng.
+//
+// XÁC MINH 2026-09-09: quét toàn bộ HAR gen thật chỉ thấy `veo_3_1_i2v_lite_low_priority`
+// và `abra_i2v_8s`, KHÔNG có key nào chứa 'r2v'. Gen bằng key `veo_3_1_r2v_*` → Google trả
+// state 4 "Media not found." 17 lần liên tiếp, trong khi tạo tay cùng prompt+ảnh thì chạy.
+// Khớp với cấu trúc payload: buildScene chỉ có MỘT slot ảnh (startMediaId).
+assert.equal(resolveVideoModelKey('veo_3_1_fast', 'r2v', 8, false), 'veo_3_1_i2v_lite_low_priority');
 
 // 8. Duration: khi hoà (7s cách đều 6 và 8) phải chọn 8, KHÔNG chọn 6.
 // veo_3_1_*_6s trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED (thực nghiệm 2026-08-25).
@@ -56,15 +61,14 @@ assert.equal(resolveAllowedDuration(4, 'veo_3_1_lite', true), 8);
 
 
 // ---------------------------------------------------------------
-// r2v: tier LUÔN bị ép về lite bất kể model người dùng chọn.
-// Veo 3.1 chỉ có r2v ở tier lite — fast/quality trả 404, lite_low_priority trả 403.
+// r2v: tier LUÔN bị ép về lite bất kể model người dùng chọn, và dùng TÊN MODE i2v.
 // Đây là lý do "job chọn fast nhưng thực tế chạy lite": có ảnh ref là vào nhánh này.
 // ---------------------------------------------------------------
 for (const model of ['veo_3_1_quality', 'veo_3_1_fast', 'veo_3_1_lite', 'veo_3_1_lite_low_priority'] as const) {
   assert.strictEqual(
     resolveVideoModelKey(model, 'r2v', 8, false),
-    'veo_3_1_r2v_lite_low_priority',
-    `r2v phải ép về tier lite_low_priority (model ${model})`
+    'veo_3_1_i2v_lite_low_priority',
+    `r2v phải ép về key i2v tier lite_low_priority (model ${model})`
   );
 }
 
@@ -83,7 +87,7 @@ assert.strictEqual(
 // Hậu tố thời lượng vẫn đúng khi đã đổi tier (8s bỏ hậu tố, khác 8s thì thêm).
 assert.strictEqual(
   resolveVideoModelKey('veo_3_1_fast', 'r2v', 6, false),
-  'veo_3_1_r2v_lite_low_priority_6s',
+  'veo_3_1_i2v_lite_low_priority_6s',
   'r2v 6s phải kèm hậu tố _6s sau tier'
 );
 
@@ -109,5 +113,21 @@ assert.strictEqual(
   r2vCandidates.length,
   'không được thử trùng key (tốn 1 request thừa mỗi lần)'
 );
+
+// --- Chống tái phát: KHÔNG key nào được chứa 'r2v'.
+//
+// Google đã gỡ kiến trúc REST nơi r2v có key riêng. Sinh ra key chứa 'r2v' = quay lại đúng
+// bug đã lặp 17 lần: Google trả "Media not found." mà app tưởng job đang render.
+{
+  const models = ['veo_3_1_quality', 'veo_3_1_fast', 'veo_3_1_lite', 'veo_3_1_lite_low_priority'] as const;
+  const modes = ['t2v', 'i2v_s', 'i2v_se', 'r2v'] as const;
+  for (const m of models)
+    for (const mode of modes)
+      for (const dur of [4, 6, 8, 10])
+        for (const fl of [true, false]) {
+          const key = resolveVideoModelKey(m, mode, dur, fl);
+          assert.ok(!key.includes('r2v'), `key "${key}" chứa 'r2v' — batchexecute không có key này`);
+        }
+}
 
 console.log('OK — model key + duration + r2v tier lock: tất cả assert pass');

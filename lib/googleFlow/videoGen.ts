@@ -81,8 +81,8 @@ export function resolveVideoModelKey(
     return `abra_${mode}${durationSuffix(duration)}${useFl ? '_fl' : ''}`;
   }
 
-  // Mode reference-to-video (r2v — @Characters/ảnh người mẫu) của Veo 3.1 KHÔNG có tier
-  // fast/quality (Google trả 404 NOT_FOUND), nên tier luôn bị ép về lite bất kể model job chọn.
+  // Mode reference-to-video (r2v — @Characters/ảnh người mẫu) luôn bị ép về tier lite bất kể
+  // model job chọn (tier fast/quality trả 404).
   //
   // Dùng `_low_priority`: XÁC MINH THỰC NGHIỆM 2026-08-26 — gen thật qua production, Google chấp
   // nhận `veo_3_1_r2v_lite_low_priority` và render xong bình thường. Ghi chú cũ (2026-08-25) nói
@@ -95,9 +95,24 @@ export function resolveVideoModelKey(
   //
   // Nếu Google thu lại quyền (403 trở lại), đổi cờ này về false là quay lại hành vi cũ ngay;
   // 403 KHÔNG được fallback tự động (xem modelKeyCandidates) nên phải sửa ở đây.
+  // Mode r2v KHÔNG có key riêng trong kiến trúc batchexecute.
+  //
+  // XÁC MINH 2026-09-09 (bằng chứng, không phải suy đoán):
+  //   - Quét toàn bộ HAR gen thật: chỉ có `veo_3_1_i2v_lite_low_priority` và `abra_i2v_8s`.
+  //     KHÔNG có bất kỳ key nào chứa 'r2v'.
+  //   - Gen qua app với key `veo_3_1_r2v_lite_low_priority` → Google trả state 4 kèm
+  //     "Media not found." / NOT_FOUND, lặp 17 lần không ra video nào.
+  //   - Cùng prompt + ảnh ref tạo TAY trên giao diện Flow thì chạy bình thường.
+  //
+  // Lý do khớp với cấu trúc payload: buildScene chỉ có MỘT chỗ cho ảnh (`startMediaId`) —
+  // batchexecute không phân biệt r2v với i2v, ảnh ref đi vào đúng slot ảnh đầu. Key
+  // `veo_3_1_r2v_*` là di sản của kiến trúc REST cũ (aisandbox-pa) mà Google đã gỡ.
+  //
+  // Vẫn giữ tier lite_low_priority: đó chính là tier trang thật dùng, và nó tiêu quota chậm
+  // hơn — quan trọng với job livestream hàng chục đoạn.
   if (mode === 'r2v') {
     const tier = R2V_USE_LOW_PRIORITY ? 'lite_low_priority' : 'lite';
-    return `veo_3_1_r2v_${tier}${durationSuffix(duration)}`;
+    return `veo_3_1_i2v_${tier}${durationSuffix(duration)}`;
   }
 
   const { base, suffix } = coreParts(model);
@@ -191,6 +206,13 @@ export async function generateVideo(params: GenerateVideoParams): Promise<Genera
 }
 
 /**
+ * ⚠️ HIỆN KHÔNG ĐƯỢC GỌI Ở ĐÂU — code chết từ khi port sang batchexecute.
+ *
+ * Ghi rõ để không ai tưởng nó đang bảo vệ: sự cố 2026-09-09 (key r2v sai, Google trả
+ * "Media not found." 17 lần) KHÔNG có fallback nào chặn, đúng vì hàm này không được nối vào.
+ * Muốn có fallback thật thì phải gọi nó trong generateSceneVideo khi gặp lỗi key; giữ lại
+ * vì danh sách biến thể là kiến thức đã xác minh thực nghiệm, viết lại sẽ tốn quota để đo lại.
+ *
  * Các biến thể videoModelKey để thử khi Google trả 404 cho key dựng theo quy tắc.
  *
  * Vì sao cần: videoModelKey là chuỗi reverse-engineered — Google KHÔNG công bố danh sách key
