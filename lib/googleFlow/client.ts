@@ -36,6 +36,31 @@ function buildErrorMessage(status: number, body: string): string {
 }
 
 /**
+ * Thông điệp cho 401 từ batchexecute.
+ *
+ * Google trả 401 dưới dạng envelope nội bộ (`)]}' 107 [["er",null,...,401,...]]`) — đổ
+ * nguyên chuỗi đó ra UI thì người dùng không đọc được gì và dễ tưởng là bug code.
+ *
+ * XÁC MINH 2026-09-09 (probe thật, không tốn quota): với cookie đã mất hiệu lực, batchexecute
+ * trả 401 GIỐNG HỆT nhau dù có gửi `at` hay không → Google chặn ngay ở tầng cookie, chưa xét
+ * tới XSRF token. Cùng lúc `GET flow.google.com` trả 200 nhưng KHÔNG có `SNlM0e` trong HTML
+ * và có link accounts.google.com/signin, tức phiên đã đăng xuất phía server. Cookie còn hạn
+ * ở client KHÔNG đồng nghĩa còn hiệu lực: Google thu hồi phiên khi `__Secure-1PSIDTS` xoay
+ * vòng trên trình duyệt trong khi bản sao ta giữ đứng yên.
+ *
+ * Vì vậy 401 ở đây chỉ có MỘT cách chữa — gửi lại session từ extension. Không retry tự động
+ * (xem ghi chú tại recaptcha.flowCredsOf): cookie hỏng thì thử lại bao nhiêu lần cũng 401.
+ */
+function unauthenticatedMessage(): string {
+  return (
+    'Phiên Google Flow đã hết hiệu lực (HTTP 401). Cookie đang lưu không còn được Google chấp ' +
+    'nhận — thường do phiên bị xoay vòng hoặc đăng xuất phía Google, kể cả khi vừa gửi session ' +
+    'gần đây. Cách chữa: mở tab https://flow.google.com (đã đăng nhập) rồi bấm gửi session ở ' +
+    'popup extension Google Flow. Nếu tab đó cũng hiện màn đăng nhập thì đăng nhập lại Google trước.'
+  );
+}
+
+/**
  * Retry 1 lần khi fetch() ném lỗi mạng "fetch failed" thuần (undici) — thường do socket
  * keep-alive bị phía server đóng âm thầm sau khi idle lâu (dev server chạy nhiều giờ). Không
  * retry lỗi abort (timeout) hay các lỗi khác — chỉ lỗi kết nối cấp thấp này mới đáng thử lại.
@@ -177,6 +202,11 @@ export async function batchExecute(
 
   const text = await res.text().catch(() => '');
   if (!res.ok) {
+    // Giữ nguyên `code` (401) để isUnauthenticated/runWithTokenRetry nhận diện như cũ;
+    // chỉ đổi phần message hiển thị, body gốc dồn vào `data` cho lúc cần debug.
+    if (res.status === 401) {
+      throw new FlowApiError(unauthenticatedMessage(), 401, text.slice(0, 300));
+    }
     throw new FlowApiError(buildErrorMessage(res.status, text), res.status);
   }
   return parseBatchExecute(text, rpcid);
@@ -222,3 +252,6 @@ export function parseBatchExecute(text: string, rpcid: string): unknown {
       `Thường là do cookie/at đã hết hạn (Google trả trang đăng nhập). Body: ${text.slice(0, 200)}`
   );
 }
+
+/** Chỉ dùng cho scripts/check-flow-batchexecute.ts. */
+export const __testables = { unauthenticatedMessage };

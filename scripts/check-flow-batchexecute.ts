@@ -9,7 +9,7 @@
  * Fixture dưới đây là response THẬT cắt từ docs/flow.google.com.har (2026-09-04).
  */
 import assert from 'node:assert/strict';
-import { parseBatchExecute } from '../lib/googleFlow/client';
+import { parseBatchExecute, __testables } from '../lib/googleFlow/client';
 
 // --- Fixture 1: RPC trả mảng rỗng (mrlkwd) + có envelope rác (di, af.httprm) đi kèm.
 const MRLKWD = ")]}'\n\n108\n[[\"wrb.fr\",\"mrlkwd\",\"[]\",null,null,null,\"generic\"],[\"di\",270],[\"af.httprm\",269,\"-1281567336308385754\",50]]\n25\n[[\"e\",4,null,null,144]]\n";
@@ -60,6 +60,20 @@ const O30 = ")]}'\n\n1058\n[[\"wrb.fr\",\"o30O0e\",\"[[[\\\"me\\\",1,[\\\"116842
     JSON.stringify([["wrb.fr", "zzz", null]]),
   ].join('\n');
   assert.equal(parseBatchExecute(nullish, 'zzz'), null);
+}
+
+
+// --- 401: message phải là hướng dẫn đọc được, không phải envelope thô của Google.
+//
+// Vì sao check: 401 là lỗi Flow hay gặp nhất (cookie bị Google thu hồi bất kỳ lúc nào), và
+// trước đây nó rơi thẳng ra UI dưới dạng `HTTP 401: )]}' 107 [["er",...]]` — người dùng đọc
+// xong tưởng code hỏng chứ không biết phải gửi lại session.
+{
+  const msg = __testables.unauthenticatedMessage();
+  assert.ok(!msg.includes(')]}'), 'message 401 không được chứa envelope thô của Google');
+  assert.ok(!/\[\["er"/.test(msg), 'message 401 không được chứa mảng lỗi nội bộ');
+  assert.ok(msg.includes('flow.google.com'), 'phải chỉ rõ mở tab nào');
+  assert.ok(/session/i.test(msg), 'phải nói rõ cách chữa là gửi lại session');
 }
 
 console.log('check-flow-batchexecute: OK');
