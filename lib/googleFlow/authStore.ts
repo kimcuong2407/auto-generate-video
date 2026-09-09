@@ -215,7 +215,24 @@ export interface FlowBatchCreds {
  * Rút credential batchexecute từ account, hoặc trả lý do vì sao chưa dùng được.
  * Trả { creds } | { error } thay vì throw để caller (route status / client) chọn cách báo.
  */
+/**
+ * Đăng ký hook lưu creds làm mới, ngay lần đầu có người hỏi creds.
+ *
+ * Đặt ở đây thay vì instrumentation.ts: batchCredsOf là cửa ngõ BẮT BUỘC của mọi lệnh gọi
+ * batchexecute, nên hook chắc chắn đã gắn trước call đầu tiên — kể cả trong tiến trình chưa
+ * chạy instrumentation (script, test, route được gọi sớm).
+ */
+let persisterRegistered = false;
+function ensurePersister(): void {
+  if (persisterRegistered) return;
+  persisterRegistered = true;
+  // require động: authStore ← client là chiều ngược của client → authStore, import tĩnh sẽ
+  // tạo phụ thuộc vòng.
+  void import('./client').then((m) => m.setCredsPersister(persistRefreshedCreds));
+}
+
 export function batchCredsOf(a: FlowAccount): { creds: FlowBatchCreds } | { error: string } {
+  ensurePersister();
   if (!a.cookie) return { error: `Tài khoản "${a.label}" chưa có cookie — bấm gửi session từ extension.` };
   if (!a.at) {
     return {
@@ -235,4 +252,26 @@ export function batchCredsOf(a: FlowAccount): { creds: FlowBatchCreds } | { erro
       origin: a.origin || 'https://flow.google.com',
     },
   };
+}
+
+/**
+ * Ghi lại cookie/at vừa được làm mới tự động (chu trình SetOSID trong osidRefresh).
+ *
+ * Bắt buộc phải lưu: OSID mới chỉ nằm trong RAM của request vừa rồi, không ghi xuống thì
+ * request kế tiếp lại dùng OSID cũ và lại 401 — vòng lặp làm mới mỗi lần gọi.
+ *
+ * Cập nhật account đang active theo cookie: không dùng getActiveAccount() để tránh ghi nhầm
+ * sang account khác nếu Mr.D đổi default giữa chừng.
+ */
+export function persistRefreshedCreds(creds: { cookie: string; at: string; bl: string | null; fsid: string | null }): void {
+  const accounts = readAll();
+  const target = accounts.find((a) => a.isDefault) || accounts[0];
+  if (!target) return;
+  target.cookie = creds.cookie;
+  target.at = creds.at;
+  target.atAt = Date.now();
+  if (creds.bl) target.bl = creds.bl;
+  if (creds.fsid) target.fsid = creds.fsid;
+  target.updatedAt = new Date().toISOString();
+  writeAll(accounts);
 }

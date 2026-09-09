@@ -20,6 +20,7 @@
  */
 
 import { FlowApiError } from './errors';
+import { refreshOsid } from './osidRefresh';
 
 export const LABS_BASE = 'https://labs.google';
 
@@ -149,6 +150,43 @@ function nextReqid(): number {
 }
 
 /**
+ * Hook để lớp trên (authStore) lưu lại cookie/at vừa làm mới.
+ *
+ * Đặt là hook thay vì import thẳng authStore: client.ts là tầng HTTP thuần, import ngược lên
+ * authStore sẽ tạo phụ thuộc vòng (authStore → client → authStore) và khiến self-check phải
+ * chạm vào filesystem.
+ */
+let persistRefreshedCreds: ((creds: BatchExecuteCreds) => void) | null = null;
+
+export function setCredsPersister(fn: (creds: BatchExecuteCreds) => void): void {
+  persistRefreshedCreds = fn;
+}
+
+/**
+ * Làm mới OSID + at. Trả creds mới, hoặc null nếu không chữa được (caller báo lỗi như cũ).
+ *
+ * Nuốt lỗi có chủ ý: đây là đường CHỮA CHÁY cho một 401 đã xảy ra. Nếu bản thân việc làm mới
+ * cũng hỏng thì thông điệp hữu ích cho người dùng vẫn là thông điệp 401 gốc, không phải lỗi
+ * nội bộ của bước làm mới.
+ */
+async function tryRefreshCreds(creds: BatchExecuteCreds): Promise<BatchExecuteCreds | null> {
+  try {
+    const r = await refreshOsid(creds.cookie, creds.origin);
+    const next: BatchExecuteCreds = {
+      ...creds,
+      cookie: r.cookie,
+      at: r.at,
+      bl: r.bl ?? creds.bl,
+      fsid: r.fsid ?? creds.fsid,
+    };
+    persistRefreshedCreds?.(next);
+    return next;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Gọi 1 RPC qua batchexecute.
  *
  * @param rpcid  id RPC, vd 'mrlkwd' (load project), 'o30O0e' (user info).
@@ -164,6 +202,8 @@ export async function batchExecute(
     sourcePath?: string;
     hl?: string;
     timeoutMs?: number;
+    /** Nội bộ: đánh dấu đây là lần gọi lại sau khi làm mới OSID — không làm mới lần nữa. */
+    retrying?: boolean;
   }
 ): Promise<unknown> {
   const { creds } = opts;
@@ -202,8 +242,16 @@ export async function batchExecute(
 
   const text = await res.text().catch(() => '');
   if (!res.ok) {
-    // Giữ nguyên `code` (401) để isUnauthenticated/runWithTokenRetry nhận diện như cũ;
-    // chỉ đổi phần message hiển thị, body gốc dồn vào `data` cho lúc cần debug.
+    // 401 = OSID hết hạn (xem osidRefresh). Thử làm mới ĐÚNG 1 LẦN rồi gọi lại: đây là
+    // nguyên nhân áp đảo của 401 và Google chữa được không cần Mr.D thao tác gì.
+    // `retrying` chặn đệ quy vô hạn khi làm mới xong vẫn 401 (phiên chết thật).
+    if (res.status === 401 && !opts.retrying) {
+      const refreshed = await tryRefreshCreds(creds);
+      if (refreshed) {
+        return batchExecute(rpcid, payload, { ...opts, creds: refreshed, retrying: true });
+      }
+      throw new FlowApiError(unauthenticatedMessage(), 401, text.slice(0, 300));
+    }
     if (res.status === 401) {
       throw new FlowApiError(unauthenticatedMessage(), 401, text.slice(0, 300));
     }

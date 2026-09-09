@@ -36,6 +36,7 @@
     "check:media-url-version": "tsx scripts/check-media-url-version.ts",
     "check:model-key": "tsx scripts/check-model-key.ts",
     "check:negative-prompt": "tsx scripts/check-negative-prompt.ts",
+    "check:osid-refresh": "tsx scripts/check-osid-refresh.ts",
     "check:preview-prompt": "tsx scripts/check-preview-prompt.ts",
     "check:product-lock": "tsx scripts/check-product-lock.ts",
     "check:prompt-block-spans": "tsx scripts/check-prompt-block-spans.ts",
