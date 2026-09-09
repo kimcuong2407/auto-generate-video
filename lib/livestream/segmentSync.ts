@@ -18,6 +18,7 @@ import { jobSegmentsDir, jobFramesDir, resolveWithinJob } from './paths';
 import { uploadFileToR2, deleteFromR2, md5File } from '../r2/client';
 import {
   FLOW_JOB_TIMEOUT_MS,
+  FLOW_JOB_HARD_TIMEOUT_MS,
   MAX_SEGMENT_AUTO_RETRIES,
   SEGMENT_RETRY_BACKOFF_MS,
 } from '../constants';
@@ -37,6 +38,11 @@ export interface ManualSyncResult {
 function isTimedOut(segment: LivestreamSegment): boolean {
   const startedAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
   return Date.now() - startedAt > FLOW_JOB_TIMEOUT_MS;
+}
+
+function isHardTimedOut(segment: LivestreamSegment): boolean {
+  const startedAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
+  return startedAt > 0 && Date.now() - startedAt > FLOW_JOB_HARD_TIMEOUT_MS;
 }
 
 /**
@@ -101,12 +107,21 @@ export async function syncOneSegment(
     }
     // pending/running
     segment.status = 'generating';
-    if (opts.checkTimeout && isTimedOut(segment)) {
+    // XÁC MINH 2026-09-09 (job combo-100-khay…f46090, seg1): Veo tier low_priority render LÂU
+    // HƠN 15 phút là chuyện bình thường. Timeout cũ giết đoạn khi Google vẫn đang chạy → Mr.D
+    // bấm gen lại → tốn thêm một lượt quota → lại timeout. Lặp 14 lần, và job Veo bị bỏ rơi
+    // vẫn chạy tiếp bên Google (poll thủ công lúc app đã 'failed' vẫn trả 'running').
+    //
+    // Sửa theo đúng nguyên tắc đã ghi ở đầu file — ưu tiên kết quả poll hơn đồng hồ: Flow còn
+    // báo pending/running thì KHÔNG ép 'failed', chỉ dừng khi chạm trần tuyệt đối (job kẹt
+    // thật phía Google). Timeout mềm giờ chỉ còn ý nghĩa cho nhánh catch bên dưới, nơi ta
+    // KHÔNG biết Flow đang ra sao.
+    if (opts.checkTimeout && isHardTimedOut(segment)) {
       segment.status = 'failed';
-      segment.error = 'Timeout: chờ job quá lâu';
+      segment.error = `Timeout: job vẫn 'running' sau ${Math.round(FLOW_JOB_HARD_TIMEOUT_MS / 60000)} phút — nhiều khả năng kẹt phía Google`;
       segment.lastUpdatedAt = new Date().toISOString();
     }
-    // chưa quá hạn (hoặc không check timeout) → giữ 'generating', chờ lần poll sau
+    // Flow còn chạy → giữ 'generating', chờ lần poll sau
     return { becameDone: false };
   } catch (err) {
     // Poll (hoặc download khi done) lỗi tạm thời: ghi error để chẩn đoán. Chỉ ép
@@ -315,3 +330,6 @@ export async function resumeStalledJob(jobId: string): Promise<string | null> {
     return null;
   }
 }
+
+/** Chỉ dùng cho scripts/check-flow-job-timeout.ts. */
+export const __testables = { isTimedOut, isHardTimedOut };

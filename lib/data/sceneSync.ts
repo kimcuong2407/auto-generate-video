@@ -24,7 +24,7 @@ import { pollJobStatus } from '../googleFlow/flowJobs';
 import { extractLastFrame } from '../ffmpeg/frame';
 import { projectScenesDir, projectFramesDir, resolveWithinProject } from '../paths';
 import { uploadFileToR2 } from '../r2/client';
-import { FLOW_JOB_TIMEOUT_MS } from '../constants';
+import { FLOW_JOB_TIMEOUT_MS, FLOW_JOB_HARD_TIMEOUT_MS } from '../constants';
 import type { Scene } from '../types';
 
 export interface SyncResult {
@@ -34,6 +34,12 @@ export interface SyncResult {
 function isTimedOut(scene: Scene): boolean {
   const startedAt = scene.lastUpdatedAt ? new Date(scene.lastUpdatedAt).getTime() : 0;
   return Date.now() - startedAt > FLOW_JOB_TIMEOUT_MS;
+}
+
+/** Trần tuyệt đối khi Flow VẪN báo running — xem FLOW_JOB_HARD_TIMEOUT_MS. */
+function isHardTimedOut(scene: Scene): boolean {
+  const startedAt = scene.lastUpdatedAt ? new Date(scene.lastUpdatedAt).getTime() : 0;
+  return startedAt > 0 && Date.now() - startedAt > FLOW_JOB_HARD_TIMEOUT_MS;
 }
 
 /**
@@ -88,10 +94,12 @@ export async function syncGeneratingScenes(projectId: string): Promise<SyncResul
             scene.error = jobStatus.error || `Job ${jobStatus.status}`;
             scene.lastUpdatedAt = new Date().toISOString();
           } else {
-            // pending/running → chỉ khi Flow chưa xong mới xét timeout.
-            if (isTimedOut(scene)) {
+            // pending/running: Flow khẳng định job còn chạy → KHÔNG giết theo timeout mềm.
+            // Veo tier low_priority render lâu hơn 15 phút là bình thường; giết ở đây đẩy
+            // người dùng vào vòng gen lại → tốn quota → lại timeout (xem segmentSync).
+            if (isHardTimedOut(scene)) {
               scene.status = 'failed';
-              scene.error = 'Timeout: chờ job quá lâu';
+              scene.error = `Timeout: job vẫn 'running' sau ${Math.round(FLOW_JOB_HARD_TIMEOUT_MS / 60000)} phút — nhiều khả năng kẹt phía Google`;
               scene.lastUpdatedAt = new Date().toISOString();
             }
             // chưa quá hạn → giữ 'generating', chờ lần poll sau

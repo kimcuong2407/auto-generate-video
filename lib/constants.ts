@@ -8,6 +8,20 @@ export const DATA_ROOT =
 export const FLOW_MAX_CONCURRENT_JOBS = Number(process.env.FLOW_MAX_CONCURRENT_JOBS || 2);
 
 export const FLOW_JOB_TIMEOUT_MS = Number(process.env.FLOW_JOB_TIMEOUT_MS || 15 * 60 * 1000);
+
+/**
+ * Trần TUYỆT ĐỐI cho 1 job Flow: bỏ cuộc kể cả khi Google vẫn báo 'running'.
+ *
+ * Khác FLOW_JOB_TIMEOUT_MS (timeout mềm, chỉ áp khi KHÔNG biết Flow đang ra sao — nhánh poll
+ * lỗi): trần này áp cho job mà Flow khẳng định vẫn đang chạy. Cần nó vì 'running' có thể là
+ * trạng thái vĩnh viễn khi job kẹt phía Google; không có trần thì đoạn nằm 'generating' mãi.
+ *
+ * XÁC MINH 2026-09-09: Veo tier low_priority render lâu hơn 15 phút là bình thường, nên timeout
+ * mềm KHÔNG được dùng để giết job đang chạy (xem ghi chú tại segmentSync.syncOneSegment).
+ */
+export const FLOW_JOB_HARD_TIMEOUT_MS = Number(
+  process.env.FLOW_JOB_HARD_TIMEOUT_MS || 2 * 60 * 60 * 1000
+);
 /**
  * Số lần tự động thử lại tối đa cho 1 đoạn video bị lỗi, tính theo `segment.attempts`.
  *
