@@ -275,3 +275,17 @@ export function findNextSegment(
 }
 
 /** Trigger gen video cho 1 đoạn: validate trạng thái, gọi flow_generate_video, cập nhật job.json. */
+
+
+/**
+ * Route /images/detach là TOGGLE 1 path/lần. Khi bulk bật/tắt "gửi cho Veo" cho nhiều ảnh, chỉ
+ * được gọi cho ảnh đang LỆCH trạng thái mong muốn — gọi thừa sẽ lật ngược đúng cái vừa đặt.
+ */
+export function pathsNeedingToggle(
+  ticked: string[],
+  detached: string[],
+  action: 'active' | 'inactive'
+): string[] {
+  const set = new Set(detached);
+  return ticked.filter((rel) => (action === 'active') === set.has(rel));
+}

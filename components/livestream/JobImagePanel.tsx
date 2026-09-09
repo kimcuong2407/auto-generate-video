@@ -6,6 +6,7 @@ import { BACKGROUND_SYSTEM_PROMPT } from '@/lib/livestream/promptDefaults';
 import { IMAGE_MODEL_OPTIONS } from '@/lib/imageModels';
 import { PromptPreviewModal } from './PromptPreviewModal';
 import { PromptParamsHint } from './PromptParamsHint';
+import { pathsNeedingToggle } from '@/lib/livestream/refImages';
 
 /**
  * Khu cấu hình BỘ ẢNH CHUNG cả job (đặt cạnh panel System prompt đầu trang): ảnh sản phẩm (kho +
@@ -40,6 +41,11 @@ export function JobImagePanel({
   const [savingBgPrompt, setSavingBgPrompt] = useState(false);
   const [savingBgRefs, setSavingBgRefs] = useState(false);
   const [uploadingBgRef, setUploadingBgRef] = useState(false);
+  // Ảnh sản phẩm đang TICK để chạy bulk action. Khác hẳn selectedRefImagePaths (ảnh gửi cho Veo).
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // Ảnh đang xem phóng to (preview) — null = đóng.
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
 
   const detachedSet = new Set(job.detachedImagePaths ?? []);
 
@@ -47,7 +53,7 @@ export function JobImagePanel({
    * Bật/tắt "tách ảnh khỏi gen video": ảnh bị tách vẫn cho AI vision đọc để mô tả vào prompt,
    * nhưng không gửi làm reference image cho Veo — xem app/api/livestream/[id]/images/detach.
    */
-  async function handleToggleDetach(relPath: string) {
+  async function handleToggleDetach(relPath: string, skipRefresh = false) {
     setDetaching(true);
     try {
       const res = await fetch(`/api/livestream/${jobId}/images/detach`, {
@@ -57,7 +63,7 @@ export function JobImagePanel({
       });
       const data = await res.json();
       if (!res.ok) alert(data.error || 'Đổi trạng thái ảnh thất bại');
-      await onRefresh();
+      if (!skipRefresh) await onRefresh();
     } finally {
       setDetaching(false);
     }
@@ -136,7 +142,7 @@ export function JobImagePanel({
     }
   }
 
-  async function handleSpokespersonRemove(relPath: string) {
+  async function handleSpokespersonRemove(relPath: string, skipRefresh = false) {
     setUploadingSpokesperson(true);
     try {
       const res = await fetch(
@@ -145,13 +151,45 @@ export function JobImagePanel({
       );
       const data = await res.json();
       if (!res.ok) alert(data.error || 'Xoá ảnh thất bại');
-      await onRefresh();
+      if (!skipRefresh) await onRefresh();
     } finally {
       setUploadingSpokesperson(false);
     }
   }
 
-  async function handleSelectRef(relPath: string | null, kind: 'product' | 'background') {
+  /**
+   * Bulk action cho các ảnh sản phẩm đang tick. Route API chỉ nhận 1 path/lần nên gọi tuần tự
+   * (kho ảnh 1 job chỉ vài chục tấm) rồi refresh đúng 1 lần ở cuối.
+   * ponytail: tuần tự, đổi sang route batch nếu kho ảnh lên hàng trăm tấm.
+   */
+  async function runBulk(action: 'delete' | 'active' | 'inactive') {
+    if (!ticked.length) return;
+    if (action === 'delete' && !confirm(`Xoá ${ticked.length} ảnh đã chọn?`)) return;
+    setBulkBusy(true);
+    try {
+      for (const rel of ticked) {
+        if (action === 'delete') {
+          await handleSpokespersonRemove(rel, true);
+        }
+      }
+      if (action !== 'delete') {
+        // Route detach là TOGGLE → chỉ gọi cho ảnh đang lệch trạng thái (xem check-bulk-image-actions).
+        for (const rel of pathsNeedingToggle(ticked, job.detachedImagePaths ?? [], action)) {
+          await handleToggleDetach(rel, true);
+        }
+      }
+      setTicked([]);
+      await onRefresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleSelectRef(
+    relPath: string | null,
+    kind: 'product' | 'background',
+    skipRefresh = false
+  ) {
     setSelectingRef(true);
     try {
       const res = await fetch(`/api/livestream/${jobId}/images/select-ref`, {
@@ -161,7 +199,7 @@ export function JobImagePanel({
       });
       const data = await res.json();
       if (!res.ok) alert(data.error || 'Chọn ảnh thất bại');
-      await onRefresh();
+      if (!skipRefresh) await onRefresh();
     } finally {
       setSelectingRef(false);
     }
@@ -402,11 +440,82 @@ export function JobImagePanel({
           </div>
         )}
         {job.spokespersonImagePaths.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 8,
+              fontSize: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={ticked.length === job.spokespersonImagePaths.length}
+                onChange={(e) => setTicked(e.target.checked ? [...job.spokespersonImagePaths] : [])}
+              />
+              Chọn tất cả
+            </label>
+            <span style={{ color: 'var(--text-muted)' }}>Đã tick {ticked.length}</span>
+            <button
+              type="button"
+              className="btn"
+              disabled={!ticked.length || bulkBusy}
+              onClick={() => runBulk('active')}
+              title="Gửi các ảnh đã tick cho Veo làm ảnh tham chiếu"
+            >
+              🎬 Bật gen video
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!ticked.length || bulkBusy}
+              onClick={() => runBulk('inactive')}
+              title="Tách các ảnh đã tick khỏi bước gen video"
+            >
+              🚫 Tắt gen video
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={ticked.length !== 1 || bulkBusy}
+              onClick={() => setPreviewImg(ticked[0])}
+              title="Xem phóng to ảnh đã tick (tick đúng 1 ảnh)"
+            >
+              👁 Xem trước
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!ticked.length || bulkBusy}
+              onClick={() => runBulk('delete')}
+              title="Xoá các ảnh đã tick"
+            >
+              🗑 Xoá
+            </button>
+            {bulkBusy && <span>⏳ Đang xử lý...</span>}
+          </div>
+        )}
+        {job.spokespersonImagePaths.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
             {job.spokespersonImagePaths.map((relPath) => {
               const selected = job.selectedRefImagePaths.includes(relPath);
+              const isTicked = ticked.includes(relPath);
               return (
                 <div key={relPath} style={{ position: 'relative', width: 64, height: 64 }}>
+                  <input
+                    type="checkbox"
+                    checked={isTicked}
+                    onChange={(e) =>
+                      setTicked((prev) =>
+                        e.target.checked ? [...prev, relPath] : prev.filter((p) => p !== relPath)
+                      )
+                    }
+                    title="Tick để chạy hành động hàng loạt"
+                    style={{ position: 'absolute', top: -6, left: -6, zIndex: 1, cursor: 'pointer' }}
+                  />
                   <img
                     src={imgSrc(relPath)}
                     alt="Ảnh sản phẩm"
@@ -857,6 +966,29 @@ export function JobImagePanel({
           }}
           onClose={() => setPreviewingBgPrompt(null)}
         />
+      )}
+
+      {previewImg && (
+        <div
+          onClick={() => setPreviewImg(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            background: 'rgba(0,0,0,.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={imgSrc(previewImg)}
+            alt="Xem trước ảnh sản phẩm"
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8 }}
+          />
+        </div>
       )}
     </div>
   );

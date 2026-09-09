@@ -9,6 +9,7 @@
     "chatgpt:login": "tsx scripts/chatgpt-login.ts",
     "check:ai-call-log": "tsx scripts/check-ai-call-log.ts",
     "check:aida-allocation": "tsx scripts/check-aida-allocation.ts",
+    "check:bulk-image-actions": "tsx scripts/check-bulk-image-actions.ts",
     "check:background-ref-legend": "tsx scripts/check-background-ref-legend.ts",
     "check:background-refs": "tsx scripts/check-background-refs.ts",
     "check:background-required": "tsx scripts/check-background-required.ts",
