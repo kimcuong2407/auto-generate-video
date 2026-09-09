@@ -225,6 +225,10 @@ export async function triggerSegmentGeneration(
       }
     );
 
+    console.log(
+      `[flow gen] job=${jobId} seg=${segment.order} → ĐÃ GỬI lên Google, flowJob=${job_id} ` +
+        `project=${usedFlowProjectId} model=${job.veoModel} ${segment.duration}s attempts=${segment.attempts + 1}`
+    );
     await updateJob(jobId, (j) => {
       const f = findSegment(j, segmentId);
       if (!f) return;
@@ -252,6 +256,14 @@ export async function triggerSegmentGeneration(
   } catch (err) {
     const message = err instanceof FlowApiError ? err.message : (err as Error).message;
     const quota = isQuotaError(err);
+    // Log ĐẦY ĐỦ lý do fail: chuỗi sự cố 2026-09-09 lặp 15 lần mà không để lại dấu vết nào,
+    // nên phải suy đoán nguyên nhân từ trạng thái tĩnh trong DB. Kèm code lỗi + attempts để
+    // phân biệt lỗi tạm thời (401/timeout) với lỗi vĩnh viễn (404 model key, thiếu ảnh).
+    console.error(
+      `[flow gen] job=${jobId} seg=${segment.order} → THẤT BẠI` +
+        `${err instanceof FlowApiError && err.code ? ` HTTP ${err.code}` : ''}` +
+        `${quota ? ' (HẾT QUOTA)' : ''} attempts=${segment.attempts} — ${message.slice(0, 300)}`
+    );
     await updateJob(jobId, (j) => {
       const f = findSegment(j, segmentId);
       if (!f) return;

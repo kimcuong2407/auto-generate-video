@@ -45,6 +45,49 @@ function isHardTimedOut(segment: LivestreamSegment): boolean {
   return startedAt > 0 && Date.now() - startedAt > FLOW_JOB_HARD_TIMEOUT_MS;
 }
 
+/** Số phút đoạn đã ở trạng thái hiện tại — dùng cho log; -1 khi thiếu/hỏng lastUpdatedAt. */
+function ageMinutes(segment: LivestreamSegment): number {
+  const startedAt = segment.lastUpdatedAt ? new Date(segment.lastUpdatedAt).getTime() : 0;
+  if (!startedAt || Number.isNaN(startedAt)) return -1;
+  return Math.round(((Date.now() - startedAt) / 60000) * 10) / 10;
+}
+
+/**
+ * Log một dòng cho mỗi lần poll, kèm SỐ LIỆU quyết định (Google trả gì, đã chờ bao lâu,
+ * ngưỡng bao nhiêu) chứ không chỉ "đã xảy ra".
+ *
+ * Vì sao cần: chuỗi sự cố 2026-09-09 tốn nhiều vòng chẩn đoán sai vì không có gì để đọc —
+ * phải đoán từ trạng thái tĩnh trong DB. Có dòng này thì câu hỏi "job chạy bao lâu rồi",
+ * "Google nói gì lúc app bỏ cuộc", "ngưỡng nào đã kích hoạt" trả lời được bằng log.
+ * Cũng là nguồn dữ liệu để chỉnh FLOW_JOB_HARD_TIMEOUT_MS theo thời gian render THẬT.
+ */
+function logPoll(jobId: string, segment: LivestreamSegment, googleStatus: string, note = ''): void {
+  console.log(
+    `[flow poll] job=${jobId} seg=${segment.order} flowJob=${segment.jobId ?? '-'} ` +
+      `google=${googleStatus} tuổi=${ageMinutes(segment)}p ` +
+      `trần=${Math.round(FLOW_JOB_HARD_TIMEOUT_MS / 60000)}p attempts=${segment.attempts}${note ? ` ${note}` : ''}`
+  );
+}
+
+/**
+ * Nhịp log cho đoạn VẪN đang chạy bình thường: poller quay mỗi 15s, log mọi vòng thì một đoạn
+ * 30 phút đẻ ra 120 dòng giống hệt nhau — ồn tới mức che mất dòng thật sự đáng đọc.
+ *
+ * Mốc trạng thái (done/failed/chạm trần/poll lỗi) LUÔN được log, không chịu nhịp này.
+ */
+const POLL_LOG_EVERY_MS = 60_000;
+const lastPollLogAt = new Map<string, number>();
+
+/** Log tiến độ 'đang chạy' theo nhịp — trả true nếu đã log. */
+function logPollThrottled(jobId: string, segment: LivestreamSegment, googleStatus: string): void {
+  const key = `${jobId}:${segment.id}`;
+  const now = Date.now();
+  const last = lastPollLogAt.get(key) ?? 0;
+  if (now - last < POLL_LOG_EVERY_MS) return;
+  lastPollLogAt.set(key, now);
+  logPoll(jobId, segment, googleStatus);
+}
+
 /**
  * Poll 1 segment (đã có jobId) bằng mediaId cũ và ghi kết quả vào chính object `segment`
  * (mutate — caller phải gọi bên trong updateJob). Dùng chung cho:
@@ -96,10 +139,14 @@ export async function syncOneSegment(
       }
       segment.status = 'done';
       segment.error = null;
+      logPoll(jobId, segment, 'done', `→ done sau ${ageMinutes(segment)}p`);
+      lastPollLogAt.delete(`${jobId}:${segment.id}`);
       segment.lastUpdatedAt = new Date().toISOString();
       return { becameDone: true };
     }
     if (jobStatus.status === 'error' || jobStatus.status === 'cancelled') {
+      logPoll(jobId, segment, jobStatus.status, `→ failed (Google báo lỗi: ${jobStatus.error ?? 'không rõ'})`);
+      lastPollLogAt.delete(`${jobId}:${segment.id}`);
       segment.status = 'failed';
       segment.error = jobStatus.error || `Job ${jobStatus.status}`;
       segment.lastUpdatedAt = new Date().toISOString();
@@ -117,9 +164,13 @@ export async function syncOneSegment(
     // thật phía Google). Timeout mềm giờ chỉ còn ý nghĩa cho nhánh catch bên dưới, nơi ta
     // KHÔNG biết Flow đang ra sao.
     if (opts.checkTimeout && isHardTimedOut(segment)) {
+      logPoll(jobId, segment, jobStatus.status, '→ CHẠM TRẦN, bỏ cuộc dù Google vẫn báo đang chạy');
+      lastPollLogAt.delete(`${jobId}:${segment.id}`);
       segment.status = 'failed';
       segment.error = `Timeout: job vẫn 'running' sau ${Math.round(FLOW_JOB_HARD_TIMEOUT_MS / 60000)} phút — nhiều khả năng kẹt phía Google`;
       segment.lastUpdatedAt = new Date().toISOString();
+    } else {
+      logPollThrottled(jobId, segment, jobStatus.status);
     }
     // Flow còn chạy → giữ 'generating', chờ lần poll sau
     return { becameDone: false };
@@ -128,7 +179,15 @@ export async function syncOneSegment(
     // 'failed' nếu đã quá hạn — chưa quá thì giữ 'generating' để lần sau thử lại,
     // không kẹt vô hạn cũng không giết oan.
     segment.error = `Poll lỗi tạm thời: ${(err as Error).message}`;
-    if (opts.checkTimeout && isTimedOut(segment)) {
+    // Nhánh này KHÔNG biết Flow đang ra sao (poll hỏng) → vẫn dùng timeout mềm như cũ.
+    const timedOut = opts.checkTimeout && isTimedOut(segment);
+    logPoll(
+      jobId,
+      segment,
+      'POLL-LỖI',
+      `${(err as Error).message.slice(0, 120)}${timedOut ? ' → quá timeout mềm, bỏ cuộc' : ' → giữ generating, thử lại vòng sau'}`
+    );
+    if (timedOut) {
       segment.status = 'failed';
       segment.error = 'Timeout: chờ job quá lâu';
       segment.lastUpdatedAt = new Date().toISOString();

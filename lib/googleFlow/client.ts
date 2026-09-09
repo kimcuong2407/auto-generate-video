@@ -171,7 +171,9 @@ export function setCredsPersister(fn: (creds: BatchExecuteCreds) => void): void 
  */
 async function tryRefreshCreds(creds: BatchExecuteCreds): Promise<BatchExecuteCreds | null> {
   try {
+    console.warn('[flow auth] gặp 401 → thử làm mới OSID qua chu trình SetOSID');
     const r = await refreshOsid(creds.cookie, creds.origin);
+    console.log(`[flow auth] làm mới OSID THÀNH CÔNG (bl=${r.bl ?? '-'}) → gọi lại RPC`);
     const next: BatchExecuteCreds = {
       ...creds,
       cookie: r.cookie,
@@ -181,7 +183,10 @@ async function tryRefreshCreds(creds: BatchExecuteCreds): Promise<BatchExecuteCr
     };
     persistRefreshedCreds?.(next);
     return next;
-  } catch {
+  } catch (err) {
+    // Nuốt lỗi (caller báo 401 gốc) nhưng PHẢI log: không log thì việc làm mới hỏng trông
+    // y hệt cookie hết hạn thật, và đó chính là kiểu nhầm lẫn đã tốn nhiều vòng chẩn đoán.
+    console.error(`[flow auth] làm mới OSID THẤT BẠI: ${(err as Error).message.slice(0, 200)}`);
     return null;
   }
 }

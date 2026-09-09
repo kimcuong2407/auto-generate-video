@@ -18,9 +18,14 @@ export const FLOW_JOB_TIMEOUT_MS = Number(process.env.FLOW_JOB_TIMEOUT_MS || 15 
  *
  * XÁC MINH 2026-09-09: Veo tier low_priority render lâu hơn 15 phút là bình thường, nên timeout
  * mềm KHÔNG được dùng để giết job đang chạy (xem ghi chú tại segmentSync.syncOneSegment).
+ *
+ * 30 phút = gấp đôi timeout mềm cũ (mốc đã chứng minh là giết oan). CHƯA có số đo thời gian
+ * render thật của tier low_priority để chọn chính xác hơn — log '[flow poll]' ở segmentSync ghi
+ * lại tuổi job mỗi vòng poll, đủ vài job done là chỉnh lại con số này theo dữ liệu thật thay
+ * vì phỏng đoán.
  */
 export const FLOW_JOB_HARD_TIMEOUT_MS = Number(
-  process.env.FLOW_JOB_HARD_TIMEOUT_MS || 2 * 60 * 60 * 1000
+  process.env.FLOW_JOB_HARD_TIMEOUT_MS || 30 * 60 * 1000
 );
 /**
  * Số lần tự động thử lại tối đa cho 1 đoạn video bị lỗi, tính theo `segment.attempts`.

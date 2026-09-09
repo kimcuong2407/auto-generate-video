@@ -22,10 +22,14 @@ const seg = (lastUpdatedAt: string): LivestreamSegment =>
   ({ id: 'seg-01', status: 'generating', jobId: 'op-1', lastUpdatedAt } as LivestreamSegment);
 
 // --- Trần tuyệt đối phải NỚI HƠN timeout mềm, nếu không việc tách hai khái niệm là vô nghĩa.
+//
+// Đây là ràng buộc chặn tái phát bug gốc: hạ trần xuống <= 15 phút là quay lại đúng hành vi
+// giết job mà Google vẫn báo 'running'. Trần có thể chỉnh theo dữ liệu log, nhưng không được
+// chỉnh xuống dưới mốc này.
 {
   assert.ok(
     FLOW_JOB_HARD_TIMEOUT_MS > FLOW_JOB_TIMEOUT_MS,
-    'trần tuyệt đối phải lớn hơn timeout mềm'
+    `trần tuyệt đối (${FLOW_JOB_HARD_TIMEOUT_MS}ms) phải lớn hơn timeout mềm (${FLOW_JOB_TIMEOUT_MS}ms)`
   );
 }
 
