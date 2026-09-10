@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useStatusBanner } from '@/components/StatusBanner';
 import type { Project } from '@/lib/types';
 
 function logClass(line: string): string {
@@ -23,7 +24,9 @@ export function ConcatStep({
   onRefresh: () => Promise<void>;
 }) {
   const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Lỗi hiện ở BĂNG HEADER cố định (không trôi khi cuộn) — xem components/StatusBanner.tsx.
+  const { show: showBanner } = useStatusBanner();
+  const setError = useCallback((msg: string | null) => showBanner(msg, 'error'), [showBanner]);
   const [savingSettings, setSavingSettings] = useState(false);
 
   async function handleToggleBurnText(checked: boolean) {
@@ -128,7 +131,6 @@ export function ConcatStep({
         </span>
       </div>
 
-      {error && <div className="banner">{error}</div>}
       {concat.error && <div className="banner">{concat.error}</div>}
 
       {concat.log.length > 0 && (

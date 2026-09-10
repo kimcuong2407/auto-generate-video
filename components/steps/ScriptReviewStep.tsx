@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useStatusBanner } from '@/components/StatusBanner';
 import type { Project, Scene } from '@/lib/types';
 import { ScriptEvaluationPanel } from './ScriptEvaluationPanel';
 import { SCRIPT_ANGLES } from '@/lib/scriptAngles';
@@ -50,7 +51,9 @@ export function ScriptReviewStep({
   const [saving, setSaving] = useState(false);
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Lỗi hiện ở BĂNG HEADER cố định (không trôi khi cuộn) — xem components/StatusBanner.tsx.
+  const { show: showBanner } = useStatusBanner();
+  const setError = useCallback((msg: string | null) => showBanner(msg, 'error'), [showBanner]);
   const [scriptAngleId, setScriptAngleId] = useState<string | null>(project.scriptAngleId);
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   const dragIndexRef = useRef<number | null>(null);
@@ -398,7 +401,6 @@ export function ScriptReviewStep({
         + Thêm cảnh
       </button>
 
-      {error && <div className="banner">{error}</div>}
       {generatingDraft && (
         <div className="banner banner-info">⏳ {progressMessage || 'AI đang viết kịch bản...'}</div>
       )}

@@ -12,6 +12,7 @@ import { GenerateStep } from '@/components/steps/GenerateStep';
 import { DownloadStep } from '@/components/steps/DownloadStep';
 import { ConcatStep } from '@/components/steps/ConcatStep';
 import { ReviewPromptPanel } from '@/components/steps/ReviewPromptPanel';
+import { StatusBannerProvider, StatusBannerSlot } from '@/components/StatusBanner';
 
 export default function ProjectPage({ params }: { params: { id: string } }) {
   const { project, loading, error, refresh } = useProjectPolling(params.id);
@@ -28,10 +29,13 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <>
+    <StatusBannerProvider resetKey={currentStep}>
       <Sidebar project={project} currentStep={currentStep} onStepClick={setCurrentStep} />
       <main>
         <Topbar project={project} onRefresh={refresh} />
+        {/* Ngay dưới Topbar và NGOÀI .content: chỉ .content cuộn, đặt trong đó là banner trôi
+            khỏi màn hình khi Mr.D cuộn xuống danh sách cảnh. */}
+        <StatusBannerSlot />
         <div className="content">
           {currentStep === 1 && (
             <>
@@ -47,6 +51,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           {currentStep === PROMPT_STEP_NUM && <ReviewPromptPanel projectId={project.id} />}
         </div>
       </main>
-    </>
+    </StatusBannerProvider>
   );
 }

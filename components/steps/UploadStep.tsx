@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useStatusBanner } from '@/components/StatusBanner';
 import { useRouter } from 'next/navigation';
 import defaultTemplate from '@/public/default-template.json';
 import type { Project } from '@/lib/types';
@@ -63,7 +64,9 @@ export function UploadStep({
   );
   const [product, setProduct] = useState(productToFormState(project?.product));
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Lỗi hiện ở BĂNG HEADER cố định (không trôi khi cuộn) — xem components/StatusBanner.tsx.
+  const { show: showBanner } = useStatusBanner();
+  const setError = useCallback((msg: string | null) => showBanner(msg, 'error'), [showBanner]);
   const [confirmRemoved, setConfirmRemoved] = useState<string[] | null>(null);
   const [analyzingImages, setAnalyzingImages] = useState(false);
   const [visionError, setVisionError] = useState<string | null>(null);
@@ -443,7 +446,6 @@ export function UploadStep({
         {visionError && <div className="banner">{visionError}</div>}
       </div>
 
-      {error && <div className="banner">{error}</div>}
 
       {confirmRemoved && (
         <div className="banner">

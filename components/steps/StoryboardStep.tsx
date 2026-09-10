@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { Project, StoryboardImage, StoryboardStatus } from '@/lib/types';
 import { MediaModal } from '@/components/MediaModal';
 import { IMAGE_MODEL_OPTIONS, defaultProductReferenceImage } from '@/lib/imageModels';
 import { runStoryboardBatchSSE, type BatchStreamEvent } from '@/lib/client/storyboardBatch';
+import { useStatusBanner } from '@/components/StatusBanner';
 
 function statusClass(s: StoryboardStatus): string {
   return (
@@ -247,7 +248,10 @@ export function StoryboardStep({
   const [busyBackgroundSceneId, setBusyBackgroundSceneId] = useState<string | null>(null);
   const [busyBackgroundAll, setBusyBackgroundAll] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Lỗi/lý-do hiện ở BĂNG HEADER (cố định, không trôi khi cuộn) thay vì banner trong card —
+  // xem components/StatusBanner.tsx.
+  const { show: showBanner } = useStatusBanner();
+  const setError = useCallback((msg: string | null) => showBanner(msg, 'error'), [showBanner]);
   /**
    * Dòng trạng thái realtime của loạt gen đang chạy, dựng từ SSE.
    *
@@ -669,15 +673,6 @@ export function StoryboardStep({
           ✓ Xong → Gen video
         </button>
       </div>
-
-      {/* Banner lỗi/lý-do đặt NGAY DƯỚI hàng nút, không phải cuối trang: trước đây nó nằm sau cả
-          danh sách 7 cảnh nên bấm nút xong thông báo hiện ngoài màn hình — nhìn hệt như nút không
-          phản hồi. Đúng ca "bấm gen background tất cả nhưng không có gì xảy ra". */}
-      {error && (
-        <div className="banner banner-error" style={{ marginTop: 10 }}>
-          {error}
-        </div>
-      )}
 
 
       <div className="banner banner-info">
