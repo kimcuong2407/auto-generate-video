@@ -1,0 +1,132 @@
+/**
+ * Soát ràng buộc CỨNG của veoPrompt sau khi AI sinh kịch bản — thuần, không I/O.
+ *
+ * Vì sao cần: system prompt ở app/api/projects/[id]/script/generate/route.ts dặn rất nhiều ràng
+ * buộc bắt buộc (cú pháp colon chống phụ đề, câu "Âm thanh:", mô tả giọng/nhân vật giống hệt mọi
+ * cảnh, ưu tiên tuyệt đối cho mô tả ảnh thật). Nhưng chúng chỉ được DẶN, không ai KIỂM LẠI. Model
+ * quên hoặc mâu thuẫn một cái thì không có tín hiệu nào — chỉ lộ ra sau khi đã đốt lượt Veo.
+ *
+ * Đo trên dữ liệu thật (project hop-dung-do-nha-bep-...-2fa916, 7 cảnh) cho thấy các ràng buộc
+ * hình thức (colon, "Âm thanh:", đuôi Technical, nhất quán giọng/nhân vật) model làm ĐÚNG 7/7 —
+ * nên kiểm chúng gần như không bắt được gì, nhưng vẫn giữ vì đó là hồi quy đắt: mất cú pháp colon
+ * là Veo tự vẽ phụ đề đè lên video.
+ *
+ * Cái THẬT SỰ bắt được lỗi là mâu thuẫn nguồn sự thật: vision đọc ảnh ra "mèo", tên listing Shopee
+ * ghi "Gấu", veoPrompt né sang "hình thú" nhưng LỜI THOẠI vẫn nói "hình gấu" ở 3/7 cảnh. Prompt
+ * bảo visualDescription là "ƯU TIÊN TUYỆT ĐỐI" mà không có gì cưỡng chế.
+ *
+ * Chỉ BÁO CÁO, không tự sửa: đây là dữ liệu cho bước chấm điểm và cho UI cảnh báo.
+ */
+import type { Scene, Project } from '../types';
+
+export type AuditSeverity = 'error' | 'warn';
+
+export interface AuditFinding {
+  /** Khoá ổn định để UI/self-check bám vào, không phụ thuộc câu chữ tiếng Việt. */
+  code: string;
+  severity: AuditSeverity;
+  /** '' = vi phạm ở cấp toàn kịch bản, không thuộc cảnh nào. */
+  sceneId: string;
+  message: string;
+}
+
+/** Đuôi bắt buộc chặn Veo tự sinh phụ đề — xem (7) Technical trong BASE_SYSTEM_PROMPT. */
+const NO_SUBTITLE = 'không phụ đề';
+
+/**
+ * Danh từ chỉ con vật/hình dáng chủ thể sản phẩm.
+ *
+ * Vì sao cần: nguồn sự thật về hình dáng là ẢNH THẬT (visualDescription do vision đọc). Tên trên
+ * listing sàn TMĐT thường sai/khác (người bán đặt tên cho dễ bán). Khi hai nguồn nói hai con vật
+ * khác nhau mà lời thoại đọc theo tên listing, video sẽ nói sai thứ người xem đang nhìn thấy.
+ */
+const CREATURE_WORDS = ['gấu', 'mèo', 'thỏ', 'heo', 'lợn', 'cún', 'chó', 'vịt', 'cừu', 'hổ', 'voi', 'khủng long'];
+
+function findCreatures(text: string): string[] {
+  const lower = text.toLowerCase();
+  return CREATURE_WORDS.filter((w) => new RegExp(`\\b${w}\\b`, 'i').test(lower));
+}
+
+/** Mô tả giọng đã chốt, trích từ cú pháp colon. null = cảnh không có thoại hoặc sai cú pháp. */
+export function extractVoiceDescription(veoPrompt: string): string | null {
+  const m = veoPrompt.match(/Người này có (.*?), nói tiếng Việt/s);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Soát toàn bộ kịch bản. Trả mảng rỗng = không phát hiện vi phạm nào.
+ *
+ * `project` chỉ dùng để lấy nguồn sự thật về sản phẩm (visualDescription + name); truyền phần tối
+ * thiểu để hàm test được mà không cần dựng cả Project.
+ */
+export function auditVeoPrompts(
+  scenes: Scene[],
+  product: Pick<Project['product'], 'name' | 'visualDescription'>
+): AuditFinding[] {
+  const out: AuditFinding[] = [];
+  const add = (code: string, severity: AuditSeverity, sceneId: string, message: string) =>
+    out.push({ code, severity, sceneId, message });
+
+  for (const s of scenes) {
+    const p = s.veoPrompt;
+    if (!p.trim()) {
+      add('empty_prompt', 'error', s.id, 'Cảnh chưa có veoPrompt — không gen video được');
+      continue;
+    }
+
+    if (!p.toLowerCase().includes(NO_SUBTITLE)) {
+      add('missing_no_subtitle', 'error', s.id, 'Thiếu "không phụ đề" — Veo sẽ tự vẽ phụ đề đè lên video');
+    }
+    if (!/Âm thanh:/.test(p)) {
+      add('missing_audio', 'warn', s.id, 'Thiếu câu "Âm thanh:" — Veo dễ tự bịa âm thanh sai bối cảnh');
+    }
+
+    // Cảnh có thoại: cú pháp colon là thứ chặn Veo sinh phụ đề, và lời thoại phải vào NGUYÊN VĂN.
+    if (s.voiceoverVi.trim()) {
+      if (!/nói rằng:\s*"/.test(p)) {
+        add('missing_colon_syntax', 'error', s.id, 'Thiếu cú pháp `nói rằng: "..."` — dễ kích hoạt phụ đề tự sinh');
+      }
+      if (!p.includes(s.voiceoverVi.trim())) {
+        add('voiceover_not_verbatim', 'error', s.id, 'Lời thoại trong veoPrompt không khớp NGUYÊN VĂN voiceoverVi');
+      }
+    }
+  }
+
+  // --- Nhất quán xuyên cảnh: Veo không nhớ cảnh trước, chỉ lặp lại y hệt mới ra cùng giọng/người ---
+  const voices = new Set(
+    scenes.filter((s) => s.voiceoverVi.trim()).map((s) => extractVoiceDescription(s.veoPrompt)).filter(Boolean)
+  );
+  if (voices.size > 1) {
+    add('voice_inconsistent', 'error', '', `Có ${voices.size} bản mô tả giọng khác nhau — giọng sẽ đổi giữa các cảnh`);
+  }
+
+  // --- Nguồn sự thật về sản phẩm: ảnh thật thắng tên listing ---
+  const fromImage = findCreatures(product.visualDescription);
+  const fromName = findCreatures(product.name);
+  const conflict = fromName.filter((w) => !fromImage.includes(w));
+  if (fromImage.length > 0 && conflict.length > 0) {
+    add(
+      'product_identity_conflict',
+      'error',
+      '',
+      `Ảnh thật cho thấy "${fromImage.join('/')}" nhưng tên sản phẩm ghi "${conflict.join('/')}" — ảnh là nguồn đúng`
+    );
+    // Lời thoại đọc theo tên listing thì người xem nghe một đằng, nhìn một nẻo.
+    for (const s of scenes) {
+      const said = findCreatures(s.voiceoverVi).filter((w) => conflict.includes(w));
+      if (said.length > 0) {
+        add('voiceover_wrong_creature', 'error', s.id, `Lời thoại nói "${said.join('/')}" trong khi ảnh thật là "${fromImage.join('/')}"`);
+      }
+    }
+  }
+
+  return out;
+}
+
+/** Gộp kết quả thành 1 dòng cho UI/log. */
+export function summarizeAudit(findings: AuditFinding[]): string {
+  if (findings.length === 0) return 'Không phát hiện vi phạm ràng buộc nào';
+  const errors = findings.filter((f) => f.severity === 'error').length;
+  const warns = findings.length - errors;
+  return `${errors} lỗi${warns > 0 ? `, ${warns} cảnh báo` : ''}`;
+}

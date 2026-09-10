@@ -101,6 +101,25 @@ Với mỗi cảnh tự thiết kế, xác định:
   (2) Action — hành động/cử chỉ/micro-expression cụ thể đang diễn ra; với cảnh thứ 2 trở đi,
       câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/vị trí/hành động kết thúc
       của cảnh ngay trước (xem chỉ dẫn image-to-video chaining ở trên).
+      TƯ DUY "SỬA ẢNH" CHO CẢNH THỨ 2 TRỞ ĐI (rất quan trọng — đọc kỹ):
+      Từ cảnh 2, Veo KHÔNG vẽ lại cảnh từ con số 0. Nó nhận một KHUNG HÌNH CÓ SẴN (khung cuối
+      cảnh trước) và chỉ diễn tiếp từ đó. Nghĩa là veoPrompt của cảnh 2+ không phải bản mô tả
+      một cảnh mới, mà là chỉ dẫn "từ khung đang có, GIỮ gì và ĐỔI gì".
+      - MẶC ĐỊNH LÀ GIỮ: mọi thứ không được nhắc tới đều giữ nguyên như khung trước — người,
+        trang phục, sản phẩm, bối cảnh, ánh sáng. KHÔNG cần và KHÔNG nên mô tả lại chúng như
+        thể lần đầu xuất hiện.
+      - CHỈ NÊU CÁI ĐỔI: hành động mới, hướng nhìn mới, góc máy/cỡ cảnh mới, vật mới được đưa
+        vào khung. Đây mới là phần Veo cần biết.
+      - Câu ĐẦU TIÊN của veoPrompt cảnh 2+ phải bắt đầu bằng phần tiếp nối, mô tả rõ tư thế
+        tay/vị trí đang có ở khung trước rồi mới tới động tác mới, VD "tiếp nối trực tiếp từ tư
+        thế tay phải đang đặt trên nắp hộp, cô xoay nhẹ cổ tay mở nắp ra".
+      - TUYỆT ĐỐI KHÔNG mô tả quan hệ giữa những thứ mà khung trước KHÔNG hề có. Cảnh trước kết
+        thúc ở đâu thì cảnh này bắt đầu đúng ở đó; đừng giả định trong khung đã có sẵn vật/người
+        mà kịch bản chưa từng đưa vào. Mô tả sai thứ đang có trong khung là nguyên nhân khiến
+        Veo vẽ đè lung tung hoặc nhân bản thêm vật/tay thừa.
+      - Vẫn PHẢI nhắc lại nguyên văn mô tả nhân vật và mô tả giọng đã chốt (Bước 1.b, 1.c) —
+        ràng buộc đó phục vụ việc khác (Veo không nhớ giữa các lượt gen), không mâu thuẫn với
+        nguyên tắc mặc-định-giữ ở đây.
       RÀNG BUỘC TAY/CHÂN (bắt buộc, áp dụng mọi cảnh có người):
       - Mỗi người CHỈ có đúng 2 tay và 2 chân. TUYỆT ĐỐI KHÔNG mô tả người cầm/giữ/nắm cùng lúc
         nhiều vật bằng quá 2 tay, KHÔNG để 1 vật được nhiều hơn 2 tay giữ, KHÔNG mô tả thao tác

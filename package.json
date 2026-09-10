@@ -64,6 +64,7 @@
     "check:step-run-routes": "tsx scripts/check-step-run-routes.ts",
     "check:subject-anchor": "tsx scripts/check-subject-anchor.ts",
     "check:token-retry": "tsx scripts/check-token-retry.ts",
+    "check:veo-prompt-audit": "tsx scripts/check-veo-prompt-audit.ts",
     "check:video-inputs": "tsx scripts/check-video-inputs.ts",
     "check:vision-image-mime": "tsx scripts/check-vision-image-mime.ts",
     "check:voiceover-length": "tsx scripts/check-voiceover-length.ts",
