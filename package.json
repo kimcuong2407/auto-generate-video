@@ -10,6 +10,7 @@
     "check:ai-call-log": "tsx scripts/check-ai-call-log.ts",
     "check:ai-log-scope": "tsx scripts/check-ai-log-scope.ts",
     "check:aida-allocation": "tsx scripts/check-aida-allocation.ts",
+    "check:aspect-consistency": "tsx scripts/check-aspect-consistency.ts",
     "check:background-ref-legend": "tsx scripts/check-background-ref-legend.ts",
     "check:background-refs": "tsx scripts/check-background-refs.ts",
     "check:background-required": "tsx scripts/check-background-required.ts",

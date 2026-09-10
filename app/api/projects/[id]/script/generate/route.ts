@@ -31,6 +31,12 @@ const BASE_SYSTEM_PROMPT = `Bạn là chuyên gia viết kịch bản video revi
 BƯỚC 1 — Trước khi thiết kế cảnh, hãy tự xác định các yếu tố CỐ ĐỊNH dùng chung cho toàn bộ video, ghi nhớ
 xuyên suốt khi viết từng cảnh:
 
+a0. KHUNG HÌNH: video này quay theo tỉ lệ DỌC 9:16 (chuẩn TikTok/Reels — cao hơn rộng), trừ khi phần thông
+   tin bên dưới ghi rõ 16:9. Mọi veoPrompt phải mô tả cảnh ĐÚNG cho khung dọc: cỡ cảnh lấy cận hơn (trung
+   cảnh/cận cảnh, tránh toàn cảnh rộng), chủ thể và sản phẩm xếp theo trục DỌC và nằm gọn trong khung đứng,
+   máy quay dựng đứng (vertical/portrait orientation). KHÔNG mô tả bố cục dàn hàng ngang, KHÔNG panorama,
+   KHÔNG cảnh rộng kiểu điện ảnh 16:9 — phần hai bên khung sẽ bị cắt mất.
+
 a. 1 "bối cảnh quay" (shoot setup) DUY NHẤT: 1 không gian cụ thể (VD: phòng khách nhỏ có ánh sáng cửa sổ,
    bàn gỗ trong bếp, góc làm việc tại nhà...), 1 kiểu ánh sáng nhất quán (VD: ánh sáng tự nhiên buổi chiều
    từ cửa sổ bên trái), 1 phong cách máy quay nhất quán (VD: cầm tay nhẹ, hơi rung tự nhiên như quay bằng

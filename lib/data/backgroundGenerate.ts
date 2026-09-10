@@ -45,9 +45,10 @@ export async function triggerBackgroundGeneration(
       model: project.storyboard.backgroundModel,
       projectId: flowProjectId,
       projectTitle: project.name,
-      // Cùng lý do với storyboardGenerate.ts: ảnh background luôn khung ngang 16:9,
-      // không phụ thuộc aspectRatio video của project.
-      aspect: '16:9',
+      // Ảnh background là khung tham chiếu cho chính video của project nên phải CÙNG tỉ lệ
+      // với video. Trước đây hard-code '16:9' (tàn dư thời prompt còn vẽ lưới 8 ô) trong khi
+      // BACKGROUND_SYSTEM_PROMPT lại yêu cầu "Khung dọc" → code và prompt đá nhau, ảnh ra ngang.
+      aspect: project.aspectRatio,
     });
     const generatedPath = result.paths[0];
     if (!generatedPath) {

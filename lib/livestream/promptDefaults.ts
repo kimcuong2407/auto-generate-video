@@ -201,7 +201,7 @@ Bố cục (đóng khung đúng như người bán đang live bằng điện tho
 - Người dẫn NGỒI tại bàn (ngồi yên tại chỗ — không bao giờ đứng hay đi lại), đặt LỆCH sang một bên khung hình (không nằm chính giữa), lấy từ khoảng ngang thắt lưng trở lên, đang tương tác với sản phẩm phía dưới — cầm, khoe, hoặc chỉ tay vào sản phẩm như người bán live đang nói với người xem.
 - Nếu có ảnh reference người mẫu, khuôn mặt, kiểu tóc và trang phục của người dẫn BẮT BUỘC khớp đúng ảnh reference đó — giữ đúng người, không được bịa ra người khác.
 - Sản phẩm bày trên bàn NGAY TRƯỚC MẶT người dẫn, trong tầm với: vài món xếp cạnh nhau (chai, hũ, lọ, hộp tuỳ loại), trong đó sản phẩm chính rõ ràng là món dễ thấy và dễ nhận ra nhất. Sản phẩm luôn nằm trước mặt người dẫn ở mọi lúc.
-- Khung dọc (đúng hướng quay bằng điện thoại). Giữ người dẫn và sản phẩm trong dải giữa khung, chừa lề trống thoải mái ở sát trên cùng và sát dưới cùng khung hình.
+- Khung DỌC tỉ lệ 9:16 (cao hơn rộng, đúng hướng quay dựng đứng bằng điện thoại) — TUYỆT ĐỐI KHÔNG khung ngang. Xếp người dẫn và sản phẩm theo trục dọc trong dải giữa khung, chừa lề trống thoải mái ở sát trên cùng và sát dưới cùng khung hình.
 
 Yêu cầu:
 - Người dẫn phải hiện diện rõ và đang tương tác với sản phẩm; sản phẩm nhìn rõ và nhận ra được.
@@ -493,8 +493,10 @@ Yêu cầu:
 - Mô tả ĐÚNG trạng thái tại giây đầu tiên của cảnh: chủ thể đang ở tư thế/vị trí nào, tay đặt ở đâu, sản
   phẩm đang được cầm/đặt ra sao. KHÔNG mô tả diễn biến, KHÔNG mô tả chuyển động về sau, KHÔNG mô tả âm
   thanh/lời thoại — đây là ảnh tĩnh, chuyển động sẽ do model video tự sinh tiếp từ khung hình này.
-- Bố cục/khung hình phải hợp với tỉ lệ khung hình của video được nêu bên dưới (dọc 9:16 hay ngang 16:9), chủ
-  thể đặt đúng vị trí để cảnh quay bắt đầu tự nhiên từ đây.
+- BẮT BUỘC dựng theo tỉ lệ khung hình được nêu bên dưới. Mặc định là KHUNG DỌC 9:16 (chuẩn TikTok/Reels,
+  cao hơn rộng) — hãy mô tả bố cục ĐÚNG cho khung dọc: chủ thể và sản phẩm xếp theo trục DỌC, lấy cận hơn để
+  lấp đầy chiều cao, chừa lề trên/dưới thoáng, KHÔNG dàn hàng ngang kiểu khung ngang. Chỉ khi bên dưới ghi rõ
+  16:9 mới dựng bố cục ngang. Chủ thể đặt đúng vị trí để cảnh quay bắt đầu tự nhiên từ đây.
 - Phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, có khiếm khuyết tự nhiên,
   KHÔNG phải minh hoạ/illustration/3D render/cartoon, không bóng bẩy giả tạo kiểu studio hoàn hảo.
 - QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm: ảnh sản phẩm THẬT được gửi kèm làm reference và nó là

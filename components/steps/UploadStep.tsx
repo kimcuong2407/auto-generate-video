@@ -252,8 +252,8 @@ export function UploadStep({
           </button>
         </div>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-          Áp dụng cho video gen ở Bước 4 và video ghép cuối (Bước 6) — ảnh storyboard ở Bước 3 luôn dùng khung ngang
-          16:9 để vẽ đúng bố cục lưới 8 ô, không phụ thuộc lựa chọn này.
+          Áp dụng cho toàn bộ pipeline: ảnh storyboard + ảnh background (Bước 3), video gen (Bước 4) và
+          video ghép cuối (Bước 6) đều dùng đúng tỉ lệ này.
         </span>
       </div>
 
