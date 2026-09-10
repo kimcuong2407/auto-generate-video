@@ -12,7 +12,7 @@
  * Chạy: npm run check:storyboard-progress
  */
 import assert from 'node:assert/strict';
-import { computeProgress } from '../components/steps/StoryboardStep';
+import { computeProgress, describeNothingToGenerate } from '../components/steps/StoryboardStep';
 import type { StoryboardImage, StoryboardStatus } from '../lib/types';
 
 function img(status: StoryboardStatus, prompt = 'có prompt'): StoryboardImage {
@@ -79,4 +79,47 @@ function img(status: StoryboardStatus, prompt = 'có prompt'): StoryboardImage {
   assert.equal(r.visible, true, 'gen xong rồi vẫn hiện để Mr.D biết loạt vừa chạy đã hoàn tất');
 }
 
-console.log('✅ check-storyboard-progress: 6/6 pass');
+// --- 7. Lý do "không gen được": phải khớp ĐÚNG bộ lọc của route ---
+// Ca thật: 6/7 ảnh background prompt rỗng → route lọc sạch, loạt gen kết thúc ngay, người bấm
+// không nhận được lý do nào ("bấm gen background tất cả nhưng không có gì xảy ra").
+{
+  // Có ít nhất 1 ảnh chạy được → KHÔNG chặn.
+  assert.equal(
+    describeNothingToGenerate('background', [img('idle'), img('idle', '')]),
+    null,
+    'còn ảnh có prompt thì phải cho gen, chặn là chặn nhầm'
+  );
+  assert.equal(
+    describeNothingToGenerate('background', [img('failed'), img('done')]),
+    null,
+    'ảnh failed có prompt vẫn nằm trong loạt gen (route nhận idle|failed)'
+  );
+
+  // Thiếu prompt → nêu đúng số lượng và tên nút cần bấm.
+  const missing = describeNothingToGenerate('background', [
+    img('done'),
+    img('idle', ''),
+    img('idle', '   '),
+  ]);
+  assert.ok(missing, 'toàn ảnh không prompt thì phải chặn kèm lý do');
+  assert.match(missing!, /2\/3/, 'phải nói rõ bao nhiêu ảnh thiếu prompt');
+  assert.match(missing!, /Sinh prompt background/, 'phải chỉ đúng nút cần bấm tiếp');
+
+  // Nút storyboard có nhãn khác — chỉ sai nút là Mr.D đi tìm một nút không tồn tại.
+  const missingSb = describeNothingToGenerate('storyboard', [img('idle', '')]);
+  assert.ok(missingSb && !missingSb.includes('background'), 'loạt storyboard không được chỉ sang nút background');
+
+  // Đã xong hết → nói rõ là xong, không phải lỗi.
+  const allDone = describeNothingToGenerate('background', [img('done'), img('done')]);
+  assert.ok(allDone && /đã gen xong/.test(allDone), 'xong hết thì báo xong, đừng báo như lỗi');
+
+  // Đang chạy dở → bảo chờ, không bảo thiếu prompt.
+  const running = describeNothingToGenerate('background', [img('generating')]);
+  assert.ok(running && /đang gen dở/.test(running), 'ảnh đang chạy thì báo chờ, không báo thiếu prompt');
+
+  // Chưa có ảnh nào (chưa duyệt kịch bản).
+  const empty = describeNothingToGenerate('background', []);
+  assert.ok(empty && /Bước 2/.test(empty), 'chưa có ảnh nào thì chỉ về Bước 2');
+}
+
+console.log('✅ check-storyboard-progress: 7/7 pass');

@@ -70,6 +70,45 @@ export function computeProgress(images: StoryboardImage[]): GenerateProgressStat
   };
 }
 
+/**
+ * Vì sao một loạt gen sẽ KHÔNG chạy được ảnh nào — hoặc null nếu có ít nhất 1 ảnh chạy được.
+ *
+ * Bộ lọc ở đây PHẢI khớp đúng route (`status idle|failed` && `prompt.trim()`, xem
+ * generate-backgrounds/route.ts). Lệch một điều kiện là UI chặn nhầm một loạt gen chạy được,
+ * hoặc thả cho gọi API rồi lại im lặng — đúng bug này.
+ *
+ * Vì sao chặn ở client thay vì để route trả lỗi: route trả stream, "không có gì để gen" là một
+ * loạt rỗng hợp lệ chứ không phải lỗi HTTP. Nói lý do ngay tại chỗ bấm là đường ngắn nhất.
+ */
+export function describeNothingToGenerate(
+  kind: 'storyboard' | 'background',
+  images: StoryboardImage[]
+): string | null {
+  const what = kind === 'background' ? 'ảnh background' : 'ảnh storyboard';
+  if (images.length === 0) return `Chưa có ${what} nào — cần duyệt kịch bản ở Bước 2 trước.`;
+
+  const runnable = images.filter(
+    (i) => (i.status === 'idle' || i.status === 'failed') && i.prompt.trim()
+  );
+  if (runnable.length > 0) return null;
+
+  const missingPrompt = images.filter(
+    (i) => (i.status === 'idle' || i.status === 'failed') && !i.prompt.trim()
+  ).length;
+  const generating = images.filter((i) => i.status === 'generating').length;
+  const done = images.filter((i) => i.status === 'done').length;
+
+  if (generating > 0) {
+    return `${generating} ${what} đang gen dở — chờ xong rồi bấm lại.`;
+  }
+  if (missingPrompt > 0) {
+    const button =
+      kind === 'background' ? '✨ Sinh prompt background tất cả bằng AI' : '✨ Sinh prompt tất cả bằng AI';
+    return `Không gen được: ${missingPrompt}/${images.length} ${what} chưa có prompt (đã xong ${done}). Bấm "${button}" trước, hoặc tự nhập prompt vào ô của từng ảnh.`;
+  }
+  return `Tất cả ${what} đã gen xong (${done}/${images.length}) — không còn gì để gen. Muốn gen lại thì bấm Retry ở từng ảnh.`;
+}
+
 function GenerateProgress({
   label,
   images,
@@ -432,6 +471,10 @@ export function StoryboardStep({
             void onRefresh();
             break;
           case 'done':
+            // Loạt rỗng: GIỮ nguyên câu giải thích của event 'start'. Ghi đè bằng
+            // "Hoàn tất: 0/0 ảnh xong" là xoá mất lý do vì sao không có gì chạy — đúng ca
+            // Mr.D gặp: bấm nút, thấy một dòng vô nghĩa chớp qua, tưởng nút hỏng.
+            if (event.total === 0) break;
             setBatchStatus({
               kind,
               text:
@@ -455,6 +498,11 @@ export function StoryboardStep({
   async function handleGenerateAll() {
     const saved = await saveAllPrompts();
     if (!saved) return;
+    const blocker = describeNothingToGenerate('storyboard', project.storyboard.images);
+    if (blocker) {
+      setError(blocker);
+      return;
+    }
     setBusyAll(true);
     setError(null);
     setBatchStatus(null);
@@ -547,6 +595,13 @@ export function StoryboardStep({
   async function handleGenerateBackgroundAll() {
     const saved = await saveAllPrompts();
     if (!saved) return;
+    // Chặn TRƯỚC khi gọi API: route lọc bỏ ảnh không có prompt nên loạt gen sẽ kết thúc ngay,
+    // và người bấm không nhận được lý do nào. Báo thẳng ở đây, kèm việc cần làm tiếp.
+    const blocker = describeNothingToGenerate('background', project.storyboard.backgrounds);
+    if (blocker) {
+      setError(blocker);
+      return;
+    }
     setBusyBackgroundAll(true);
     setError(null);
     setBatchStatus(null);
@@ -614,6 +669,16 @@ export function StoryboardStep({
           ✓ Xong → Gen video
         </button>
       </div>
+
+      {/* Banner lỗi/lý-do đặt NGAY DƯỚI hàng nút, không phải cuối trang: trước đây nó nằm sau cả
+          danh sách 7 cảnh nên bấm nút xong thông báo hiện ngoài màn hình — nhìn hệt như nút không
+          phản hồi. Đúng ca "bấm gen background tất cả nhưng không có gì xảy ra". */}
+      {error && (
+        <div className="banner banner-error" style={{ marginTop: 10 }}>
+          {error}
+        </div>
+      )}
+
 
       <div className="banner banner-info">
         Mỗi cảnh trong kịch bản đã duyệt ở Bước 2 sẽ có 1 ảnh storyboard tương ứng, sinh qua{' '}
@@ -908,8 +973,6 @@ export function StoryboardStep({
           );
         })}
       </div>
-
-      {error && <div className="banner">{error}</div>}
 
       {previewTarget &&
         (() => {
