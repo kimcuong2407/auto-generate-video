@@ -216,12 +216,14 @@ async function pollJobsOnce() {
       return;
     }
 
-    // Không khởi động được (tab đang chạy job khác) → trả job về bằng cách báo lỗi, để lượt sau
-    // hoặc extension khác nhận. Im lặng thì job kẹt 'running' tới lúc reap.
+    // Không khởi động được → nộp lỗi để job không kẹt 'running' tới lúc reap. Chuyển tiếp cờ
+    // `retryable` của imageJob.js: tab đang bận job khác thì server trả job về hàng đợi
+    // (requeueJob) thay vì đánh hỏng — lượt poll sau chạy tiếp. Lỗi thật thì vẫn fail như cũ.
     if (!started || !started.started) {
       const msg = (started && started.reason) || 'Không khởi động được job trong tab';
-      await postResult(base, { jobId: job.id, error: msg });
-      setStatus('error', msg);
+      const retryable = !!(started && started.retryable);
+      await postResult(base, { jobId: job.id, error: msg, retryable });
+      setStatus(retryable ? 'idle' : 'error', retryable ? 'tab bận, job chờ lượt sau' : msg);
       return;
     }
 

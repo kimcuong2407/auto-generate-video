@@ -96,10 +96,13 @@ async function pollJobsOnce() {
       return;
     }
 
+    // Chuyển tiếp cờ `retryable` của imageJob.js: tab bận job khác thì server trả job về hàng
+    // đợi (requeueJob) thay vì đánh hỏng — giống bản extension-chatgpt.
     if (!started || !started.started) {
       const msg = (started && started.reason) || 'Không khởi động được job trong tab';
-      await postResult(base, { jobId: job.id, error: msg });
-      setStatus('error', msg);
+      const retryable = !!(started && started.retryable);
+      await postResult(base, { jobId: job.id, error: msg, retryable });
+      setStatus(retryable ? 'idle' : 'error', retryable ? 'tab bận, job chờ lượt sau' : msg);
       return;
     }
 

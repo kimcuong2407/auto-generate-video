@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { claimNextJob, finishJob, failJob, readJob, reapStaleJobs } from '@/lib/chatgptImage/jobStore';
+import { claimNextJob, finishJob, failJob, requeueJob, readJob, reapStaleJobs } from '@/lib/chatgptImage/jobStore';
 import { markExtensionPolled } from '@/lib/chatgptImage/extensionPresence';
 import { buildPrompt } from '@/lib/chatgptImage/domScript';
 
@@ -41,6 +41,16 @@ const TMP_DIR = path.join(process.cwd(), 'data', 'tmp', 'chatgpt-image');
 // PHẢI dài hơn trần cứng 20 phút của script trong trang. Ngắn hơn thì reap giết nhầm job đang
 // chạy hợp lệ ở giữa chừng, và người dùng thấy "Job bị bỏ dở" dù tab vẫn đang vẽ.
 const STALE_RUNNING_MS = 25 * 60_000;
+
+/**
+ * Số lượt được trả về hàng đợi vì "tab đang bận" trước khi chịu thua.
+ *
+ * 30 lượt × nhịp poll 1.5s ≈ 45 giây chờ nếu tab rảnh nhanh, nhưng thực tế mỗi lượt chỉ tiêu
+ * khi extension claim được job — tức là đủ cho hàng chục ảnh xếp hàng lần lượt. Đặt trần vì
+ * cờ __chatgptImageBusy trong trang có thể không bao giờ được nhả (tab treo), và khi đó
+ * requeue vô hạn sẽ giấu luôn sự cố.
+ */
+const MAX_REQUEUE_ATTEMPTS = 30;
 
 /** Giãn cách giữa 2 lần reap — poll 1.5s mà lần nào cũng quét bảng thì phí. */
 const REAP_INTERVAL_MS = 60_000;
@@ -137,6 +147,9 @@ export async function POST(req: NextRequest) {
     imageBase64?: string;
     ext?: string;
     error?: string;
+    /** true = job KHÔNG chạy được lúc này nhưng vẫn lành (tab đang bận job khác) — trả về hàng
+     *  đợi chứ đừng đánh hỏng. Xem requeueJob() ở lib/chatgptImage/jobStore.ts. */
+    retryable?: boolean;
   };
 
   const jobId = body.jobId?.trim();
@@ -151,7 +164,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.error || !body.imageBase64) {
-    await failJob(jobId, body.error || 'Extension không trả về ảnh');
+    const reason = body.error || 'Extension không trả về ảnh';
+    // Tab bận job khác là "chưa tới lượt", không phải "hỏng": đánh failed thì gen nhiều ảnh một
+    // lượt chỉ chạy được đúng cái đầu, phần còn lại chết ngay và người dùng phải bấm lại từng
+    // cái. Trả về queued để lượt poll sau (1.5s) nhận lại.
+    if (body.retryable && job.attempts < MAX_REQUEUE_ATTEMPTS) {
+      await requeueJob(jobId, reason);
+      return json({ ok: true, requeued: true, attempts: job.attempts });
+    }
+    if (body.retryable) {
+      // Hết lượt chờ: tab bận suốt nghĩa là có gì đó kẹt thật (cờ __chatgptImageBusy không được
+      // nhả vì trang bị treo/đóng giữa chừng). Requeue tiếp là lặp vô hạn, nên fail và nói rõ
+      // đã thử bao nhiêu lần để lần sau điều tra không phải đoán.
+      await failJob(jobId, `${reason} — đã chờ ${job.attempts} lượt mà tab vẫn bận`);
+      return json({ ok: true });
+    }
+    await failJob(jobId, reason);
     return json({ ok: true });
   }
 

@@ -36,7 +36,9 @@ function runImageJobInPage(job) {
   // Chặn chạy chồng trên cùng tab: SW có thể inject lại khi nó hồi sinh, mà job trước còn đang
   // chạy thì hai vòng poll sẽ tranh nhau DOM và cùng nộp kết quả.
   if (window.__chatgptImageBusy) {
-    return { started: false, reason: 'đang chạy một job khác trong tab này' };
+    // retryable: job vẫn lành, chỉ là tab đang bận — server trả nó về hàng đợi thay vì đánh
+    // hỏng, để lượt poll sau chạy tiếp. Thiếu cờ này thì gen nhiều ảnh một lượt chỉ xong cái đầu.
+    return { started: false, retryable: true, reason: 'đang chạy một job khác trong tab này' };
   }
   window.__chatgptImageBusy = true;
 

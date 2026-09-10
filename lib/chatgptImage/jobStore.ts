@@ -124,6 +124,26 @@ export async function finishJob(id: string, imagePath: string): Promise<void> {
     .where(eq(chatgptImageJobs.id, id));
 }
 
+/**
+ * Trả job đang 'running' về hàng đợi để lượt poll sau nhận lại.
+ *
+ * Vì sao cần, thay vì failJob: tab ChatGPT chỉ chạy được 1 job một lúc (extension-chatgpt/
+ * imageJob.js chặn chạy chồng). Khi gen nhiều ảnh một lượt ("Gen tất cả" ở Bước 3), extension
+ * claim job thứ 2 trong lúc tab còn bận và bị từ chối — đó là "CHƯA tới lượt", không phải
+ * "hỏng". Trước đây nhánh này gọi failJob nên job chết vĩnh viễn: gen 7 ảnh thì 1 chạy, 6 fail
+ * ngay với "đang chạy một job khác trong tab này", người dùng phải bấm lại từng cái.
+ *
+ * Giữ nguyên attempts (claimNextJob đã tăng) để job hỏng thật vẫn đếm được số lần thử, và
+ * KHÔNG đụng startedAt vì job quay lại 'queued' thì mốc bắt đầu cũ không còn nghĩa gì.
+ */
+export async function requeueJob(id: string, reason: string): Promise<void> {
+  const now = nowSql();
+  await getDb()
+    .update(chatgptImageJobs)
+    .set({ status: 'queued', error: reason.slice(0, 2000), startedAt: null, updatedAt: now })
+    .where(and(eq(chatgptImageJobs.id, id), eq(chatgptImageJobs.status, 'running')));
+}
+
 export async function failJob(id: string, error: string): Promise<void> {
   const now = nowSql();
   await getDb()

@@ -31,6 +31,7 @@
     "check:global-veo-model": "tsx scripts/check-global-veo-model.ts",
     "check:host-gender-lock": "tsx scripts/check-host-gender-lock.ts",
     "check:image-aspect": "tsx scripts/check-image-aspect.ts",
+    "check:image-job-requeue": "tsx scripts/check-image-job-requeue.ts",
     "check:image-server-queue": "node scripts/check-image-server-queue.mjs",
     "check:livestream-consistency": "tsx scripts/check-livestream-consistency.ts",
     "check:maria-json": "tsx scripts/check-maria-json.ts",
