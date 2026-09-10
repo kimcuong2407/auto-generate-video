@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useProjectPolling } from '@/hooks/useProjectPolling';
-import { Sidebar, PROMPT_STEP_NUM } from '@/components/Sidebar';
+import { Sidebar } from '@/components/Sidebar';
 import { Topbar } from '@/components/Topbar';
 import { ProjectGuide } from '@/components/steps/ProjectGuide';
 import { UploadStep } from '@/components/steps/UploadStep';
@@ -11,7 +11,6 @@ import { ScriptReviewStep } from '@/components/steps/ScriptReviewStep';
 import { GenerateStep } from '@/components/steps/GenerateStep';
 import { DownloadStep } from '@/components/steps/DownloadStep';
 import { ConcatStep } from '@/components/steps/ConcatStep';
-import { ReviewPromptPanel } from '@/components/steps/ReviewPromptPanel';
 import { StatusBannerProvider, StatusBannerSlot } from '@/components/StatusBanner';
 
 export default function ProjectPage({ params }: { params: { id: string } }) {
@@ -48,7 +47,6 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           {currentStep === 4 && <GenerateStep project={project} onGoStep={setCurrentStep} onRefresh={refresh} />}
           {currentStep === 5 && <DownloadStep project={project} onGoStep={setCurrentStep} onRefresh={refresh} />}
           {currentStep === 6 && <ConcatStep project={project} onGoStep={setCurrentStep} onRefresh={refresh} />}
-          {currentStep === PROMPT_STEP_NUM && <ReviewPromptPanel projectId={project.id} />}
         </div>
       </main>
     </StatusBannerProvider>

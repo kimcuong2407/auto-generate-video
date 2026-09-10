@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReviewPromptPanel, promptKeysForStep } from '@/components/steps/ReviewPromptPanel';
 import { useStatusBanner } from '@/components/StatusBanner';
 import { useRouter } from 'next/navigation';
 import defaultTemplate from '@/public/default-template.json';
@@ -462,6 +463,11 @@ export function UploadStep({
           </div>
         </div>
       )}
+
+      {/* System prompt của chính bước này — sửa prompt và xem kết quả ở cùng chỗ.
+          Chỉ hiện ở chế độ SỬA project: component này cũng dùng làm form tạo mới, lúc đó chưa có
+          project nào để gắn log vào. */}
+      {project && <ReviewPromptPanel projectId={project.id} stepKeys={promptKeysForStep(1)} />}
     </div>
   );
 }

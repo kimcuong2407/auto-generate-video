@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { ReviewPromptPanel, promptKeysForStep } from '@/components/steps/ReviewPromptPanel';
 import { useStatusBanner } from '@/components/StatusBanner';
 import type { Project, Scene } from '@/lib/types';
 import { ScriptEvaluationPanel } from './ScriptEvaluationPanel';
@@ -404,6 +405,9 @@ export function ScriptReviewStep({
       {generatingDraft && (
         <div className="banner banner-info">⏳ {progressMessage || 'AI đang viết kịch bản...'}</div>
       )}
+
+      {/* System prompt của chính bước này — sửa prompt và xem kết quả ở cùng chỗ. */}
+      <ReviewPromptPanel projectId={project.id} stepKeys={promptKeysForStep(2)} />
     </div>
   );
 }

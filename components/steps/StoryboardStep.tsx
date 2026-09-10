@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { ReviewPromptPanel, promptKeysForStep } from '@/components/steps/ReviewPromptPanel';
 import type { Project, StoryboardImage, StoryboardStatus } from '@/lib/types';
 import { MediaModal } from '@/components/MediaModal';
 import { IMAGE_MODEL_OPTIONS, defaultProductReferenceImage } from '@/lib/imageModels';
@@ -1079,6 +1080,9 @@ export function StoryboardStep({
 
       {/* Render sau cùng để modal zoom luôn nổi trên preview khi bấm ảnh từ trong đó. */}
       {modal && <MediaModal kind="image" src={modal.src} alt={modal.alt} onClose={() => setModal(null)} />}
+
+      {/* System prompt của chính bước này — sửa prompt và xem kết quả ở cùng chỗ. */}
+      <ReviewPromptPanel projectId={project.id} stepKeys={promptKeysForStep(3)} />
     </div>
   );
 }
