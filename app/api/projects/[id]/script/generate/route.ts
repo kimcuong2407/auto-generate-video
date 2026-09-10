@@ -5,6 +5,7 @@ import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { findScriptAngle } from '@/lib/scriptAngles';
 import { evaluateScript } from '@/lib/data/veoPromptEvaluate';
+import { withAiCallContext } from '@/lib/ai/callLog';
 import {
   buildSceneFromFields,
   mergeStoryboardWithScript,
@@ -221,7 +222,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       await Promise.all(
         absPaths.map((abs, i) => ensureLocalFile(abs, project.inputs.productImageUrls?.[i]))
       );
-      visualDescription = await extractVisualDescription(absPaths);
+      visualDescription = await extractVisualDescription(absPaths, params.id);
       if (visualDescription) {
         await updateProject(params.id, (p) => {
           p.product.visualDescription = visualDescription;
@@ -288,14 +289,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       };
 
       try {
-        const raw = await generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
-          if (e.type === 'start' || e.type === 'retry') {
-            send(e);
-          }
-          // 'delta'/'error' của chatClient chỉ dùng để log nội bộ — không forward ra
-          // client vì đó là mảnh JSON kịch bản chưa hoàn chỉnh, dễ vỡ khi parse giữa
-          // chừng (xem "Ranh giới dữ liệu gửi ra" trong plan).
-        });
+        const raw = await withAiCallContext({ stepKey: 'script', projectId: params.id }, () =>
+          generateScriptText(systemPrompt, userPrompt, (e: ChatStreamEvent) => {
+            if (e.type === 'start' || e.type === 'retry') {
+              send(e);
+            }
+            // 'delta'/'error' của chatClient chỉ dùng để log nội bộ — không forward ra
+            // client vì đó là mảnh JSON kịch bản chưa hoàn chỉnh, dễ vỡ khi parse giữa
+            // chừng (xem "Ranh giới dữ liệu gửi ra" trong plan).
+          })
+        );
         const jsonText = extractJson(raw);
         const parsed = JSON.parse(jsonText) as {
           scenes: Array<{

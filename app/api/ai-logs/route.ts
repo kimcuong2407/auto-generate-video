@@ -26,9 +26,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const step = req.nextUrl.searchParams.get('step')?.trim() || '';
   const jobSlug = req.nextUrl.searchParams.get('jobSlug')?.trim() || '';
+  // Luồng Video Review dùng cột riêng project_id — xem doc-comment bảng ai_call_logs.
+  const projectId = req.nextUrl.searchParams.get('projectId')?.trim() || '';
   const idParam = req.nextUrl.searchParams.get('id')?.trim() || '';
   // Bỏ `step` = timeline GỘP mọi bước của 1 job (soi cả pipeline một lượt thay vì mở từng bước).
-  const wantTimeline = !step && !!jobSlug;
+  const wantTimeline = !step && (!!jobSlug || !!projectId);
 
   if (!wantTimeline && !isPromptStepKey(step)) {
     return NextResponse.json({ error: `Bước không hợp lệ: ${step}` }, { status: 400 });
@@ -37,9 +39,10 @@ export async function GET(req: NextRequest) {
   if (!DB_ENABLED) return NextResponse.json({ runs: [] });
 
   const db = getDb();
-  const scope = wantTimeline
-    ? eq(aiCallLogs.jobSlug, jobSlug)
-    : and(eq(aiCallLogs.jobSlug, jobSlug), eq(aiCallLogs.stepKey, step));
+  // project_id LUÔN nằm trong WHERE, kể cả khi rỗng: bỏ nó ra thì query của module livestream
+  // (project_id='') sẽ quét luôn log của mọi project review và ngược lại.
+  const owner = and(eq(aiCallLogs.jobSlug, jobSlug), eq(aiCallLogs.projectId, projectId));
+  const scope = wantTimeline ? owner : and(owner, eq(aiCallLogs.stepKey, step));
 
   // --- Chế độ 2: 1 lượt đầy đủ ---
   if (idParam) {

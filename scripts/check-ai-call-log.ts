@@ -86,9 +86,13 @@ async function main(): Promise<void> {
   // string ghép vào prompt gen video) — xem NO_RUN_LOG ở components/prompts/AiCallLogView.tsx.
   const NO_LOG = new Set(['background', 'negative_video']);
 
+  // Quét cả lib/data + app/api/projects: từ khi luồng Video Review cũng ghi log (cột project_id,
+  // migration 0023), bước veo_prompt_eval sống ở lib/data chứ không phải lib/livestream.
   const src = [
     path.join(process.cwd(), 'lib/livestream'),
     path.join(process.cwd(), 'app/api/livestream'),
+    path.join(process.cwd(), 'lib/data'),
+    path.join(process.cwd(), 'app/api/projects'),
   ]
     .map(readAllTs)
     .join('\n');

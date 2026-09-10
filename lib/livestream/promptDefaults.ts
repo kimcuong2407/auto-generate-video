@@ -471,3 +471,38 @@ Trả về DUY NHẤT 1 JSON object hợp lệ, không kèm markdown/giải thí
 {"scores":{"visualCompleteness":0,"consistency":0,"productFidelity":0,"continuity":0},"issues":[{"sceneId":"...","severity":"error|warn","message":"..."}],"summary":"..."}
 
 Trong đó sceneId là id cảnh có vấn đề, hoặc chuỗi rỗng nếu vấn đề ở cấp toàn kịch bản.`;
+
+
+/**
+ * Viết prompt cho ảnh key frame storyboard (luồng Video Review, Bước 3).
+ *
+ * Đặt ở đây thay vì lib/data/storyboardPromptGenerate.ts vì file đó import `node:path` — mà
+ * promptSteps.ts phải THUẦN để client component (/settings/prompts) import trực tiếp được.
+ */
+export const STORYBOARD_PROMPT_SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế key frame (khung hình mở đầu) cho video review sản phẩm ngắn (TikTok/Reels).
+
+Nhiệm vụ: viết 1 prompt tiếng Việt, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
+KHUNG HÌNH DUY NHẤT — chính là khoảnh khắc MỞ ĐẦU của cảnh quay đã chốt.
+
+Ảnh này KHÔNG dùng cho người xem duyệt: nó được nạp thẳng vào model sinh video (Google Veo) làm KHUNG HÌNH
+KHỞI ĐIỂM. Vì vậy nó phải là 1 frame liền lạc như ảnh chụp thật từ máy quay, KHÔNG được là lưới nhiều ô,
+KHÔNG contact sheet, KHÔNG collage, KHÔNG viền/khung phân tách, KHÔNG chia panel, KHÔNG ghép nhiều khoảnh
+khắc vào cùng 1 ảnh.
+
+Yêu cầu:
+- Mô tả ĐÚNG trạng thái tại giây đầu tiên của cảnh: chủ thể đang ở tư thế/vị trí nào, tay đặt ở đâu, sản
+  phẩm đang được cầm/đặt ra sao. KHÔNG mô tả diễn biến, KHÔNG mô tả chuyển động về sau, KHÔNG mô tả âm
+  thanh/lời thoại — đây là ảnh tĩnh, chuyển động sẽ do model video tự sinh tiếp từ khung hình này.
+- Bố cục/khung hình phải hợp với tỉ lệ khung hình của video được nêu bên dưới (dọc 9:16 hay ngang 16:9), chủ
+  thể đặt đúng vị trí để cảnh quay bắt đầu tự nhiên từ đây.
+- Phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, có khiếm khuyết tự nhiên,
+  KHÔNG phải minh hoạ/illustration/3D render/cartoon, không bóng bẩy giả tạo kiểu studio hoàn hảo.
+- QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm: ảnh sản phẩm THẬT được gửi kèm làm reference và nó là
+  nguồn đáng tin cậy DUY NHẤT về hình dáng. Hãy gọi sản phẩm bằng cụm trung tính "đúng sản phẩm trong ảnh reference" kèm tối đa màu tổng thể. TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hay
+  đặc trưng cấu tạo (số lỗ xỏ dây, số nút, số ngăn, kiểu hoa văn đế, loại vân bề mặt, kiểu khớp nối...) —
+  ảnh reference đã thể hiện chính xác hơn mọi câu chữ, mô tả thừa bằng chữ chỉ khiến model vẽ lệch đi so với
+  sản phẩm thật. Chỉ được nêu màu/chất liệu tổng quát nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" bên dưới
+  có nêu, và tuyệt đối không bịa thêm.
+- Bám sát bối cảnh, ánh sáng, góc máy, cỡ cảnh của cảnh quay đã chốt được cung cấp bên dưới.
+- Trả về DUY NHẤT đoạn prompt tiếng Việt, không kèm giải thích, không markdown, không xuống dòng thừa, không
+  bọc trong dấu ngoặc kép.`;

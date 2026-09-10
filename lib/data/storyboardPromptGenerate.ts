@@ -1,39 +1,14 @@
 import path from 'node:path';
 import { readProject, updateProject } from './projectStore';
 import { generateScriptText } from '../googleFlow/flowJobs';
+import { STORYBOARD_PROMPT_SYSTEM_PROMPT as SYSTEM_PROMPT } from '../livestream/promptDefaults';
 import { ChatApiError, chatCompletion } from '../ai/chatClient';
+import { withAiCallContext } from '../ai/callLog';
 import { readImagesAsBase64 } from './productVisionExtract';
 import { projectInputsDir } from '../paths';
 import { ensureLocalFile } from '../r2/client';
 import type { Project, Scene } from '../types';
 
-const SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế key frame (khung hình mở đầu) cho video review sản phẩm ngắn (TikTok/Reels).
-
-Nhiệm vụ: viết 1 prompt tiếng Việt, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
-KHUNG HÌNH DUY NHẤT — chính là khoảnh khắc MỞ ĐẦU của cảnh quay đã chốt.
-
-Ảnh này KHÔNG dùng cho người xem duyệt: nó được nạp thẳng vào model sinh video (Google Veo) làm KHUNG HÌNH
-KHỞI ĐIỂM. Vì vậy nó phải là 1 frame liền lạc như ảnh chụp thật từ máy quay, KHÔNG được là lưới nhiều ô,
-KHÔNG contact sheet, KHÔNG collage, KHÔNG viền/khung phân tách, KHÔNG chia panel, KHÔNG ghép nhiều khoảnh
-khắc vào cùng 1 ảnh.
-
-Yêu cầu:
-- Mô tả ĐÚNG trạng thái tại giây đầu tiên của cảnh: chủ thể đang ở tư thế/vị trí nào, tay đặt ở đâu, sản
-  phẩm đang được cầm/đặt ra sao. KHÔNG mô tả diễn biến, KHÔNG mô tả chuyển động về sau, KHÔNG mô tả âm
-  thanh/lời thoại — đây là ảnh tĩnh, chuyển động sẽ do model video tự sinh tiếp từ khung hình này.
-- Bố cục/khung hình phải hợp với tỉ lệ khung hình của video được nêu bên dưới (dọc 9:16 hay ngang 16:9), chủ
-  thể đặt đúng vị trí để cảnh quay bắt đầu tự nhiên từ đây.
-- Phong cách ảnh photorealistic — chân thực như chụp bằng máy ảnh/điện thoại thật, có khiếm khuyết tự nhiên,
-  KHÔNG phải minh hoạ/illustration/3D render/cartoon, không bóng bẩy giả tạo kiểu studio hoàn hảo.
-- QUAN TRỌNG về hình dạng/màu sắc/chất liệu sản phẩm: ảnh sản phẩm THẬT được gửi kèm làm reference và nó là
-  nguồn đáng tin cậy DUY NHẤT về hình dáng. Hãy gọi sản phẩm bằng cụm trung tính "đúng sản phẩm trong ảnh reference" kèm tối đa màu tổng thể. TUYỆT ĐỐI KHÔNG mô tả lại các chi tiết hình học đếm được hay
-  đặc trưng cấu tạo (số lỗ xỏ dây, số nút, số ngăn, kiểu hoa văn đế, loại vân bề mặt, kiểu khớp nối...) —
-  ảnh reference đã thể hiện chính xác hơn mọi câu chữ, mô tả thừa bằng chữ chỉ khiến model vẽ lệch đi so với
-  sản phẩm thật. Chỉ được nêu màu/chất liệu tổng quát nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" bên dưới
-  có nêu, và tuyệt đối không bịa thêm.
-- Bám sát bối cảnh, ánh sáng, góc máy, cỡ cảnh của cảnh quay đã chốt được cung cấp bên dưới.
-- Trả về DUY NHẤT đoạn prompt tiếng Việt, không kèm giải thích, không markdown, không xuống dòng thừa, không
-  bọc trong dấu ngoặc kép.`;
 
 /**
  * Số ảnh tối đa gửi kèm mỗi lượt viết prompt. Ảnh sản phẩm chiếm phần lớn suất (hình dáng là
@@ -185,12 +160,21 @@ function buildUserPrompt(project: Project, scene: Scene): string {
  * Gọi AI viết prompt. Có ảnh đính kèm thì phải đi qua AI_VISION_MODEL (model chat mặc định
  * không nhìn được ảnh); không có ảnh / chưa cấu hình vision model thì dùng đường text như cũ.
  */
-async function runPromptGeneration(system: string, user: string, refs: RefImageSet): Promise<string> {
+async function runPromptGeneration(
+  system: string,
+  user: string,
+  refs: RefImageSet,
+  projectId: string
+): Promise<string> {
   const visionModel = process.env.AI_VISION_MODEL || '';
-  if (refs.images.length > 0 && visionModel) {
-    return chatCompletion(system, user, { model: visionModel, images: refs.images });
-  }
-  return generateScriptText(system, user);
+  // Bọc CẢ hai nhánh bằng 1 lượt withAiCallContext: đây là hai đường tới cùng một lượt gọi AI,
+  // bọc riêng từng nhánh thì nhánh nào quên là lượt đó rơi khỏi log mà không ai thấy.
+  return withAiCallContext({ stepKey: 'storyboard_prompt', projectId }, () => {
+    if (refs.images.length > 0 && visionModel) {
+      return chatCompletion(system, user, { model: visionModel, images: refs.images });
+    }
+    return generateScriptText(system, user);
+  });
 }
 
 function sanitizePromptText(raw: string): string {
@@ -205,7 +189,8 @@ export async function generateStoryboardPromptText(project: Project, scene: Scen
   const raw = await runPromptGeneration(
     SYSTEM_PROMPT,
     buildUserPrompt(project, scene) + buildImageLegendBlock(refs),
-    refs
+    refs,
+    project.id
   );
   const prompt = sanitizePromptText(raw);
   if (!prompt) {
@@ -291,7 +276,8 @@ export async function generateBackgroundPromptText(scene: Scene, project?: Proje
   const raw = await runPromptGeneration(
     BACKGROUND_SYSTEM_PROMPT,
     buildBackgroundUserPrompt(scene) + buildImageLegendBlock(refs),
-    refs
+    refs,
+    project?.id ?? ''
   );
   const prompt = sanitizePromptText(raw);
   if (!prompt) {

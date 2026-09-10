@@ -8,6 +8,7 @@
     "chatgpt:import": "tsx scripts/chatgpt-import-profile.ts",
     "chatgpt:login": "tsx scripts/chatgpt-login.ts",
     "check:ai-call-log": "tsx scripts/check-ai-call-log.ts",
+    "check:ai-log-scope": "tsx scripts/check-ai-log-scope.ts",
     "check:aida-allocation": "tsx scripts/check-aida-allocation.ts",
     "check:background-ref-legend": "tsx scripts/check-background-ref-legend.ts",
     "check:background-refs": "tsx scripts/check-background-refs.ts",

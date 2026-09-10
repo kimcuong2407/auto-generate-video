@@ -19,6 +19,7 @@ import {
   LIVESTREAM_DEFAULT_NEGATIVE_PROMPT,
   LIVESTREAM_SYSTEM_PROMPT,
   VEO_PROMPT_EVAL_SYSTEM_PROMPT,
+  STORYBOARD_PROMPT_SYSTEM_PROMPT,
 } from './promptDefaults';
 import { LIVESTREAM_V2_SYSTEM_PROMPT, V2_FIELD_EXTRACT_SYSTEM_PROMPT } from './promptDefaultsV2';
 
@@ -122,6 +123,14 @@ export const PROMPT_STEPS = [
     params: 'visual',
   },
   {
+    key: 'storyboard_prompt',
+    label: 'Viết prompt ảnh storyboard (luồng review)',
+    hint: 'Chạy ở Bước 3 luồng Video Review: đọc ảnh sản phẩm + cảnh đã duyệt rồi viết prompt cho model sinh ảnh key frame. Đây là lượt gọi AI TEXT (ra chữ), khác bước "Gen ảnh background" của livestream (ra ảnh).',
+    fallback: STORYBOARD_PROMPT_SYSTEM_PROMPT,
+    perJob: false,
+    params: 'none',
+  },
+  {
     key: 'veo_prompt_eval',
     label: 'Chấm điểm veoPrompt (luồng review)',
     hint: 'Chạy sau khi sinh kịch bản ở luồng Video Review: soi bộ veoPrompt theo 4 chiều rồi cảnh báo TRƯỚC khi tốn lượt Veo. Không tự sửa prompt.',
@@ -152,7 +161,8 @@ export type PromptStepKey =
   | 'shorten'
   | 'background'
   | 'negative_video'
-  | 'veo_prompt_eval';
+  | 'veo_prompt_eval'
+  | 'storyboard_prompt';
 
 const BY_KEY = new Map(PROMPT_STEPS.map((s) => [s.key, s]));
 

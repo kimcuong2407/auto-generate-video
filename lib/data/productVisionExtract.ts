@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { chatCompletion, type ChatImageInput } from '../ai/chatClient';
+import { withAiCallContext } from '../ai/callLog';
 
 /**
  * Đọc ảnh sản phẩm THẬT bằng AI vision để lấy mô tả HÌNH ẢNH chính xác (màu sắc vật lý,
@@ -97,7 +99,11 @@ export async function readImagesAsBase64(absPaths: string[]): Promise<ChatImageI
  *
  * @throws nếu chưa cấu hình AI_VISION_MODEL hoặc không đọc được ảnh nào.
  */
-export async function extractVisualDescription(imageAbsPaths: string[]): Promise<string> {
+export async function extractVisualDescription(
+  imageAbsPaths: string[],
+  /** Id project để gắn nhãn log (ai_call_logs). Bỏ trống = không ghi log lượt này. */
+  projectId = ''
+): Promise<string> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   if (!visionModel) {
     throw new Error(
@@ -117,10 +123,13 @@ export async function extractVisualDescription(imageAbsPaths: string[]): Promise
     throw new Error('Không đọc được ảnh sản phẩm nào để phân tích');
   }
 
-  const raw = await chatCompletion(
-    VISION_SYSTEM_PROMPT,
-    'Nhìn các ảnh và mô tả thị giác sản phẩm theo yêu cầu.',
-    { model: visionModel, images }
+  const raw = await withAiCallContext(
+    { stepKey: 'product_visual', projectId, imagePaths: picked.map((p) => path.basename(p)) },
+    () =>
+      chatCompletion(VISION_SYSTEM_PROMPT, 'Nhìn các ảnh và mô tả thị giác sản phẩm theo yêu cầu.', {
+        model: visionModel,
+        images,
+      })
   );
 
   return raw

@@ -35,7 +35,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   );
 
   try {
-    const visualDescription = await extractVisualDescription(absPaths);
+    const visualDescription = await extractVisualDescription(absPaths, params.id);
     if (!visualDescription) {
       return NextResponse.json({ error: 'AI không trả về mô tả hợp lệ' }, { status: 502 });
     }

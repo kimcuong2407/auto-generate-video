@@ -33,6 +33,13 @@ export interface AiCallContext {
   jobSlug?: string;
   /** Bỏ trống = lượt cấp job (product_visual / product_lock / stage_bible). */
   productId?: string;
+  /**
+   * Id project của luồng Video Review. Bỏ trống = lượt của module livestream (dùng jobSlug).
+   *
+   * Hai luồng dùng 2 cột khác nhau chứ không dùng chung — xem doc-comment cột project_id ở
+   * lib/db/schema/aiCallLogs.ts.
+   */
+  projectId?: string;
   /** Tầng prompt đang thắng, lấy từ PromptSet.scopeOf(step) — có sẵn ở mọi call-site, không tốn query. */
   promptScope?: 'job' | 'global' | 'default';
   /** relPath/tên ảnh gửi kèm. chatCompletion chỉ nhận base64 nên tên ảnh PHẢI đi qua đây. */
@@ -112,6 +119,7 @@ export async function recordAiCall(row: {
   stepKey: PromptStepKey;
   jobSlug: string;
   productId: string;
+  projectId: string;
   model: string;
   promptScope: string;
   systemPrompt: string;
@@ -142,7 +150,7 @@ export async function recordAiCall(row: {
   }
 
   try {
-    await pruneAiCallLogs(row.jobSlug, row.stepKey);
+    await pruneAiCallLogs(row.jobSlug, row.projectId, row.stepKey);
   } catch (err) {
     console.error(`[callLog] cắt tỉa thất bại (${row.stepKey}): ${(err as Error).message}`);
   }
@@ -163,9 +171,20 @@ export async function recordAiCall(row: {
  * tạm giữ hơn KEEP_RUNS một nhịp rồi lần ghi sau cắt tiếp — ngưỡng là MỀM, thứ phải đúng là
  * "không mất lượt gần nhất".
  */
-async function pruneAiCallLogs(jobSlug: string, stepKey: PromptStepKey): Promise<void> {
+async function pruneAiCallLogs(
+  jobSlug: string,
+  projectId: string,
+  stepKey: PromptStepKey
+): Promise<void> {
   const db = getDb();
-  const scope = and(eq(aiCallLogs.jobSlug, jobSlug), eq(aiCallLogs.stepKey, stepKey));
+  // Cắt theo ĐÚNG phạm vi vừa ghi. Bỏ project_id ra khỏi điều kiện thì mọi lượt của luồng review
+  // dồn chung vào nhóm jobSlug='' và cắt lẫn nhau giữa các project khác nhau — vừa mất log, vừa
+  // để nhóm đó phình theo số project. Đây đúng là cái bẫy doc-comment của bảng đã cảnh báo.
+  const scope = and(
+    eq(aiCallLogs.jobSlug, jobSlug),
+    eq(aiCallLogs.projectId, projectId),
+    eq(aiCallLogs.stepKey, stepKey)
+  );
 
   const [cutoff] = await db
     .select({ rowId: aiCallLogs.rowId })
