@@ -30,6 +30,17 @@ export const aiCallLogs = mysqlTable(
     jobSlug: varchar('job_slug', { length: 191 }).notNull(),
     /** '' = lượt cấp job. Bước script/shorten/script_qa chạy theo TỪNG sản phẩm trong 1 vòng lặp. */
     productId: varchar('product_id', { length: 64 }).notNull(),
+    /**
+     * '' = lượt của module livestream (dùng `job_slug`). Khác rỗng = lượt của luồng Video Review,
+     * mang id project.
+     *
+     * Vì sao cột riêng thay vì nhét projectId vào `job_slug`: hai loại id khác không gian tên,
+     * dùng chung một cột thì mọi truy vấn phải mang theo quy ước tiền tố và chỉ cần một chỗ quên
+     * là log hai luồng lẫn vào nhau. Chuỗi rỗng chứ không NULL — cùng lý do đã ghi cho `job_slug`:
+     * `WHERE project_id = ?` không bao giờ match NULL nên cắt tỉa sẽ cần nhánh `IS NULL` riêng, và
+     * nhánh đó rất dễ bị quên → log phình vô hạn mà không ai thấy.
+     */
+    projectId: varchar('project_id', { length: 128 }).notNull().default(''),
     /** Model thực dùng (đã tính cả override vision) — 2 lượt cùng bước có thể khác model. */
     model: varchar('model', { length: 191 }).notNull(),
     /**
@@ -63,5 +74,7 @@ export const aiCallLogs = mysqlTable(
      * và cắt tỉa đều theo row_id (thứ tự ghi THẬT của AUTO_INCREMENT); created_at chỉ để hiển thị.
      */
     lookupIdx: index('ix_ai_call_logs_lookup').on(t.jobSlug, t.stepKey, t.rowId),
+    /** Cùng trục đọc với lookupIdx nhưng cho luồng review: N lượt gần nhất của (project, bước). */
+    projectIdx: index('ix_ai_call_logs_project').on(t.projectId, t.stepKey, t.rowId),
   })
 );

@@ -18,6 +18,7 @@ import {
   BACKGROUND_SYSTEM_PROMPT,
   LIVESTREAM_DEFAULT_NEGATIVE_PROMPT,
   LIVESTREAM_SYSTEM_PROMPT,
+  VEO_PROMPT_EVAL_SYSTEM_PROMPT,
 } from './promptDefaults';
 import { LIVESTREAM_V2_SYSTEM_PROMPT, V2_FIELD_EXTRACT_SYSTEM_PROMPT } from './promptDefaultsV2';
 
@@ -121,6 +122,15 @@ export const PROMPT_STEPS = [
     params: 'visual',
   },
   {
+    key: 'veo_prompt_eval',
+    label: 'Chấm điểm veoPrompt (luồng review)',
+    hint: 'Chạy sau khi sinh kịch bản ở luồng Video Review: soi bộ veoPrompt theo 4 chiều rồi cảnh báo TRƯỚC khi tốn lượt Veo. Không tự sửa prompt.',
+    fallback: VEO_PROMPT_EVAL_SYSTEM_PROMPT,
+    // Luồng review dùng projectId chứ không phải job slug livestream — không có bản riêng theo job.
+    perJob: false,
+    params: 'none',
+  },
+  {
     key: 'negative_video',
     label: 'Negative prompt (gen video)',
     hint: 'Danh sách thứ CẤM xuất hiện trong video, gửi kèm mỗi lượt gen. Xoá sạch ô = tắt hẳn negative prompt.',
@@ -141,7 +151,8 @@ export type PromptStepKey =
   | 'script_qa'
   | 'shorten'
   | 'background'
-  | 'negative_video';
+  | 'negative_video'
+  | 'veo_prompt_eval';
 
 const BY_KEY = new Map(PROMPT_STEPS.map((s) => [s.key, s]));
 

@@ -75,10 +75,30 @@ export interface Scene {
   chainedFromPrevious: boolean;
 }
 
+/** Kết quả chấm điểm veoPrompt — hình dạng khớp lib/data/veoPromptEvaluate.ts. */
+export interface ScriptEvaluation {
+  scores: {
+    visualCompleteness: number;
+    consistency: number;
+    productFidelity: number;
+    continuity: number;
+  };
+  overall: number;
+  issues: { sceneId: string; severity: 'error' | 'warn'; message: string }[];
+  summary: string;
+  audit: { code: string; severity: 'error' | 'warn'; sceneId: string; message: string }[];
+  evaluatedAt: string;
+}
+
 export interface ScriptState {
   totalDuration: number;
   aspectRatio: '9:16' | '16:9';
   scenes: Scene[];
+  /**
+   * Kết quả chấm điểm bộ veoPrompt gần nhất (lib/data/veoPromptEvaluate.ts). Null = chưa chấm.
+   * Lưu trong JSON của project nên không cần cột DB mới.
+   */
+  evaluation: ScriptEvaluation | null;
 }
 
 export type StoryboardStatus = 'idle' | 'generating' | 'done' | 'failed';

@@ -155,6 +155,13 @@
       "when": 1788841876686,
       "tag": "0022_negative_prompt_override_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1788928276686,
+      "tag": "0023_script_evaluation_and_project_log",
+      "breakpoints": true
     }
   ]
 }

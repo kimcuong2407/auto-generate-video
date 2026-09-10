@@ -4,6 +4,7 @@ import { generateScriptText } from '@/lib/googleFlow/flowJobs';
 import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { findScriptAngle } from '@/lib/scriptAngles';
+import { evaluateScript } from '@/lib/data/veoPromptEvaluate';
 import {
   buildSceneFromFields,
   mergeStoryboardWithScript,
@@ -342,6 +343,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
 
         send({ type: 'result', draft, scriptAngleId: angle.id });
+
+        // Chấm điểm bộ prompt vừa sinh, TRƯỚC khi Mr.D bấm gen video (1 lượt Veo hỏng tốn tiền
+        // thật, lượt chấm bằng text rẻ hơn nhiều). Nuốt mọi lỗi: kịch bản đã lưu và đã gửi về
+        // client ở dòng trên rồi — để lỗi chấm điểm làm hỏng nó thì được ít mất nhiều.
+        try {
+          const saved = await readProject(params.id);
+          const evaluation = await evaluateScript(saved);
+          await updateProject(params.id, (p) => {
+            p.script.evaluation = evaluation;
+          });
+          send({ type: 'evaluation', evaluation });
+        } catch (err) {
+          console.warn(`[script-eval] bỏ qua lỗi chấm điểm project ${params.id}: ${(err as Error).message}`);
+        }
       } catch (err) {
         const message =
           err instanceof ChatApiError

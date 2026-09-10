@@ -25,6 +25,7 @@ import type {
   ConcatState,
   FlowStatusCache,
   VeoModel,
+  ScriptEvaluation,
 } from '../../types';
 import { VEO_MODELS } from '../../types';
 import { mariaJson } from './mariaJson';
@@ -66,6 +67,11 @@ export const projects = mysqlTable('projects', {
   // Script meta (totalDuration + aspectRatio) — scenes tách bảng scenes.
   scriptTotalDuration: int('script_total_duration').notNull(),
   scriptAspectRatio: mysqlEnum('script_aspect_ratio', ASPECT_RATIOS).notNull(),
+  /**
+   * Kết quả chấm điểm bộ veoPrompt gần nhất (lib/data/veoPromptEvaluate.ts). NULL = chưa chấm
+   * bao giờ — khác với đã chấm và ra 0 điểm. Nullable vì bảng đã có data khi thêm cột.
+   */
+  scriptEvaluation: mariaJson('script_evaluation').$type<ScriptEvaluation | null>(),
 });
 
 export const scenes = mysqlTable(

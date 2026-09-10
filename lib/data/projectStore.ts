@@ -135,6 +135,8 @@ function assembleProject(
       totalDuration: row.scriptTotalDuration,
       aspectRatio: row.scriptAspectRatio as '9:16' | '16:9',
       scenes: sortedScenes,
+      // Project tạo trước khi có cột này → null nghĩa "chưa chấm bao giờ".
+      evaluation: row.scriptEvaluation ?? null,
     },
     scriptAngleId: row.scriptAngleId,
     music: row.music,
@@ -174,6 +176,7 @@ function projectToRow(project: Project): typeof projects.$inferInsert {
     storyboardUseSpokespersonReference: project.storyboard.useSpokespersonReference,
     scriptTotalDuration: project.script.totalDuration,
     scriptAspectRatio: project.script.aspectRatio,
+    scriptEvaluation: project.script.evaluation,
   };
 }
 

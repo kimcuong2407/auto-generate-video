@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import type { Project, Scene } from '@/lib/types';
+import { ScriptEvaluationPanel } from './ScriptEvaluationPanel';
 import { SCRIPT_ANGLES } from '@/lib/scriptAngles';
 
 type View = 'all' | 'voiceover' | 'prompts';
@@ -251,6 +252,8 @@ export function ScriptReviewStep({
           ✓ Duyệt xong → Storyboard ảnh
         </button>
       </div>
+
+      <ScriptEvaluationPanel project={project} onRefresh={onRefresh} />
 
       <div className="field-group">
         <label>Chọn góc kịch bản (dùng để sinh nháp AI ở bước dưới)</label>

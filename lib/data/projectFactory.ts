@@ -325,6 +325,8 @@ export function createNewProject(params: {
       totalDuration,
       aspectRatio: params.aspectRatio,
       scenes,
+      // Project mới: chưa sinh kịch bản nên chưa có gì để chấm.
+      evaluation: null,
     },
     scriptAngleId: null,
     music: {

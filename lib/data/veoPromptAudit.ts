@@ -21,6 +21,16 @@ import type { Scene, Project } from '../types';
 
 export type AuditSeverity = 'error' | 'warn';
 
+/**
+ * Dưới ngưỡng này thì UI cảnh báo đỏ trước khi cho gen video.
+ *
+ * Đặt ở file THUẦN này (chỉ import type) chứ không ở veoPromptEvaluate.ts: client component
+ * ScriptEvaluationPanel cần đọc nó, mà veoPromptEvaluate kéo theo promptStore/flowJobs/callLog
+ * → node:fs + mysql2. Import từ 'use client' là Next bundle cả cây server-side vào browser và vỡ
+ * build ở fsevents (đã xảy ra thật với planVideoInputs, xem lib/data/videoInputs.ts).
+ */
+export const EVAL_WARN_THRESHOLD = 6;
+
 export interface AuditFinding {
   /** Khoá ổn định để UI/self-check bám vào, không phụ thuộc câu chữ tiếng Việt. */
   code: string;
