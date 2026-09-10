@@ -4,6 +4,7 @@ import { ensureLocalFile } from '../r2/client';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError } from '../googleFlow/errors';
+import { planVideoInputs, MAX_REF_IMAGES } from './videoInputs';
 import type { Project, Scene } from '../types';
 
 export interface TriggerResult {
@@ -13,9 +14,6 @@ export interface TriggerResult {
   error?: string;
 }
 
-/** Tối đa 3 ảnh reference/lần gen — giới hạn cứng của Google Flow r2v (vượt → INVALID_ARGUMENT). */
-const MAX_REF_IMAGES = 3;
-
 /** Tra R2 URL của 1 relPath (ảnh storyboard/sản phẩm/người mẫu/background) để ensureLocalFile khôi phục khi mất local. */
 function findRefImageUrl(project: Project, relPath: string): string | null {
   const storyboardImg = project.storyboard.images.find((img) => img.imagePath === relPath);
@@ -24,48 +22,6 @@ function findRefImageUrl(project: Project, relPath: string): string | null {
   if (productIdx !== -1) return project.inputs.productImageUrls[productIdx] ?? null;
   if (project.inputs.spokespersonImagePath === relPath) return project.inputs.spokespersonImageUrl;
   return project.storyboard.backgrounds.find((b) => b.imagePath === relPath)?.imageUrl ?? null;
-}
-
-export interface VideoInputPlan {
-  /** relPath khung hình khởi điểm (endpoint i2v) — null nghĩa là rơi về r2v với refPaths. */
-  startRelPath: string | null;
-  /** relPath các ảnh reference (endpoint r2v) — chỉ dùng khi không có startRelPath. */
-  refRelPaths: string[];
-  /** startRelPath có thực sự là frame cảnh trước hay không (quyết định cờ chainedFromPrevious). */
-  chained: boolean;
-}
-
-/**
- * Quyết định ảnh đầu vào cho 1 lần gen video (thuần, không I/O — xem test ở cuối file).
- *
- * Khung hình khởi điểm (startImage → endpoint i2v) là tín hiệu MẠNH NHẤT với Veo: model bắt
- * đầu vẽ từ đúng frame đó nên sản phẩm/bối cảnh khớp tuyệt đối. Còn refImages (r2v) chỉ là
- * "asset gợi ý", model tự diễn giải lại hình dáng → dễ lệch so với sản phẩm thật. Vì vậy luôn
- * ưu tiên chọn được 1 startImage:
- *   - Cảnh 2 trở đi có chain: frame cuối cảnh trước → vừa khớp sản phẩm, vừa liền mạch.
- *   - Còn lại: ảnh storyboard key frame của chính cảnh (Bước 3) — đã đúng tỉ lệ khung hình và
- *     là ảnh 1 khung liền lạc (xem storyboardPromptGenerate.ts).
- *
- * generateVideo() ưu tiên endpoint referenceImages bất cứ khi nào refImages không rỗng và ÂM
- * THẦM BỎ QUA startImage — nên khi đã có startRelPath, refRelPaths PHẢI rỗng.
- */
-export function planVideoInputs(project: Project, scene: Scene): VideoInputPlan {
-  const storyboardImage = project.storyboard.images.find((img) => img.sceneId === scene.id);
-  const storyboardRelPath =
-    storyboardImage?.status === 'done' && storyboardImage.imagePath ? storyboardImage.imagePath : null;
-
-  const prevScene = project.script.scenes.find((s) => s.order === scene.order - 1);
-  const chained =
-    project.sceneChaining && scene.order > 1 && prevScene?.status === 'done' && !!prevScene.lastFramePath;
-
-  const startRelPath = chained ? prevScene!.lastFramePath! : storyboardRelPath;
-
-  return {
-    startRelPath,
-    // Không có khung khởi điểm nào → mới dùng r2v với các ảnh người dùng chọn ở Bước 4.
-    refRelPaths: startRelPath ? [] : project.videoRefImagePaths.slice(0, MAX_REF_IMAGES),
-    chained,
-  };
 }
 
 /**

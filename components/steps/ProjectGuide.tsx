@@ -1,6 +1,6 @@
 'use client';
 
-import { planVideoInputs } from '@/lib/data/sceneGenerate';
+import { planVideoInputs } from '@/lib/data/videoInputs';
 import type { Project } from '@/lib/types';
 
 export interface FlowRow {

@@ -9,7 +9,7 @@
  * Chạy: npx tsx scripts/check-video-inputs.ts
  */
 import assert from 'node:assert/strict';
-import { planVideoInputs } from '../lib/data/sceneGenerate';
+import { planVideoInputs } from '../lib/data/videoInputs';
 import type { Project, Scene } from '../lib/types';
 
 function scene(over: Partial<Scene> & { id: string; order: number }): Scene {
