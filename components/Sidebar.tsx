@@ -12,6 +12,13 @@ export const STEP_LABELS = [
   'Ghép video hoàn chỉnh',
 ];
 
+/**
+ * Mục "Prompt AI" nằm NGOÀI STEP_LABELS: mảng đó là 6 bước pipeline, và app/page.tsx dùng nó để
+ * hiện "Bước n/6" cho từng project. Nhét mục này vào mảng sẽ biến nó thành bước thứ 7 của pipeline
+ * trên trang danh sách — sai nghĩa, mà không có lỗi nào báo.
+ */
+export const PROMPT_STEP_NUM = STEP_LABELS.length + 1;
+
 function stepClassName(project: Project, stepNum: number, currentStep: number): string {
   const classes = ['step'];
   if (stepNum === currentStep) classes.push('active');
@@ -69,6 +76,16 @@ export function Sidebar({
             </button>
           );
         })}
+
+        {/* Không phải một bước pipeline — là chỗ sửa system prompt cho các bước ở trên. */}
+        <button
+          className={`step${currentStep === PROMPT_STEP_NUM ? ' active' : ''}`}
+          onClick={() => onStepClick(PROMPT_STEP_NUM)}
+          style={{ marginTop: 10 }}
+          title="Sửa chỉ dẫn hệ thống gửi cho AI ở từng bước"
+        >
+          <span className="step-num">⚙️</span> Prompt AI
+        </button>
       </div>
 
       <div className="project-info">

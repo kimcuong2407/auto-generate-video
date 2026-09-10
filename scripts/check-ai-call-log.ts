@@ -97,16 +97,32 @@ async function main(): Promise<void> {
     .map(readAllTs)
     .join('\n');
 
+  /**
+   * Bước có được bọc log hay không.
+   *
+   * Nhận HAI dạng, vì không phải call-site nào cũng viết key thẳng vào object:
+   *   - `stepKey: 'x'`  — dạng phổ biến, key nằm ngay tại chỗ gọi.
+   *   - `'x' | 'y'` trong khai báo tham số `stepKey:` — call-site dùng chung một hàm bọc log cho
+   *     nhiều bước rồi truyền key vào (runPromptGeneration của luồng review dùng chung cho
+   *     storyboard_prompt và review_background_prompt). Chỉ soi dạng đầu sẽ báo "chưa bọc" cho
+   *     một bước ĐÃ bọc đầy đủ — đúng ca đã fail khi nối luồng Video Review vào registry.
+   */
+  function isLogged(key: string): boolean {
+    if (src.includes(`stepKey: '${key}'`)) return true;
+    // Tham số kiểu union: `stepKey: 'storyboard_prompt' | 'review_background_prompt',`
+    return new RegExp(`stepKey\\??:\\s*(?:'[a-z0-9_]+'\\s*\\|\\s*)*'${key}'\\s*(?:\\||,|\\))`).test(src);
+  }
+
   for (const step of PROMPT_STEPS) {
     if (NO_LOG.has(step.key)) {
       assert.ok(
-        !src.includes(`stepKey: '${step.key}'`),
+        !isLogged(step.key),
         `bước "${step.key}" không có lượt gọi AI text nhưng lại được bọc withAiCallContext`
       );
       continue;
     }
     assert.ok(
-      src.includes(`stepKey: '${step.key}'`),
+      isLogged(step.key),
       `bước "${step.key}" chưa được bọc withAiCallContext — sẽ KHÔNG có log, mục "Lượt chạy gần nhất" hiện trống`
     );
   }

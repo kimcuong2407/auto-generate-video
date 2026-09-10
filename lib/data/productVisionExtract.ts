@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chatCompletion, type ChatImageInput } from '../ai/chatClient';
 import { withAiCallContext } from '../ai/callLog';
+import { loadPromptSet } from '../livestream/promptStore';
 
 /**
  * Đọc ảnh sản phẩm THẬT bằng AI vision để lấy mô tả HÌNH ẢNH chính xác (màu sắc vật lý,
@@ -17,37 +18,6 @@ import { withAiCallContext } from '../ai/callLog';
  * giá/ưu đãi/bối cảnh.
  */
 
-const VISION_SYSTEM_PROMPT = `Bạn là trợ lý mô tả hình ảnh sản phẩm cho khâu dựng video.
-
-Nhiệm vụ: nhìn kỹ các ảnh sản phẩm được cung cấp (đây đều là CÙNG 1 sản phẩm chụp từ nhiều
-góc/biến thể), rồi viết 1 đoạn mô tả THỊ GIÁC súc tích bằng tiếng Việt về ĐÚNG những gì nhìn
-thấy, phục vụ việc mô tả lại sản phẩm khi sinh ảnh/video.
-
-BẮT BUỘC mô tả (chỉ những gì THỰC SỰ nhìn thấy trong ảnh):
-- Màu sắc VẬT LÝ chính xác của từng bộ phận (VD: cán màu trắng, đầu cọ lông màu vàng kem).
-- Chất liệu bề mặt (nhựa bóng/mờ, kim loại, vải, silicon, lông mềm...).
-- Hình dạng, cấu tạo, các bộ phận tách rời, tỉ lệ/kích thước tương đối giữa các bộ phận.
-- Chi tiết đặc trưng dễ nhận ra (lỗ treo, khớp nối, logo dập nổi...).
-
-QUY TẮC VỀ SỐ ĐẾM (rất quan trọng — mô tả này được dùng làm nguồn tin cậy để sinh ảnh/video,
-một con số sai sẽ khiến sản phẩm trong video khác hẳn sản phẩm thật):
-- Chỉ nêu con số cụ thể (số lỗ xỏ dây, số nút, số ngăn, số đường khâu, số khớp...) khi bạn ĐẾM
-  ĐƯỢC RÕ RÀNG từng cái một trong ảnh và chắc chắn tuyệt đối.
-- Nếu không đếm được chắc chắn, hãy mô tả ĐỊNH TÍNH thay vì đoán số (VD: "một hàng lỗ xỏ dây
-  đối xứng hai bên" thay vì "5 lỗ xỏ dây"). Mô tả mơ hồ mà đúng thì tốt hơn con số cụ thể mà sai.
-- Tương tự với hoa văn/kết cấu bề mặt: chỉ đặt tên một hình dạng hoạ tiết cụ thể (lục giác, sọc,
-  vân chấm, kim cương...) khi bạn NHÌN RÕ hình dạng đó trong ảnh. Không nhìn rõ thì BỎ QUA HẲN chi
-  tiết đó, đừng viết gì cả — im lặng an toàn hơn là đoán, vì mọi chữ bạn viết ra đều bị coi là sự thật.
-- Tương tự với chất liệu: đừng đoán "vải lưới/mesh/da lộn/canvas" khi bề mặt trong ảnh nhìn trơn phẳng.
-  Không phân biệt được thì mô tả trung tính ("bề mặt trơn màu trắng") thay vì gọi tên một chất liệu.
-
-TUYỆT ĐỐI KHÔNG:
-- KHÔNG bịa/suy diễn màu sắc, chất liệu, chi tiết KHÔNG nhìn thấy rõ trong ảnh.
-- KHÔNG mô tả giá, khuyến mãi, đánh giá sao, thương hiệu, chữ marketing trên ảnh.
-- KHÔNG để các nhãn/badge/khung quảng cáo chèn trên ảnh (VD "chính hãng 100%", "bảo hành") ảnh
-  hưởng tới mô tả — chúng là đồ hoạ dán thêm, KHÔNG phải bộ phận của sản phẩm.
-- KHÔNG mô tả bối cảnh/nền/người mẫu — chỉ mô tả bản thân sản phẩm.
-- KHÔNG bọc trong markdown, KHÔNG xuống dòng thừa. Trả về DUY NHẤT 1 đoạn văn mô tả.`;
 
 /**
  * Đoán mime type từ MAGIC BYTES của chính nội dung file, KHÔNG tin đuôi file.
@@ -123,10 +93,20 @@ export async function extractVisualDescription(
     throw new Error('Không đọc được ảnh sản phẩm nào để phân tích');
   }
 
+  // Prompt lấy từ registry (bảng ai_prompts) chứ không phải hằng cứng — Mr.D sửa được ở tab
+  // Video Review / trang Prompt AI. Bước này chạy ở luồng review nên KHÔNG có tầng riêng theo job.
+  const prompts = await loadPromptSet();
+  const system = prompts.get('review_product_vision');
+
   const raw = await withAiCallContext(
-    { stepKey: 'product_visual', projectId, imagePaths: picked.map((p) => path.basename(p)) },
+    {
+      stepKey: 'review_product_vision',
+      projectId,
+      imagePaths: picked.map((p) => path.basename(p)),
+      promptScope: prompts.scopeOf('review_product_vision'),
+    },
     () =>
-      chatCompletion(VISION_SYSTEM_PROMPT, 'Nhìn các ảnh và mô tả thị giác sản phẩm theo yêu cầu.', {
+      chatCompletion(system, 'Nhìn các ảnh và mô tả thị giác sản phẩm theo yêu cầu.', {
         model: visionModel,
         images,
       })

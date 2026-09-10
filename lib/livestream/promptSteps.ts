@@ -20,6 +20,9 @@ import {
   LIVESTREAM_SYSTEM_PROMPT,
   VEO_PROMPT_EVAL_SYSTEM_PROMPT,
   STORYBOARD_PROMPT_SYSTEM_PROMPT,
+  REVIEW_SCRIPT_SYSTEM_PROMPT,
+  REVIEW_PRODUCT_VISION_SYSTEM_PROMPT,
+  REVIEW_BACKGROUND_PROMPT_SYSTEM_PROMPT,
 } from './promptDefaults';
 import { LIVESTREAM_V2_SYSTEM_PROMPT, V2_FIELD_EXTRACT_SYSTEM_PROMPT } from './promptDefaultsV2';
 
@@ -140,6 +143,31 @@ export const PROMPT_STEPS = [
     params: 'none',
   },
   {
+    key: 'review_script',
+    label: 'Sinh kịch bản (luồng review)',
+    hint: 'Chạy ở Bước 2 luồng Video Review: đọc mô tả sản phẩm + góc kịch bản → viết toàn bộ cảnh (lời thoại + veoPrompt). Đây là prompt quyết định cả video. Phần "Góc kịch bản được chọn" được hệ thống nối thêm vào cuối lúc chạy, không cần viết vào đây.',
+    fallback: REVIEW_SCRIPT_SYSTEM_PROMPT,
+    // Luồng review dùng projectId, không phải job slug livestream — không có tầng riêng theo job.
+    perJob: false,
+    params: 'none',
+  },
+  {
+    key: 'review_product_vision',
+    label: 'Đọc ảnh sản phẩm thật (luồng review)',
+    hint: 'Chạy ở Bước 1 luồng Video Review khi có ảnh sản phẩm: AI vision đọc ảnh → tả màu/chất liệu/hình dáng THẬT, dùng làm nguồn tin cậy cho mọi bước sau.',
+    fallback: REVIEW_PRODUCT_VISION_SYSTEM_PROMPT,
+    perJob: false,
+    params: 'none',
+  },
+  {
+    key: 'review_background_prompt',
+    label: 'Viết prompt ảnh bối cảnh (luồng review)',
+    hint: 'Chạy ở Bước 3 luồng Video Review: viết prompt cho ảnh nền THUẦN bối cảnh (cấm sản phẩm/người trong khung). Là lượt gọi AI TEXT, khác bước gen ảnh.',
+    fallback: REVIEW_BACKGROUND_PROMPT_SYSTEM_PROMPT,
+    perJob: false,
+    params: 'none',
+  },
+  {
     key: 'negative_video',
     label: 'Negative prompt (gen video)',
     hint: 'Danh sách thứ CẤM xuất hiện trong video, gửi kèm mỗi lượt gen. Xoá sạch ô = tắt hẳn negative prompt.',
@@ -162,7 +190,10 @@ export type PromptStepKey =
   | 'background'
   | 'negative_video'
   | 'veo_prompt_eval'
-  | 'storyboard_prompt';
+  | 'storyboard_prompt'
+  | 'review_script'
+  | 'review_product_vision'
+  | 'review_background_prompt';
 
 const BY_KEY = new Map(PROMPT_STEPS.map((s) => [s.key, s]));
 

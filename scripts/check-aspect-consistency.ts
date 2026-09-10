@@ -57,11 +57,11 @@ for (const rel of IMAGE_GEN_FILES) {
 // 2. Prompt hệ thống phải ép khung dọc 9:16, không để ngỏ tỉ lệ.
 // ---------------------------------------------------------------------------
 const promptDefaults = read('lib/livestream/promptDefaults.ts');
-const scriptRoute = read('app/api/projects/[id]/script/generate/route.ts');
 
 /**
  * Cắt đúng thân 1 template literal `const NAME = \`...\`;` để check đúng phạm vi.
- * Nhận cả bản có `export` (promptDefaults.ts) lẫn bản module-local (BASE_SYSTEM_PROMPT ở route).
+ * Mọi prompt nay đều `export` từ promptDefaults.ts (đã gom về registry), nhưng vẫn nhận cả bản
+ * module-local phòng khi có prompt mới chưa kịp gom.
  */
 function promptBody(src: string, name: string): string {
   const m = new RegExp(`(?:export\\s+)?const ${name} = \``).exec(src);
@@ -79,7 +79,13 @@ const cases: { label: string; body: string }[] = [
     label: 'STORYBOARD_PROMPT_SYSTEM_PROMPT',
     body: promptBody(promptDefaults, 'STORYBOARD_PROMPT_SYSTEM_PROMPT'),
   },
-  { label: 'BASE_SYSTEM_PROMPT (sinh veoPrompt)', body: promptBody(scriptRoute, 'BASE_SYSTEM_PROMPT') },
+  // Prompt sinh kịch bản luồng review: đã chuyển từ hằng module-local trong route sang registry
+  // (promptDefaults.ts) để Mr.D sửa được ở UI. Ràng buộc 9:16 vẫn phải nằm trong bản MẶC ĐỊNH —
+  // đây là thứ mọi project ăn khi chưa ai sửa gì.
+  {
+    label: 'REVIEW_SCRIPT_SYSTEM_PROMPT (sinh veoPrompt)',
+    body: promptBody(promptDefaults, 'REVIEW_SCRIPT_SYSTEM_PROMPT'),
+  },
 ];
 
 for (const { label, body } of cases) {

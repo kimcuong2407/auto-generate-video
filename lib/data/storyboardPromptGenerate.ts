@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readProject, updateProject } from './projectStore';
 import { generateScriptText } from '../googleFlow/flowJobs';
-import { STORYBOARD_PROMPT_SYSTEM_PROMPT as SYSTEM_PROMPT } from '../livestream/promptDefaults';
+import { loadPromptSet } from '../livestream/promptStore';
 import { ChatApiError, chatCompletion } from '../ai/chatClient';
 import { withAiCallContext } from '../ai/callLog';
 import { readImagesAsBase64 } from './productVisionExtract';
@@ -164,12 +164,15 @@ async function runPromptGeneration(
   system: string,
   user: string,
   refs: RefImageSet,
-  projectId: string
+  projectId: string,
+  /** Bước nào đang chạy — quyết định nhãn log, KHÔNG phải nội dung prompt (caller đã resolve). */
+  stepKey: 'storyboard_prompt' | 'review_background_prompt',
+  promptScope: 'job' | 'global' | 'default'
 ): Promise<string> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   // Bọc CẢ hai nhánh bằng 1 lượt withAiCallContext: đây là hai đường tới cùng một lượt gọi AI,
   // bọc riêng từng nhánh thì nhánh nào quên là lượt đó rơi khỏi log mà không ai thấy.
-  return withAiCallContext({ stepKey: 'storyboard_prompt', projectId }, () => {
+  return withAiCallContext({ stepKey, projectId, promptScope }, () => {
     if (refs.images.length > 0 && visionModel) {
       return chatCompletion(system, user, { model: visionModel, images: refs.images });
     }
@@ -186,11 +189,15 @@ function sanitizePromptText(raw: string): string {
 
 export async function generateStoryboardPromptText(project: Project, scene: Scene): Promise<string> {
   const refs = await collectReferenceImages(project);
+  // Prompt lấy từ registry (bảng ai_prompts) — Mr.D sửa được ở tab Video Review / Prompt AI.
+  const prompts = await loadPromptSet();
   const raw = await runPromptGeneration(
-    SYSTEM_PROMPT,
+    prompts.get('storyboard_prompt'),
     buildUserPrompt(project, scene) + buildImageLegendBlock(refs),
     refs,
-    project.id
+    project.id,
+    'storyboard_prompt',
+    prompts.scopeOf('storyboard_prompt')
   );
   const prompt = sanitizePromptText(raw);
   if (!prompt) {
@@ -237,22 +244,6 @@ export async function triggerStoryboardPromptGeneration(
   }
 }
 
-const BACKGROUND_SYSTEM_PROMPT = `Bạn là chuyên gia thiết kế bối cảnh (environment/background art) cho video review sản phẩm ngắn (TikTok/Reels).
-
-Nhiệm vụ: viết 1 prompt tiếng Việt, chi tiết, dùng cho AI sinh ẢNH TĨNH (image generation model) mô tả ĐÚNG 1
-ẢNH BỐI CẢNH/MÔI TRƯỜNG THUẦN TÚY cho 1 cảnh quay trong kịch bản đã duyệt.
-
-Yêu cầu:
-- Mô tả rõ: không gian/địa điểm, bố cục, góc máy, ánh sáng, tông màu, chất liệu bề mặt xung quanh (bàn, nền,
-  tường, đạo cụ trang trí không liên quan trực tiếp sản phẩm...), phong cách ảnh photorealistic — chân thực
-  như chụp bằng máy ảnh/điện thoại thật, KHÔNG phải minh hoạ/illustration/3D render/cartoon.
-- TUYỆT ĐỐI KHÔNG được xuất hiện sản phẩm đang review, KHÔNG xuất hiện người/nhân vật/bộ phận cơ thể người
-  trong khung hình — đây chỉ là ảnh bối cảnh trống để làm nền tham chiếu, sản phẩm sẽ được ghép/thêm vào sau.
-- Không mô tả chuyển động, không mô tả âm thanh/lời thoại.
-- Bám sát bối cảnh/không gian ngụ ý trong nội dung cảnh quay đã chốt (mô tả video, góc máy) được cung cấp bên
-  dưới — nhưng chỉ lấy phần bối cảnh, bỏ qua mọi chi tiết mô tả sản phẩm/nhân vật.
-- Trả về DUY NHẤT đoạn prompt tiếng Việt, không kèm giải thích, không markdown, không xuống dòng thừa, không
-  bọc trong dấu ngoặc kép.`;
 
 function buildBackgroundUserPrompt(scene: Scene): string {
   return [
@@ -273,11 +264,14 @@ export async function generateBackgroundPromptText(scene: Scene, project?: Proje
   const refs = project
     ? await collectReferenceImages(project, { includeProduct: false, includeSpokesperson: false })
     : { images: [], legend: '' };
+  const prompts = await loadPromptSet();
   const raw = await runPromptGeneration(
-    BACKGROUND_SYSTEM_PROMPT,
+    prompts.get('review_background_prompt'),
     buildBackgroundUserPrompt(scene) + buildImageLegendBlock(refs),
     refs,
-    project?.id ?? ''
+    project?.id ?? '',
+    'review_background_prompt',
+    prompts.scopeOf('review_background_prompt')
   );
   const prompt = sanitizePromptText(raw);
   if (!prompt) {

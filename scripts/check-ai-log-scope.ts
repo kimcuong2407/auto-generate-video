@@ -44,14 +44,16 @@ import fs from 'node:fs';
   assert.match(route, /eq\(aiCallLogs\.projectId,\s*projectId\)/, 'WHERE phải có projectId, nếu không 2 luồng đọc chéo nhau');
 }
 
-// 4. Ba chỗ gọi AI của luồng review đều phải gắn nhãn projectId. Quên chỗ nào thì lượt đó rơi
+// 4. Mọi chỗ gọi AI của luồng review đều phải gắn nhãn projectId. Quên chỗ nào thì lượt đó rơi
 //    khỏi log im lặng — chatClient bỏ qua lượt không có nhãn, không báo lỗi.
+//    stepKey của luồng review có tiền tố `review_` để log không lẫn với bước cùng tên bên
+//    livestream (VD product_visual): hai luồng dùng prompt khác nhau, gộp log là đọc nhầm lượt.
 {
   const cases: [string, string][] = [
     ['lib/data/veoPromptEvaluate.ts', 'veo_prompt_eval'],
     ['lib/data/storyboardPromptGenerate.ts', 'storyboard_prompt'],
-    ['lib/data/productVisionExtract.ts', 'product_visual'],
-    ['app/api/projects/[id]/script/generate/route.ts', 'script'],
+    ['lib/data/productVisionExtract.ts', 'review_product_vision'],
+    ['app/api/projects/[id]/script/generate/route.ts', 'review_script'],
   ];
   for (const [file, stepKey] of cases) {
     const src = fs.readFileSync(file, 'utf8');

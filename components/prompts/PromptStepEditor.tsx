@@ -39,6 +39,7 @@ const SCOPE_BADGE: Record<PromptStepView['scope'], { text: string; cls: string }
 export function PromptStepEditor({
   step,
   jobSlug,
+  projectId,
   index,
   onSaved,
   onPreview,
@@ -49,6 +50,9 @@ export function PromptStepEditor({
   step: PromptStepView;
   /** Có = đang ở trong 1 job, hiện thêm nút "Lưu cho job này". */
   jobSlug?: string;
+  /** Có = đang ở trong 1 project luồng Video Review — chỉ dùng để lọc log đúng project, KHÔNG mở
+   *  thêm tầng lưu riêng (bảng ai_prompts chưa có tầng theo project). */
+  projectId?: string;
   /** Số thứ tự hiển thị trước nhãn. */
   index?: number;
   onSaved: () => void | Promise<void>;
@@ -188,7 +192,7 @@ export function PromptStepEditor({
           (chuẩn hoá mô tả, đọc ảnh screenshot, bóc tách form V2) nay cũng có log gắn vào job —
           hoặc nhận slug ngay lúc ingest, hoặc được gán lại lúc tạo job (xem claimAiCallLogs).
           Ở trang /settings/prompts không có jobSlug thì rơi về phạm vi toàn hệ thống như cũ. */}
-      <AiCallLogView stepKey={step.key} jobSlug={jobSlug} />
+      <AiCallLogView stepKey={step.key} jobSlug={jobSlug} projectId={projectId} />
 
       {/* Job đang dùng bản riêng thì bản mặc định vẫn tồn tại phía dưới — cho xem để biết mình đang
           lệch khỏi cái gì trước khi quyết định bỏ bản riêng. */}

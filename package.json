@@ -50,6 +50,7 @@
     "check:prompt-ref-images": "tsx scripts/check-prompt-ref-images.ts",
     "check:prompt-registry": "tsx scripts/check-prompt-registry.ts",
     "check:prompt-wiring": "tsx scripts/check-prompt-wiring.ts",
+    "check:review-prompt-panel": "tsx scripts/check-review-prompt-panel.ts",
     "check:ref-image-priority": "tsx scripts/check-ref-image-priority.ts",
     "check:schema-columns": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/check-schema-columns.ts",
     "check:script-json-contract": "tsx scripts/check-script-json-contract.ts",

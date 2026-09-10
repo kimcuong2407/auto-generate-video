@@ -56,7 +56,18 @@ function shortTime(iso: string): string {
   return m ? `${m[4]} ${m[3]}/${m[2]}` : iso;
 }
 
-export function AiCallLogView({ stepKey, jobSlug }: { stepKey: string; jobSlug?: string }) {
+export function AiCallLogView({
+  stepKey,
+  jobSlug,
+  projectId,
+}: {
+  stepKey: string;
+  jobSlug?: string;
+  /** Luồng Video Review định danh bằng projectId (cột riêng trong ai_call_logs), không phải job
+   *  slug livestream. Thiếu tham số này thì query hỏi projectId='' trong khi log ghi id thật →
+   *  mục "Lượt chạy gần nhất" luôn rỗng dù bước đã chạy. */
+  projectId?: string;
+}) {
   const [runs, setRuns] = useState<RunMeta[] | null>(null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +77,10 @@ export function AiCallLogView({ stepKey, jobSlug }: { stepKey: string; jobSlug?:
 
   const query = useCallback(
     (extra = '') =>
-      `/api/ai-logs?step=${encodeURIComponent(stepKey)}&jobSlug=${encodeURIComponent(jobSlug ?? '')}${extra}`,
-    [stepKey, jobSlug]
+      `/api/ai-logs?step=${encodeURIComponent(stepKey)}&jobSlug=${encodeURIComponent(
+        jobSlug ?? ''
+      )}&projectId=${encodeURIComponent(projectId ?? '')}${extra}`,
+    [stepKey, jobSlug, projectId]
   );
 
   const loadDetail = useCallback(
@@ -130,7 +143,7 @@ export function AiCallLogView({ stepKey, jobSlug }: { stepKey: string; jobSlug?:
 
       {runs?.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-          Bước này chưa chạy lần nào{jobSlug ? ' trong job này' : ''}.
+          Bước này chưa chạy lần nào{jobSlug ? ' trong job này' : projectId ? ' trong project này' : ''}.
         </div>
       )}
 
