@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Project } from '@/lib/types';
 import { runScriptGenerateSSE } from '@/lib/client/scriptGenerate';
+import { runStoryboardBatchSSE } from '@/lib/client/storyboardBatch';
 
 export type PipelineStepKey = 'script' | 'storyboard' | 'video' | 'concat';
 export type PipelineStepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
@@ -145,12 +146,30 @@ export function useAutoPipeline(projectId: string, onRefresh: () => Promise<void
             await postJson(`/api/projects/${projectId}/storyboard/generate-prompts`);
             checkCancelled();
           }
-          // Auto-retry: gọi lại generate-all (route chỉ trigger ảnh idle|failed) tối đa
-          // MAX_STEP_ATTEMPTS lần trước khi báo lỗi.
+          // Auto-retry Ở TẦNG NGOÀI: route generate-all nay đã tự retry mỗi ảnh
+          // STORYBOARD_MAX_ATTEMPTS lần (xem runStoryboardBatch), nên vòng này chỉ còn là lưới
+          // vét cuối — gọi lại cho ảnh vẫn 'failed' sau khi loạt trước đã bỏ cuộc.
           let failedImages: typeof current.storyboard.images = [];
           for (let attempt = 1; attempt <= MAX_STEP_ATTEMPTS; attempt++) {
             checkCancelled();
-            await postJson(`/api/projects/${projectId}/storyboard/generate-all`);
+            // PHẢI đọc hết SSE, KHÔNG dùng postJson: route trả stream nên fetch() resolve ngay
+            // khi header tới, trong khi ảnh còn chưa gen xong cái nào. Đọc trạng thái lúc đó sẽ
+            // thấy toàn 'generating' rồi kết luận nhầm là cả loạt hỏng.
+            // Nuốt lỗi mất-kết-nối: server VẪN chạy tiếp cho hết loạt (xem runStoryboardBatch),
+            // nên ném ra đây là dừng cả pipeline oan cho một loạt sắp xong. Trạng thái thật đọc
+            // từ project ở dòng dưới mới là căn cứ quyết định — vòng lặp này tự vét ảnh còn lỗi.
+            try {
+              await runStoryboardBatchSSE(
+                `/api/projects/${projectId}/storyboard/generate-all`,
+                () => {}
+              );
+            } catch (err) {
+              console.warn(
+                `[auto-pipeline] mất kết nối SSE loạt gen storyboard (vòng ${attempt}/${MAX_STEP_ATTEMPTS}): ${
+                  (err as Error).message
+                } — đọc trạng thái thật từ project để quyết định`
+              );
+            }
             current = await fetchLatestProject(projectId);
             failedImages = current.storyboard.images.filter((img) => img.status === 'failed');
             if (failedImages.length === 0) break;

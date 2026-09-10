@@ -61,6 +61,24 @@ export { DEFAULT_STORYBOARD_MODEL, IMAGE_MODEL_OPTIONS } from './imageModels';
 // Số ảnh storyboard gen song song tối đa khi bấm "Gen tất cả"
 export const STORYBOARD_MAX_CONCURRENT = Number(process.env.STORYBOARD_MAX_CONCURRENT || 2);
 
+/**
+ * Số lần thử tối đa cho MỘT ảnh trong loạt gen tuần tự (lần đầu + các lần retry).
+ *
+ * Vì sao cần retry tự động: lỗi hay gặp nhất của flow_generate_image là lỗi tạm thời (timeout,
+ * 429, token hết hạn giữa chừng) — thử lại thường ăn ngay. Không retry thì cả loạt 8 ảnh chỉ cần
+ * 1 ảnh vấp mạng là Mr.D phải ngồi bấm Retry tay từng cái.
+ *
+ * Vì sao chặn ở 3 chứ không thử mãi: lỗi do prompt bị chặn nội dung thì thử bao nhiêu lần cũng
+ * hỏng, mỗi lần vẫn tốn một lượt gọi Flow thật.
+ */
+export const STORYBOARD_MAX_ATTEMPTS = Number(process.env.STORYBOARD_MAX_ATTEMPTS || 3);
+
+/**
+ * Nghỉ giữa 2 lần thử của cùng 1 ảnh (ms), tăng dần theo số lần đã thử (1x, 2x...).
+ * Retry ngay lập tức vào một API vừa trả 429 gần như chắc chắn lại 429.
+ */
+export const STORYBOARD_RETRY_DELAY_MS = Number(process.env.STORYBOARD_RETRY_DELAY_MS || 3000);
+
 // Thời gian tối đa (ms) chờ 1 ảnh storyboard sinh xong qua Google Flow
 export const STORYBOARD_IMAGE_TIMEOUT_MS = Number(process.env.STORYBOARD_IMAGE_TIMEOUT_MS || 120_000);
 

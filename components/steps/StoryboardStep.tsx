@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Project, StoryboardImage, StoryboardStatus } from '@/lib/types';
 import { MediaModal } from '@/components/MediaModal';
 import { IMAGE_MODEL_OPTIONS, defaultProductReferenceImage } from '@/lib/imageModels';
+import { runStoryboardBatchSSE, type BatchStreamEvent } from '@/lib/client/storyboardBatch';
 
 function statusClass(s: StoryboardStatus): string {
   return (
@@ -73,13 +74,19 @@ function GenerateProgress({
   label,
   images,
   labelById,
+  liveStatus,
 }: {
   label: string;
   images: StoryboardImage[];
   labelById: Map<string, string>;
+  /** Dòng trạng thái realtime từ SSE — nói được thứ project.json không lưu: đang thử lần mấy,
+   *  còn chờ bao lâu trước khi retry. Null = loạt này không chạy trong tab hiện tại. */
+  liveStatus?: string | null;
 }) {
   const { total, failed, running, waiting, finished, percent, visible } = computeProgress(images);
-  if (!visible) return null;
+  // Có liveStatus nghĩa là Mr.D vừa bấm gen: hiện thanh ngay cả khi chưa ảnh nào đổi trạng thái,
+  // nếu không thì khoảng vài giây đầu màn hình im lìm như chưa nhận lệnh.
+  if (!visible && !liveStatus) return null;
 
   return (
     <div
@@ -118,7 +125,11 @@ function GenerateProgress({
         />
       </div>
 
-      {running.length > 0 ? (
+      {/* Ưu tiên dòng SSE: nó biết cả pha chờ retry — lúc đó KHÔNG ảnh nào ở trạng thái
+          'generating' nên nhánh dưới sẽ báo nhầm là "đã dừng" trong khi loạt vẫn đang chạy. */}
+      {liveStatus ? (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{liveStatus}</div>
+      ) : running.length > 0 ? (
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
           ⏳ Đang gen: {running.map((i) => labelById.get(i.sceneId) || i.sceneId).join(', ')}
           {waiting > 0 && ` — ${waiting} ảnh còn lại vào hàng chờ`}
@@ -198,6 +209,20 @@ export function StoryboardStep({
   const [busyBackgroundAll, setBusyBackgroundAll] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Dòng trạng thái realtime của loạt gen đang chạy, dựng từ SSE.
+   *
+   * Vì sao cần state riêng khi đã có thanh tiến độ đọc từ project: project.json chỉ lưu trạng thái
+   * CUỐI của mỗi ảnh (idle/generating/done/failed). Nó không biết ảnh đang chạy là lần thử thứ
+   * mấy, hay đang nằm chờ backoff trước khi thử lại — mà đó đúng là lúc màn hình trông như bị treo
+   * nhất, cần chữ giải thích nhất.
+   *
+   * `kind` để hiện dòng này đúng dưới thanh tiến độ của loạt tương ứng.
+   */
+  const [batchStatus, setBatchStatus] = useState<{
+    kind: 'storyboard' | 'background';
+    text: string;
+  } | null>(null);
   const [modal, setModal] = useState<{ src: string; alt: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ sceneId: string; kind: 'storyboard' | 'background' } | null>(
     null
@@ -357,15 +382,84 @@ export function StoryboardStep({
     }
   }
 
+
+  /**
+   * Chạy 1 loạt gen ảnh qua SSE và dịch từng event thành câu tiếng Việt hiện dưới thanh tiến độ.
+   *
+   * onRefresh() gọi sau MỖI ảnh xong (không đợi hết loạt): thumbnail và trạng thái card hiện ra
+   * ngay lúc ảnh đó xong, thay vì đứng im rồi hiện ào một lượt ở cuối.
+   */
+  async function runBatch(kind: 'storyboard' | 'background', url: string) {
+    const labelOf = (sceneId: string) => labelById.get(sceneId) || sceneId;
+    try {
+      await runStoryboardBatchSSE(url, (event: BatchStreamEvent) => {
+        switch (event.type) {
+          case 'start':
+            setBatchStatus({
+              kind,
+              text:
+                event.total === 0
+                  ? 'Không có ảnh nào cần gen (ảnh đã xong hoặc chưa có prompt).'
+                  : `Bắt đầu gen tuần tự ${event.total} ảnh...`,
+            });
+            break;
+          case 'image-start':
+            setBatchStatus({
+              kind,
+              text:
+                `⏳ Ảnh ${event.index + 1}: ${labelOf(event.sceneId)}` +
+                (event.attempt > 1 ? ` — thử lại lần ${event.attempt}/${event.maxAttempts}` : ''),
+            });
+            break;
+          case 'image-retry':
+            setBatchStatus({
+              kind,
+              text: `⚠️ ${labelOf(event.sceneId)} lỗi (${event.error}) — chờ ${Math.round(
+                event.waitMs / 1000
+              )}s rồi thử lại lần ${event.attempt + 1}...`,
+            });
+            break;
+          case 'image-done':
+            setBatchStatus({
+              kind,
+              text: event.ok
+                ? `✅ Xong ảnh ${event.index + 1}: ${labelOf(event.sceneId)}${
+                    event.attempts > 1 ? ` (sau ${event.attempts} lần thử)` : ''
+                  }`
+                : `❌ ${labelOf(event.sceneId)} hỏng sau ${event.attempts} lần thử: ${event.error}`,
+            });
+            // Ảnh vừa xong — kéo project về ngay để hiện thumbnail, không đợi hết loạt.
+            void onRefresh();
+            break;
+          case 'done':
+            setBatchStatus({
+              kind,
+              text:
+                event.failed > 0
+                  ? `Hoàn tất: ${event.succeeded}/${event.total} ảnh xong, ${event.failed} ảnh hỏng — bấm Retry ở từng ảnh lỗi.`
+                  : `Hoàn tất: ${event.succeeded}/${event.total} ảnh xong.`,
+            });
+            break;
+          case 'fatal':
+            setError(event.message);
+            break;
+        }
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      await onRefresh();
+    }
+  }
+
   async function handleGenerateAll() {
     const saved = await saveAllPrompts();
     if (!saved) return;
     setBusyAll(true);
+    setError(null);
+    setBatchStatus(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/storyboard/generate-all`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) alert(data.error || 'Gen tất cả thất bại');
-      await onRefresh();
+      await runBatch('storyboard', `/api/projects/${project.id}/storyboard/generate-all`);
     } finally {
       setBusyAll(false);
     }
@@ -454,11 +548,10 @@ export function StoryboardStep({
     const saved = await saveAllPrompts();
     if (!saved) return;
     setBusyBackgroundAll(true);
+    setError(null);
+    setBatchStatus(null);
     try {
-      const res = await fetch(`/api/projects/${project.id}/storyboard/generate-backgrounds`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) alert(data.error || 'Gen background tất cả thất bại');
-      await onRefresh();
+      await runBatch('background', `/api/projects/${project.id}/storyboard/generate-backgrounds`);
     } finally {
       setBusyBackgroundAll(false);
     }
@@ -499,10 +592,22 @@ export function StoryboardStep({
         >
           {promptBusyBackgroundAll ? 'Đang sinh prompt background...' : '✨ Sinh prompt background tất cả bằng AI'}
         </button>
-        <button className="btn" onClick={handleGenerateAll} disabled={busyAll || saving}>
+        {/* Khoá CHÉO hai nút: mỗi loạt đã chạy tuần tự để không dồn tải lên Flow, mở cho bấm cả
+            hai cùng lúc là lại thành 2 lượt gọi song song — đúng thứ vừa bỏ đi. */}
+        <button
+          className="btn"
+          onClick={handleGenerateAll}
+          disabled={busyAll || busyBackgroundAll || saving}
+          title={busyBackgroundAll ? 'Đang chạy loạt gen background, chờ xong đã' : undefined}
+        >
           {busyAll ? 'Đang gen...' : '🎨 Gen tất cả'}
         </button>
-        <button className="btn" onClick={handleGenerateBackgroundAll} disabled={busyBackgroundAll || saving}>
+        <button
+          className="btn"
+          onClick={handleGenerateBackgroundAll}
+          disabled={busyBackgroundAll || busyAll || saving}
+          title={busyAll ? 'Đang chạy loạt gen storyboard, chờ xong đã' : undefined}
+        >
           {busyBackgroundAll ? 'Đang gen background...' : '🖼️ Gen background tất cả'}
         </button>
         <button className="btn btn-primary" onClick={() => handleGoStep(4)} disabled={anyBusy}>
@@ -653,11 +758,13 @@ export function StoryboardStep({
         label="🖼️ Ảnh storyboard"
         images={project.storyboard.images}
         labelById={labelById}
+        liveStatus={batchStatus?.kind === 'storyboard' ? batchStatus.text : null}
       />
       <GenerateProgress
         label="🌄 Ảnh background"
         images={project.storyboard.backgrounds}
         labelById={labelById}
+        liveStatus={batchStatus?.kind === 'background' ? batchStatus.text : null}
       />
 
       <div className="scene-list">
