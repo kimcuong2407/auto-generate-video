@@ -62,6 +62,7 @@
     "check:stage-bible-failure": "tsx scripts/check-stage-bible-failure.ts",
     "check:stage-bible-inputs": "tsx scripts/check-stage-bible-inputs.ts",
     "check:stage-bible-stale": "tsx scripts/check-stage-bible-stale.ts",
+    "check:storyboard-progress": "tsx scripts/check-storyboard-progress.ts",
     "check:step-confirm-gate": "tsx scripts/check-step-confirm-gate.ts",
     "check:step-gate": "tsx scripts/check-step-gate.ts",
     "check:step-run-routes": "tsx scripts/check-step-run-routes.ts",

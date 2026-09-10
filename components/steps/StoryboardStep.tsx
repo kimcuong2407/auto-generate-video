@@ -16,6 +16,122 @@ function statusText(s: StoryboardStatus): string {
   return { idle: 'Sẵn sàng', generating: '⏳ Đang gen...', done: '✅ Xong', failed: '❌ Lỗi' }[s] || 'Sẵn sàng';
 }
 
+/**
+ * Thanh tiến độ của một loạt gen ảnh: đếm theo trạng thái THẬT trong project (đã được poll 4.5s
+ * một lần), không phải theo cờ busy của nút bấm.
+ *
+ * Vì sao cần: route gen hàng loạt chỉ trả lời SAU KHI cả loạt xong (`await runWithConcurrency`),
+ * nên trong suốt vài phút chạy, nút chỉ hiện "Đang gen tất cả..." — không biết đang ở ảnh nào,
+ * còn mấy ảnh, ảnh nào vừa lỗi. Đọc từ project thì thấy đúng ảnh đang chạy kể cả khi Mr.D vừa
+ * F5 trang giữa chừng (cờ busy mất sau reload, trạng thái trong project thì không).
+ *
+ * Hiện tên cảnh đang gen chứ không chỉ con số: ảnh gen song song (STORYBOARD_MAX_CONCURRENT,
+ * mặc định 2) nên "đang gen 2 ảnh" mà không nói ảnh nào là thông tin nửa vời.
+ */
+export interface GenerateProgressStats {
+  total: number;
+  done: number;
+  failed: number;
+  /** Ảnh đang gen — giữ nguyên object để hiện được TÊN CẢNH, không chỉ đếm số. */
+  running: StoryboardImage[];
+  waiting: number;
+  finished: number;
+  percent: number;
+  /** false = loạt gen chưa khởi động, không hiện thanh nào. */
+  visible: boolean;
+}
+
+/**
+ * Phép đếm của thanh tiến độ, tách thành hàm THUẦN để self-check chạy được mà không cần dựng
+ * React (xem scripts/check-storyboard-progress.ts).
+ */
+export function computeProgress(images: StoryboardImage[]): GenerateProgressStats {
+  const total = images.length;
+  const done = images.filter((i) => i.status === 'done').length;
+  const failed = images.filter((i) => i.status === 'failed').length;
+  const running = images.filter((i) => i.status === 'generating');
+  // Chờ = chưa đụng tới VÀ có prompt: ảnh chưa có prompt không nằm trong loạt gen (route lọc
+  // `img.prompt.trim()`), đếm nó vào hàng chờ là hứa một thứ sẽ không bao giờ chạy.
+  const waiting = images.filter((i) => i.status === 'idle' && i.prompt.trim()).length;
+  const finished = done + failed;
+  return {
+    total,
+    done,
+    failed,
+    running,
+    waiting,
+    finished,
+    // total = 0 thì `visible` đã false, nhưng vẫn chặn chia 0 ở đây: hàm thuần này có thể được
+    // gọi từ chỗ khác sau này, trả về NaN là lỗi lan âm thầm ra tận style width.
+    percent: total === 0 ? 0 : Math.round((finished / total) * 100),
+    // Không có gì đang chạy và cũng chưa xong cái nào → loạt gen chưa bắt đầu.
+    visible: total > 0 && (running.length > 0 || done > 0 || failed > 0),
+  };
+}
+
+function GenerateProgress({
+  label,
+  images,
+  labelById,
+}: {
+  label: string;
+  images: StoryboardImage[];
+  labelById: Map<string, string>;
+}) {
+  const { total, failed, running, waiting, finished, percent, visible } = computeProgress(images);
+  if (!visible) return null;
+
+  return (
+    <div
+      style={{
+        margin: '10px 0',
+        padding: 10,
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        background: 'var(--surface2, rgba(255,255,255,0.03))',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+        <strong>{label}</strong>
+        <span style={{ color: 'var(--text-muted)' }}>
+          {finished}/{total} xong{failed > 0 ? ` · ${failed} lỗi` : ''}
+          {waiting > 0 ? ` · ${waiting} chờ` : ''}
+        </span>
+      </div>
+
+      <div
+        style={{
+          height: 6,
+          borderRadius: 3,
+          background: 'var(--border)',
+          overflow: 'hidden',
+          margin: '6px 0',
+        }}
+      >
+        <div
+          style={{
+            width: `${percent}%`,
+            height: '100%',
+            background: failed > 0 ? 'var(--danger, #f87171)' : 'var(--accent, #4ade80)',
+            transition: 'width 0.3s',
+          }}
+        />
+      </div>
+
+      {running.length > 0 ? (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          ⏳ Đang gen: {running.map((i) => labelById.get(i.sceneId) || i.sceneId).join(', ')}
+          {waiting > 0 && ` — ${waiting} ảnh còn lại vào hàng chờ`}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          {failed > 0 ? 'Đã dừng — bấm Retry ở ảnh lỗi để chạy lại.' : 'Đã gen xong toàn bộ.'}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImageThumb({
   src,
   alt,
@@ -529,6 +645,20 @@ export function StoryboardStep({
           </div>
         </>
       )}
+
+      {/* Tiến độ đọc từ trạng thái THẬT trong project (poll 4.5s), nên vẫn đúng sau khi F5 giữa
+          chừng — khác cờ busy của nút, mất sạch khi reload. Hai loạt gen tách riêng vì chạy độc
+          lập: có thể đang gen background trong khi storyboard đã xong từ lâu. */}
+      <GenerateProgress
+        label="🖼️ Ảnh storyboard"
+        images={project.storyboard.images}
+        labelById={labelById}
+      />
+      <GenerateProgress
+        label="🌄 Ảnh background"
+        images={project.storyboard.backgrounds}
+        labelById={labelById}
+      />
 
       <div className="scene-list">
         {project.storyboard.images.map((image, i) => {
