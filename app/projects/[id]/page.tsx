@@ -34,7 +34,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         <div className="content">
           {currentStep === 1 && (
             <>
-              <ProjectGuide />
+              <ProjectGuide project={project} />
               <UploadStep project={project} onSaved={refresh} />
             </>
           )}

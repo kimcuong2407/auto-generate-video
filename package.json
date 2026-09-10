@@ -39,6 +39,7 @@
     "check:negative-prompt": "tsx scripts/check-negative-prompt.ts",
     "check:osid-refresh": "tsx scripts/check-osid-refresh.ts",
     "check:preview-prompt": "tsx scripts/check-preview-prompt.ts",
+    "check:project-guide": "tsx scripts/check-project-guide.ts",
     "check:product-lock": "tsx scripts/check-product-lock.ts",
     "check:prompt-block-spans": "tsx scripts/check-prompt-block-spans.ts",
     "check:prompt-blocks": "tsx scripts/check-prompt-blocks.ts",
