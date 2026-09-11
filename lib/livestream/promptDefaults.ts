@@ -443,6 +443,15 @@ Chấm theo 4 chiều, mỗi chiều 0-10:
 1. visualCompleteness — Mỗi veoPrompt có đủ 7 thành phần không: Subject (chủ thể + sản phẩm),
    Action (hành động cụ thể), Scene (bối cảnh + ánh sáng), Style (cỡ cảnh, góc máy, chuyển động
    máy), Dialogue (mô tả giọng + lời thoại), Sounds (câu "Âm thanh:"), Technical (chặn phụ đề)?
+   Trừ điểm thêm ở chiều này nếu:
+   - Phần Action chỉ có 1 động tác đơn lẻ cho cả cảnh ~8 giây, không có chuỗi nhịp nối tiếp
+     ("đầu tiên... rồi... cuối cùng..."). Động tác đơn khiến Veo lặp động tác hoặc đứng hình.
+   - Cảnh có tương tác vật chất (rót/đổ chất lỏng, vải rủ, bóc bao bì, mở nắp, đặt vật xuống
+     mặt bàn, vật rơi/bật, khói/hơi nước) mà THIẾU từ khoá vật lý ("vật lý chân thực chi phối
+     chuyển động", "trọng lượng và quán tính đúng thực tế", "vải rủ tự nhiên theo trọng lực"...).
+     Thiếu là sản phẩm trông nhẹ bẫng/trôi lơ lửng.
+   - Mọi cảnh đều dùng chung một kiểu máy tĩnh ("static") trong khi diễn biến cho phép động tác
+     máy có chủ đích (orbit khoe sản phẩm, rack_focus đổi nét, tilt dọc hợp khung 9:16...).
 
 2. consistency — Mô tả nhân vật, mô tả giọng, và bối cảnh có được nhắc lại GIỐNG HỆT (nguyên văn)
    ở mọi cảnh không? Veo tạo từng cảnh trong lượt gen RIÊNG BIỆT và không nhớ cảnh trước, nên chỉ
@@ -581,7 +590,14 @@ Với mỗi cảnh tự thiết kế, xác định:
 - id: định danh ngắn viết thường không dấu, dùng gạch nối (VD: "hook", "feature-1", "cta")
 - label: tên cảnh ngắn gọn tiếng Việt
 - duration: thời lượng cảnh (giây), tổng các cảnh nên xấp xỉ tổng thời lượng mục tiêu
-- camera: kiểu chuyển động máy quay (VD: "static", "zoom_in", "dolly_in", "top_down", "macro_pan"...)
+- camera: kiểu chuyển động máy quay. Chọn theo mục đích của cảnh, đừng mặc định "static" cho mọi cảnh:
+  "static" (tĩnh, để người xem đọc kỹ chi tiết) · "zoom_in"/"crash_zoom" (nhấn mạnh, tăng nhịp) ·
+  "dolly_in"/"push_in" (kéo lại gần, tạo thân mật) · "pull_back" (lùi ra, lộ bối cảnh) ·
+  "tilt_up"/"tilt_down" (lia DỌC — hợp khung 9:16, khoe chiều cao sản phẩm) ·
+  "pan_left"/"pan_right" (lia ngang chậm) · "orbit" (xoay vòng quanh sản phẩm, khoe mọi mặt) ·
+  "rack_focus" (đổi nét từ sản phẩm sang mặt người hoặc ngược lại) ·
+  "tracking" (bám theo tay/sản phẩm đang di chuyển) · "top_down" (nhìn thẳng từ trên xuống) ·
+  "macro_pan" (cận cực sát, rà qua bề mặt/chất liệu) · "handheld" (rung tay tự nhiên)
 - type: loại cảnh (VD: "hook", "reveal", "demo", "feature", "comparison", "outro"...)
 - voiceoverVi: lời thoại tiếng Việt tự nhiên, thân thiện, đúng thời lượng scene (khoảng 2-3 từ/giây)
 - onScreenText: câu chữ ngắn overlay lên màn hình (dưới 8 từ)
@@ -638,6 +654,20 @@ Với mỗi cảnh tự thiết kế, xác định:
         tiếp nối chuyển động.
       - Trong phần Technical của veoPrompt, thêm cụm "giải phẫu tay tự nhiên, đúng hai bàn tay,
         đúng hai cánh tay, không có chi thừa" để nhấn mạnh giải phẫu tay chuẩn, không thừa chi.
+      NHỊP HÀNH ĐỘNG TRONG 1 CẢNH (kỹ thuật "this then that"):
+      Cảnh ~8 giây đủ chỗ cho 2-3 nhịp nối tiếp, đừng chỉ mô tả 1 động tác đơn lẻ rồi để Veo tự
+      kéo dài — động tác đơn bị lặp hoặc đứng hình giữa chừng. Hãy viết chuỗi diễn tiến bằng từ
+      nối thời gian: "đầu tiên... rồi... cuối cùng...". Áp cho cả hành động lẫn biểu cảm, VD
+      "đầu tiên cô nghiêng đầu quan sát sản phẩm, rồi xoay nó lại để lộ mặt sau, cuối cùng ngẩng
+      lên nhìn thẳng camera mỉm cười". Nhịp cuối nên kết ở tư thế TĨNH rõ ràng để cảnh sau tiếp
+      nối được (xem chaining ở trên).
+      VẬT LÝ CHÂN THỰC (thêm khi cảnh có tương tác vật chất):
+      Veo mô phỏng vật lý tốt nhưng phải được yêu cầu rõ, không tự làm. Khi cảnh có rót/đổ chất
+      lỏng, vải rủ/gấp, bóc bao bì, mở nắp, đặt vật xuống mặt bàn, vật rơi/bật, khói/hơi nước —
+      BẮT BUỘC chèn từ khoá vật lý phù hợp: "vật lý chân thực chi phối chuyển động", "chất lỏng
+      chảy theo động lực học tự nhiên", "trọng lượng và quán tính đúng thực tế", "vải rủ tự nhiên
+      theo trọng lực", "chất liệu phản ứng đúng đặc tính". Thiếu những cụm này là nguyên nhân
+      khiến sản phẩm trông nhẹ bẫng như đồ nhựa rỗng, nước chảy sai hướng, hoặc vật trôi lơ lửng.
   (3) Scene — bối cảnh quay chung đã xác định ở Bước 1 (không gian, ánh sáng, phong cách máy quay), PHẢI
       nhắc lại nhất quán để liền mạch với các scene khác;
   (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách ánh sáng;
