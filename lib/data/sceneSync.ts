@@ -31,6 +31,7 @@ import {
   SEGMENT_RETRY_BACKOFF_MS,
 } from '../constants';
 import type { Scene } from '../types';
+import { flowLog } from '../flowLog';
 
 export interface SyncResult {
   justDoneSceneIds: string[];
@@ -104,6 +105,14 @@ async function syncOneScene(
       ageMs(scene)
     );
 
+    flowLog('poll', `scene order=${scene.order} → ${jobStatus.status}`, {
+      sceneId: scene.id,
+      jobId: scene.jobId,
+      phase: jobStatus.phase ?? '-',
+      ageMs: ageMs(scene),
+      videoPath: jobStatus.video_path ?? '-',
+    });
+
     if (jobStatus.status === 'done') {
       // Ưu tiên kết quả poll: đã SUCCESSFUL thì set 'done' bất kể quá hạn hay chưa.
       // Nếu copy/download/upload lỗi → GIỮ 'generating' + ghi error để lần poll sau
@@ -149,6 +158,16 @@ async function syncOneScene(
     // Poll (hoặc download/upload khi done) lỗi tạm thời: ghi error để chẩn đoán. Chỉ
     // ép 'failed' nếu đã quá hạn — chưa quá thì giữ 'generating' để lần sau thử lại,
     // không kẹt vô hạn cũng không giết oan.
+    // Log ĐẦY ĐỦ: đây là nhánh nuốt lỗi copy/upload khi video ĐÃ done — chính nó làm scene kẹt
+    // 'generating', justDoneSceneIds rỗng và cascade không chạy. Không log thì triệu chứng duy
+    // nhất người dùng thấy là "dây chuyền đứng im".
+    flowLog('poll-error', `scene order=${scene.order} lỗi khi poll/tải video`, {
+      sceneId: scene.id,
+      jobId: scene.jobId,
+      ageMs: ageMs(scene),
+      timedOut: checkTimeout && isTimedOut(scene),
+      err: (err as Error).message.slice(0, 300),
+    });
     scene.error = `Poll lỗi tạm thời: ${(err as Error).message}`;
     if (checkTimeout && isTimedOut(scene)) {
       scene.status = 'failed';
@@ -210,15 +229,47 @@ export async function syncSceneManually(
  * Trần theo `attempts` (tăng mỗi lần trigger) để lỗi THẬT không quay vòng vô hạn đốt quota Veo.
  */
 export function shouldAutoTrigger(scene: Scene, now = Date.now()): boolean {
-  if (!scene.veoPrompt.trim()) return false;
+  // Log LÝ DO từ chối kèm số liệu: nhìn từ ngoài, "dây chuyền đứng vì chạm trần retry" và
+  // "đứng vì bug" trông y hệt nhau — cảnh nằm im, không dòng log nào. Đây chính là chỗ đã
+  // bắt phải đoán khi điều tra cảnh 02 của project hộp đựng đồ nhà bếp.
+  const why = (reason: string, data?: Record<string, unknown>) => {
+    flowLog('auto-trigger', `BỎ QUA scene order=${scene.order}: ${reason}`, {
+      sceneId: scene.id,
+      status: scene.status,
+      attempts: scene.attempts,
+      ...data,
+    });
+    return false;
+  };
+
+  if (!scene.veoPrompt.trim()) return why('chưa có Veo prompt');
   if (scene.status === 'idle') return true;
-  if (scene.status !== 'failed') return false;
-  if (scene.attempts >= MAX_SEGMENT_AUTO_RETRIES) return false;
+  if (scene.status !== 'failed') return why(`status không phải idle/failed`);
+  if (scene.attempts >= MAX_SEGMENT_AUTO_RETRIES) {
+    return why('đã chạm TRẦN auto-retry — cần bấm Retry tay để chạy tiếp', {
+      max: MAX_SEGMENT_AUTO_RETRIES,
+      lastError: String(scene.error ?? '').slice(0, 120),
+    });
+  }
   // Lùi lại trước khi thử lại: poller chạy mỗi 15s, thử lại ngay thì cảnh lỗi vì hết quota Veo
   // bị đập 240 lần/giờ. Lỗi hết quota KHÔNG tăng attempts (xem triggerSceneGeneration) nên
   // backoff theo thời gian là thứ DUY NHẤT chặn vòng lặp đó.
   const lastAt = scene.lastUpdatedAt ? new Date(scene.lastUpdatedAt).getTime() : 0;
-  return now - lastAt >= SEGMENT_RETRY_BACKOFF_MS;
+  const waited = now - lastAt;
+  if (waited < SEGMENT_RETRY_BACKOFF_MS) {
+    return why('còn trong backoff, chưa tới lượt thử lại', {
+      waitedMs: waited,
+      backoffMs: SEGMENT_RETRY_BACKOFF_MS,
+      conLaiMs: SEGMENT_RETRY_BACKOFF_MS - waited,
+    });
+  }
+  flowLog('auto-trigger', `CHO PHÉP thử lại scene order=${scene.order}`, {
+    sceneId: scene.id,
+    attempts: scene.attempts,
+    max: MAX_SEGMENT_AUTO_RETRIES,
+    waitedMs: waited,
+  });
+  return true;
 }
 
 /**
@@ -323,11 +374,22 @@ export async function runChainingForJustDone(
     }
 
     const nextScene = project.script.scenes.find((s) => s.order === scene.order + 1);
+    flowLog('cascade', `scene order=${scene.order} xong → xét cảnh kế`, {
+      sceneId,
+      next: nextScene ? `order=${nextScene.order} status=${nextScene.status} attempts=${nextScene.attempts}` : 'KHÔNG CÒN CẢNH KẾ (hết dây chuyền)',
+    });
     // shouldAutoTrigger thay cho `status === 'idle'`: cảnh kế từng fail vì lỗi tạm thời cũng
     // được thử lại (trong trần attempts + backoff), thay vì đứng im chờ người dùng bấm tay.
     if (nextScene && shouldAutoTrigger(nextScene)) {
       try {
+        flowLog('cascade', `TRIGGER cảnh kế order=${nextScene.order}`, { sceneId: nextScene.id });
         const res = await triggerSceneGeneration(projectId, nextScene.id);
+        flowLog('cascade', `kết quả trigger order=${nextScene.order}: ${res.ok ? 'OK' : 'THẤT BẠI'}`, {
+          jobId: res.jobId ?? '-',
+          error: res.error ? res.error.slice(0, 200) : '-',
+          quota: !!res.quotaExceeded,
+          mcpDown: !!res.mcpUnavailable,
+        });
         // Hết quota Veo → dừng cascade cả vòng này: các cảnh sau chắc chắn cũng 429, thử tiếp
         // chỉ đập vào API vô ích. Cảnh vẫn ở 'failed' nên vòng poll sau (khi quota đã reset)
         // tự chạy lại.

@@ -4,6 +4,7 @@ import { ensureLocalFile } from '../r2/client';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError, isQuotaError, isMcpUnavailableError } from '../googleFlow/errors';
+import { flowLog } from '../flowLog';
 import { planVideoInputs, MAX_REF_IMAGES } from './videoInputs';
 import type { Project, Scene } from '../types';
 
@@ -117,6 +118,14 @@ export async function triggerSceneGeneration(
 
     const flowProjectId = await ensureProjectFlowId(projectId);
 
+    flowLog('gen', `→ gen scene order=${scene.order}`, {
+      sceneId,
+      attempts: scene.attempts,
+      duration: scene.duration,
+      refImages: refImages.length,
+      startImage: startImage ? '1' : '0',
+      flowProjectId,
+    });
     const { job_id, flowProjectId: usedFlowProjectId, uploadedMediaIds } = await generateSceneVideo(
       {
         veoPrompt: scene.veoPrompt,
@@ -154,6 +163,7 @@ export async function triggerSceneGeneration(
       }
     });
 
+    flowLog('gen', `✓ scene order=${scene.order} đã nhận jobId`, { sceneId, jobId: job_id, flowProjectId: usedFlowProjectId });
     return { sceneId, ok: true, jobId: job_id };
   } catch (err) {
     const message = err instanceof FlowApiError ? err.message : (err as Error).message;
@@ -169,6 +179,15 @@ export async function triggerSceneGeneration(
         `${quota ? ' (HẾT QUOTA)' : ''}${mcpDown ? ' (ORINO MCP KHÔNG KẾT NỐI ĐƯỢC)' : ''}` +
         ` attempts=${scene.attempts} — ${message.slice(0, 300)}`
     );
+    flowLog('gen', `✗ scene order=${scene.order} THẤT BẠI`, {
+      sceneId,
+      attemptsTruoc: scene.attempts,
+      tinhVaoAttempts: !quota && !mcpDown,
+      quota,
+      mcpDown,
+      code: err instanceof FlowApiError && err.code ? err.code : '-',
+      err: message.slice(0, 250),
+    });
     await updateProject(projectId, (p) => {
       const s = p.script.scenes.find((x) => x.id === sceneId);
       if (!s) return;

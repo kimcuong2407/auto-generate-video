@@ -48,3 +48,4 @@ output/
 # storageState ChatGPT — chua cookie dang nhap, KHONG commit
 chatgpt-state*.json
 *storage-state*.json
+data/logs/

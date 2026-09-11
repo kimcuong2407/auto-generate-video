@@ -214,7 +214,11 @@ check('shouldAutoTrigger vẫn cho cảnh failed được thử lại trong tr�
   assert.ok(sceneSyncSrc.includes('SEGMENT_RETRY_BACKOFF_MS'), 'mất backoff');
   const fn = sceneSyncSrc.slice(sceneSyncSrc.indexOf('export function shouldAutoTrigger'));
   assert.ok(/status === 'idle'\) return true/.test(fn), 'cảnh idle phải được trigger');
-  assert.ok(/status !== 'failed'\) return false/.test(fn), 'chỉ idle/failed mới auto-trigger');
+  // Sau khi thêm log lý do, nhánh này trả qua why(...) thay vì `return false` trực tiếp — vẫn
+  // phải là false, chỉ khác cách viết.
+  assert.ok(/status !== 'failed'\) return why\(/.test(fn), 'chỉ idle/failed mới auto-trigger');
+  assert.ok(/const why = \(reason/.test(fn), 'why() phải trả false và ghi log lý do');
+  assert.ok(/return false;\n  };/.test(fn), 'why() phải kết thúc bằng return false');
 });
 
 console.log(`\n✅ ${passed} assert passed`);

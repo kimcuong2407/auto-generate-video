@@ -10,6 +10,7 @@
  */
 
 import { FlowApiError } from './errors';
+import { flowLog } from '../flowLog';
 
 const DEFAULT_URL = 'http://127.0.0.1:51888/mcp';
 
@@ -62,6 +63,12 @@ export async function mcpCall(
     params: { name: tool, arguments: args },
   });
 
+  const startedAt = Date.now();
+  flowLog('mcp', `→ gọi ${tool}`, {
+    args: JSON.stringify(args).slice(0, 300),
+    timeoutMs,
+  });
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
@@ -80,6 +87,7 @@ export async function mcpCall(
     // ECONNREFUSED = app Orino tắt hoặc chưa bật công tắc MCP Server. Nói thẳng cách sửa,
     // vì lỗi fetch gốc ("fetch failed") không gợi ý được gì cho người vận hành.
     const reason = (err as Error).name === 'AbortError' ? `quá ${timeoutMs}ms không phản hồi` : String(err);
+    flowLog('mcp', `✗ ${tool} KHÔNG kết nối được`, { url, tookMs: Date.now() - startedAt, reason: reason.slice(0, 200) });
     throw new FlowApiError(
       `Không gọi được Orino MCP (${url}): ${reason}. Kiểm tra app Orino Flow đang chạy và đã bật công tắc "MCP Server".`
     );
@@ -112,8 +120,10 @@ export async function mcpCall(
   // isError=true là lỗi NGHIỆP VỤ (tool chạy nhưng thất bại), khác rpcError ở trên là lỗi giao
   // thức. Nội dung lỗi nằm trong content nên phải ném kèm, đừng trả về như kết quả hợp lệ.
   if (result.isError) {
+    flowLog('mcp', `✗ ${tool} lỗi nghiệp vụ`, { tookMs: Date.now() - startedAt, out: out.slice(0, 300) });
     throw new FlowApiError(`Orino MCP: ${tool} thất bại: ${out.slice(0, 400)}`);
   }
+  flowLog('mcp', `✓ ${tool} OK`, { tookMs: Date.now() - startedAt, out: out.slice(0, 300) });
   return out;
 }
 

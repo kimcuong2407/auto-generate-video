@@ -21,6 +21,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { mcpCall, mcpCallJson } from './mcpClient';
 import { FlowApiError } from './errors';
+import { flowLog } from '../flowLog';
 import type { VeoModel } from '../types';
 import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import type { FlowStatusResult, FlowJobStatusResult, CreateFlowProjectResult, GenerateStoryboardImageResult } from './flowJobs';
@@ -123,6 +124,7 @@ export async function pollJobStatusMcp(jobId: string): Promise<FlowJobStatusResu
     // copyFile ném lỗi, scene kẹt 'generating', justDoneSceneIds rỗng, và cascade sang cảnh kế
     // KHÔNG BAO GIỜ chạy (triệu chứng: dây chuyền đứng im sau khi video đã gen xong).
     // Đưa file về quyền sở hữu của repo ngay khi biết nó tồn tại là cách chặn tận gốc.
+    flowLog('mcp-video', `job ${jobId} done — copy video từ Orino về repo`, { orinoPath: res.video_path });
     await fs.mkdir(TMP_VIDEO_DIR, { recursive: true });
     const dest = path.join(TMP_VIDEO_DIR, `${jobId}-${crypto.randomBytes(4).toString('hex')}.mp4`);
     try {
@@ -130,11 +132,16 @@ export async function pollJobStatusMcp(jobId: string): Promise<FlowJobStatusResu
     } catch (err) {
       // Ném lỗi RÕ nguyên nhân thay vì để copyFile báo ENOENT trần trụi ở tầng trên — ở đó
       // không ai biết path này đến từ Orino chứ không phải từ repo.
+      flowLog('mcp-video', `✗ job ${jobId}: KHÔNG đọc được video của Orino — cascade sẽ đứt tại đây`, {
+        orinoPath: res.video_path,
+        err: (err as Error).message.slice(0, 200),
+      });
       throw new FlowApiError(
         `Orino MCP: job ${jobId} báo done nhưng không đọc được video tại "${res.video_path}" ` +
           `(path do app Orino quản lý): ${(err as Error).message}`
       );
     }
+    flowLog('mcp-video', `✓ job ${jobId}: video đã về repo`, { dest });
     return { status: 'done', phase: res.phase, progress: res.progress, video_path: dest };
   }
   if (status === 'error') {
