@@ -444,8 +444,13 @@ Chấm theo 4 chiều, mỗi chiều 0-10:
    Action (hành động cụ thể), Scene (bối cảnh + ánh sáng), Style (cỡ cảnh, góc máy, chuyển động
    máy), Dialogue (mô tả giọng + lời thoại), Sounds (câu "Âm thanh:"), Technical (chặn phụ đề)?
    Trừ điểm thêm ở chiều này nếu:
-   - Phần Action chỉ có 1 động tác đơn lẻ cho cả cảnh ~8 giây, không có chuỗi nhịp nối tiếp
-     ("đầu tiên... rồi... cuối cùng..."). Động tác đơn khiến Veo lặp động tác hoặc đứng hình.
+   - Phần Action KHÔNG chia mốc thời gian dạng [00:00-00:03] — cả cảnh là một khối hành động,
+     Veo phải tự đoán nhịp nên hay lặp động tác hoặc đứng hình giữa chừng.
+   - Có chia mốc nhưng MỘT MỐC BỊ NHỒI nhiều hành động xảy ra cùng lúc (dấu hiệu: "vừa... vừa...",
+     nhiều động từ chính trong một mốc). Đây là lỗi NẶNG hơn không chia mốc: Veo vỡ hình, nhoè,
+     nhân bản tay. Trích đúng mốc bị nhồi khi báo.
+   - Tổng các mốc không khớp duration của cảnh, hoặc lời thoại bị cắt nhỏ rải vào nhiều mốc thay
+     vì giữ nguyên một khối liền ở phần Dialogue.
    - Cảnh có tương tác vật chất (rót/đổ chất lỏng, vải rủ, bóc bao bì, mở nắp, đặt vật xuống
      mặt bàn, vật rơi/bật, khói/hơi nước) mà THIẾU từ khoá vật lý ("vật lý chân thực chi phối
      chuyển động", "trọng lượng và quán tính đúng thực tế", "vải rủ tự nhiên theo trọng lực"...).
@@ -654,13 +659,27 @@ Với mỗi cảnh tự thiết kế, xác định:
         tiếp nối chuyển động.
       - Trong phần Technical của veoPrompt, thêm cụm "giải phẫu tay tự nhiên, đúng hai bàn tay,
         đúng hai cánh tay, không có chi thừa" để nhấn mạnh giải phẫu tay chuẩn, không thừa chi.
-      NHỊP HÀNH ĐỘNG TRONG 1 CẢNH (kỹ thuật "this then that"):
-      Cảnh ~8 giây đủ chỗ cho 2-3 nhịp nối tiếp, đừng chỉ mô tả 1 động tác đơn lẻ rồi để Veo tự
-      kéo dài — động tác đơn bị lặp hoặc đứng hình giữa chừng. Hãy viết chuỗi diễn tiến bằng từ
-      nối thời gian: "đầu tiên... rồi... cuối cùng...". Áp cho cả hành động lẫn biểu cảm, VD
-      "đầu tiên cô nghiêng đầu quan sát sản phẩm, rồi xoay nó lại để lộ mặt sau, cuối cùng ngẩng
-      lên nhìn thẳng camera mỉm cười". Nhịp cuối nên kết ở tư thế TĨNH rõ ràng để cảnh sau tiếp
-      nối được (xem chaining ở trên).
+      NHỊP HÀNH ĐỘNG TRONG 1 CẢNH — CHIA MỐC THỜI GIAN (timestamp prompting):
+      Đây là cú pháp CHÍNH THỨC của Google cho Veo 3.1, không phải mẹo truyền miệng. Thay vì tả
+      một khối hành động rồi để Veo tự chia nhịp, hãy gán hành động vào từng mốc thời gian.
+      - Chia phần mô tả hành động thành 2-3 mốc, viết dạng [00:00-00:03], [00:03-00:06],
+        [00:06-00:08]. Tổng các mốc PHẢI đúng bằng duration của cảnh.
+      - MỖI MỐC CHỈ ĐƯỢC CÓ ĐÚNG 1 HÀNH ĐỘNG CHÍNH. Đây là ràng buộc quan trọng nhất: Veo vỡ
+        hình (nhoè, méo, nhân bản tay) khi một khoảng thời gian bị nhồi nhiều việc xảy ra CÙNG
+        LÚC. Chia mốc là để các hành động NỐI TIẾP nhau, tuyệt đối KHÔNG phải để nhét thêm việc.
+        Sai: "[00:00-00:03] cô vừa xoay hộp vừa nói vừa chỉ tay lên kệ". Đúng: tách 3 mốc.
+      - Mốc CUỐI phải kết ở tư thế TĨNH rõ ràng (tay đang đặt ở đâu, cầm gì) để cảnh sau chaining
+        tiếp nối được.
+      - Được gắn thêm nhãn "SFX:" vào cuối một mốc để chỉ rõ tiếng động phát sinh đúng lúc đó,
+        VD "[00:03-00:06] cô bật nắp hộp. SFX: tiếng nắp nhựa bật khẽ." Nhãn này BỔ SUNG cho câu
+        "Âm thanh:" tổng thể ở thành phần (6), KHÔNG thay thế nó.
+      - LỜI THOẠI KHÔNG ĐƯỢC CHIA NHỎ theo mốc. Phần Dialogue (thành phần 5) vẫn là MỘT khối
+        liền, đặt sau các mốc, giữ NGUYÊN VĂN voiceoverVi trong đúng một cặp ngoặc kép duy nhất.
+        Cắt thoại ra nhiều mốc sẽ làm hỏng cú pháp colon và khiến hệ thống báo lỗi sai-nguyên-văn.
+      VD phần hành động của một cảnh 8 giây:
+      "[00:00-00:03] cô đặt hộp xuống mặt bàn gỗ, hai tay giữ hai bên hộp.
+       [00:03-00:06] cô xoay hộp lại để lộ mặt sau, ngón cái bật nhẹ nắp. SFX: tiếng nắp bật khẽ.
+       [00:06-00:08] cô ngẩng lên nhìn thẳng camera, tay phải vẫn đặt trên nắp hộp."
       VẬT LÝ CHÂN THỰC (thêm khi cảnh có tương tác vật chất):
       Veo mô phỏng vật lý tốt nhưng phải được yêu cầu rõ, không tự làm. Khi cảnh có rót/đổ chất
       lỏng, vải rủ/gấp, bóc bao bì, mở nắp, đặt vật xuống mặt bàn, vật rơi/bật, khói/hơi nước —

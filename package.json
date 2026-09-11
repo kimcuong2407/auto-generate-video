@@ -72,6 +72,7 @@
     "check:storyboard-batch": "tsx scripts/check-storyboard-batch.ts",
     "check:storyboard-progress": "tsx scripts/check-storyboard-progress.ts",
     "check:subject-anchor": "tsx scripts/check-subject-anchor.ts",
+    "check:timestamp-prompting": "tsx scripts/check-timestamp-prompting.ts",
     "check:token-retry": "tsx scripts/check-token-retry.ts",
     "check:veo-prompt-audit": "tsx scripts/check-veo-prompt-audit.ts",
     "check:veo-prompt-eval": "tsx scripts/check-veo-prompt-eval.ts",
