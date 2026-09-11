@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { shortTimeVn } from '@/lib/format/datetime';
 import { PROMPT_STEPS } from '@/lib/livestream/promptSteps';
 
 /**
@@ -42,11 +43,6 @@ interface RunDetail extends RunMeta {
   imagePaths: string[] | null;
 }
 
-/** "2026-09-03 14:32:07.123" → "14:32:07 03/09". Dữ liệu từ DB nên định dạng cố định, cắt là đủ. */
-function shortTime(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2}:\d{2})/.exec(iso);
-  return m ? `${m[4]} ${m[3]}/${m[2]}` : iso;
-}
 
 export function AiRunTimeline({
   jobId,
@@ -147,7 +143,7 @@ export function AiRunTimeline({
             <span style={{ opacity: 0.5, minWidth: 20 }}>{i + 1}.</span>
             <span style={{ fontWeight: 600 }}>{STEP_LABEL.get(r.stepKey) ?? r.stepKey}</span>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {shortTime(r.createdAt)} · {(r.durationMs / 1000).toFixed(1)}s
+              {shortTimeVn(r.createdAt)} · {(r.durationMs / 1000).toFixed(1)}s
               {r.attempts > 1 && ` · ${r.attempts} lần thử`}
               {r.imageCount > 0 && ` · ${r.imageCount} ảnh`}
             </span>

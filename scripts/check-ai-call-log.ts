@@ -18,13 +18,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  KEEP_RUNS,
-  currentAiCallContext,
-  rowIdsToDelete,
-  withAiCallContext,
-  withRowId,
-} from '../lib/ai/callLog';
+import { currentAiCallContext, withAiCallContext, withRowId } from '../lib/ai/callLog';
 import { PROMPT_STEPS } from '../lib/livestream/promptSteps';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -64,22 +58,39 @@ async function main(): Promise<void> {
   ]);
   assert.deepEqual([a, b], ['p1', 'p2'], 'hai lượt song song lẫn nhãn — log sẽ gắn sai sản phẩm');
 
-  // --- 3. Cắt tỉa: off-by-one ở đây XOÁ DỮ LIỆU THẬT ---
-  // Danh sách rowId sắp GIẢM DẦN (mới nhất trước), đúng thứ tự query dùng.
-  const desc = (n: number) => Array.from({ length: n }, (_, i) => n - i);
+  // --- 3. Log giữ VĨNH VIỄN: không còn đường tự động xoá nào ---
+  // Trước đây nhóm này khoá off-by-one của cắt tỉa. Mr.D đã chốt bỏ hẳn cắt tỉa (log là để truy
+  // vết về sau, cắt tỉa thì đúng lúc cần đối chiếu lượt vài tuần trước là đã mất), nên thứ cần
+  // khoá bây giờ NGƯỢC LẠI: đảm bảo cơ chế đó không lặng lẽ quay lại, và chỗ trống nó để lại
+  // đã có người thay.
+  const callLogSrc = fs.readFileSync(path.join(process.cwd(), 'lib/ai/callLog.ts'), 'utf8');
 
-  assert.deepEqual(rowIdsToDelete(desc(3), 20), [], 'chưa đủ 20 lượt mà đã xoá');
-  assert.deepEqual(rowIdsToDelete(desc(20), 20), [], 'đúng 20 lượt thì không được xoá gì');
-  assert.deepEqual(
-    rowIdsToDelete(desc(22), 20),
-    [2, 1],
-    'phải xoá đúng 2 lượt CŨ NHẤT và giữ 20 lượt mới'
+  // Xoá nửa vời là tệ nhất: vừa phình (nhánh chết không chạy) vừa mất log (nhánh còn sống).
+  assert.doesNotMatch(
+    callLogSrc,
+    /pruneAiCallLogs|rowIdsToDelete|KEEP_RUNS/,
+    'còn sót cơ chế cắt tỉa trong callLog.ts — log phải giữ vĩnh viễn'
   );
-  // Giữ đúng KEEP_RUNS lượt, không phải KEEP_RUNS-1 hay +1.
-  assert.equal(desc(50).length - rowIdsToDelete(desc(50), KEEP_RUNS).length, KEEP_RUNS,
-    `sau khi cắt phải còn đúng ${KEEP_RUNS} lượt`);
-  // Lượt mới nhất TUYỆT ĐỐI không được nằm trong danh sách xoá.
-  assert.ok(!rowIdsToDelete(desc(50), KEEP_RUNS).includes(50), 'cắt tỉa xoá nhầm lượt mới nhất');
+  // Chặn ca "refactor sau này khôi phục lại cho gọn": ghi log TUYỆT ĐỐI không được xoá gì.
+  assert.doesNotMatch(
+    callLogSrc,
+    /\.delete\(aiCallLogs\)/,
+    'callLog.ts không được có đường DELETE nào — chỉ route xoá thủ công (có xác nhận) mới được xoá'
+  );
+
+  // Bỏ cắt tỉa sinh ra rủi ro MỚI: trước kia mỗi nhóm tối đa 20 dòng nên `limit` chỉ là hình thức;
+  // giờ bảng vô hạn, một query không trần sẽ kéo cả bảng mediumtext về client.
+  const aiLogsRouteSrc = fs.readFileSync(path.join(process.cwd(), 'app/api/ai-logs/route.ts'), 'utf8');
+  assert.doesNotMatch(
+    aiLogsRouteSrc,
+    /KEEP_RUNS/,
+    'route phải có trần riêng, không mượn lại hằng của cơ chế cắt tỉa đã bỏ'
+  );
+  assert.match(
+    aiLogsRouteSrc,
+    /\.limit\(/,
+    'route đọc log PHẢI có limit — log giữ vĩnh viễn nên không còn gì chặn sẵn số dòng'
+  );
 
   // --- 4. Mọi bước AI text phải được bọc withAiCallContext ---
   // 2 bước này KHÔNG có lượt gọi AI text để log (background ra ảnh, negative_video chỉ là mảnh
@@ -158,8 +169,27 @@ async function main(): Promise<void> {
     'route tạo job phải gọi claimAiCallLogs để nhận log các lượt AI chạy ở trang crawl'
   );
   assert.ok(
-    /ingestEntry\(entry, form, inputsDir, index, slug\)/.test(createRouteSrc),
-    'route tạo job phải truyền slug xuống ingestEntry — không thì bước chuẩn hoá mô tả mất nhãn job'
+    /ingestEntry\(entry, form, inputsDir, index, slug, sourceKind\)/.test(createRouteSrc),
+    'route tạo job phải truyền CẢ slug lẫn sourceKind xuống ingestEntry — thiếu slug thì bước ' +
+      'chuẩn hoá mô tả mất nhãn job, thiếu sourceKind thì job V2 bị gắn nhãn V1'
+  );
+  // Nhãn phải suy từ form NGAY TẠI route, không tra DB: row livestream_v2_inputs chưa tồn tại lúc
+  // ingest nên tra ở đó luôn ra 'livestream-v1' — sai âm thầm cho mọi job V2.
+  assert.ok(
+    /const sourceKind = v2Raw \? 'livestream-v2' : 'livestream-v1'/.test(createRouteSrc),
+    'route phải suy sourceKind từ form v2Input, KHÔNG gọi resolveLivestreamKind lúc tạo job'
+  );
+  // Soi PHẦN CODE thôi, bỏ comment: doc-comment của ingestEntry có NHẮC tên hàm này để giải thích
+  // vì sao không được dùng nó — soi cả comment thì bắt nhầm đúng lời cảnh báo (cùng cái bẫy
+  // migration 0023 đã phải xử lý).
+  const ingestCode = fs
+    .readFileSync(path.join(process.cwd(), 'lib/livestream/ingestEntry.ts'), 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l))
+    .join('\n');
+  assert.ok(
+    !/resolveLivestreamKind\(/.test(ingestCode),
+    'ingestEntry KHÔNG được tự tra nhãn — row livestream_v2_inputs chưa tồn tại ở thời điểm ingest'
   );
 
   // Chuỗi truyền rowId từ trang crawl về server, đủ 3 chặng mới hoạt động.
@@ -190,7 +220,7 @@ async function main(): Promise<void> {
   );
 
   console.log(
-    `✅ check-ai-call-log: OK (ALS không rò rỉ, cắt tỉa giữ đúng ${KEEP_RUNS}, ` +
+    `✅ check-ai-call-log: OK (ALS không rò rỉ, log giữ vĩnh viễn - không còn đường tự xoá, ` +
       `${PROMPT_STEPS.length - NO_LOG.size} bước đã bọc, log gắn được vào job qua cả 2 đường)`
   );
 }

@@ -123,7 +123,12 @@ export async function evaluateScript(project: Project): Promise<ScriptEvaluation
   const user = buildEvalUserPrompt(scenes, project.product, audit);
 
   const raw = await withAiCallContext(
-    { stepKey: 'veo_prompt_eval', projectId: project.id, promptScope: prompts.scopeOf('veo_prompt_eval') },
+    {
+      stepKey: 'veo_prompt_eval',
+      projectId: project.id,
+      sourceKind: 'product-review',
+      promptScope: prompts.scopeOf('veo_prompt_eval'),
+    },
     () => generateScriptText(system, user)
   );
   return parseEvaluation(raw, audit);

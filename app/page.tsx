@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TopNav } from '@/components/TopNav';
+import { fullTimeVn } from '@/lib/format/datetime';
 import { STEP_LABELS } from '@/components/Sidebar';
 import { SCRIPT_ANGLES } from '@/lib/scriptAngles';
 import { runScriptGenerateSSE } from '@/lib/client/scriptGenerate';
@@ -12,13 +13,6 @@ type RowStatus = 'running' | 'done' | 'error';
 
 const BULK_CONCURRENCY = 3;
 
-function formatUpdatedAt(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString('vi-VN');
-  } catch {
-    return iso;
-  }
-}
 
 export default function HomePage() {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
@@ -213,7 +207,7 @@ export default function HomePage() {
                           </span>
                         )}
                       </td>
-                      <td>{formatUpdatedAt(p.updatedAt)}</td>
+                      <td>{fullTimeVn(p.updatedAt)}</td>
                       <td>
                         <Link href={`/projects/${p.id}`} className="back-link">
                           Mở →

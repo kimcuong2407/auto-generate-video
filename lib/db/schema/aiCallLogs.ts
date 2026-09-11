@@ -11,6 +11,10 @@
  * Đây là điểm khác biệt cố ý: ai_prompts là bản mẫu để sửa, bảng này là bằng chứng đã gửi gì.
  *
  * KHÔNG lưu base64 ảnh (1 ảnh vài trăm KB, 1 lượt tới 4 ảnh) — chỉ lưu relPath ở `image_paths`.
+ *
+ * BẢNG GIỮ VĨNH VIỄN: không có cơ chế tự cắt tỉa nào (đã gỡ, xem recordAiCall ở lib/ai/callLog.ts).
+ * Hệ quả: bảng chỉ tăng, mọi truy vấn đọc BẮT BUỘC có `limit`, và dung lượng do
+ * `npm run check:log-size` canh + nút xoá thủ công ở tab /logs, không tự thu dọn.
  */
 import { mysqlTable, int, bigint, varchar, mediumtext, datetime, index } from 'drizzle-orm/mysql-core';
 import { mariaJson } from './mariaJson';
@@ -24,8 +28,8 @@ export const aiCallLogs = mysqlTable(
     /**
      * '' = bước chạy TRƯỚC khi job tồn tại (extract / vision_screenshot / v2_field_extract lúc tạo
      * job). Chuỗi rỗng chứ KHÔNG NULL, cùng quy ước với ai_prompts — lý do thực dụng: `WHERE
-     * job_slug = ?` không bao giờ match NULL, nên cắt tỉa sẽ cần thêm nhánh `IS NULL` riêng, và
-     * nhánh đó rất dễ bị quên → 3 bước global phình vô hạn mà không ai thấy.
+     * job_slug = ?` không bao giờ match NULL, nên mọi truy vấn lọc sẽ cần thêm nhánh `IS NULL`
+     * riêng, và nhánh đó rất dễ bị quên → 3 bước global lặng lẽ biến mất khỏi kết quả lọc.
      */
     jobSlug: varchar('job_slug', { length: 191 }).notNull(),
     /** '' = lượt cấp job. Bước script/shorten/script_qa chạy theo TỪNG sản phẩm trong 1 vòng lặp. */
@@ -37,10 +41,21 @@ export const aiCallLogs = mysqlTable(
      * Vì sao cột riêng thay vì nhét projectId vào `job_slug`: hai loại id khác không gian tên,
      * dùng chung một cột thì mọi truy vấn phải mang theo quy ước tiền tố và chỉ cần một chỗ quên
      * là log hai luồng lẫn vào nhau. Chuỗi rỗng chứ không NULL — cùng lý do đã ghi cho `job_slug`:
-     * `WHERE project_id = ?` không bao giờ match NULL nên cắt tỉa sẽ cần nhánh `IS NULL` riêng, và
-     * nhánh đó rất dễ bị quên → log phình vô hạn mà không ai thấy.
+     * `WHERE project_id = ?` không bao giờ match NULL nên mọi truy vấn lọc sẽ cần nhánh `IS NULL`
+     * riêng, và nhánh đó rất dễ bị quên → log của luồng kia lặng lẽ rơi khỏi kết quả.
      */
     projectId: varchar('project_id', { length: 128 }).notNull().default(''),
+    /**
+     * Dây chuyền sinh ra lượt này: 'livestream-v1' | 'livestream-v2' | 'product-review'
+     * (xem lib/logs/sourceKind.ts). Ghi lúc TẠO log, không suy ra lúc đọc.
+     *
+     * '' = log ghi TRƯỚC migration 0025, tức trước khi có cột này. UI hiện "không rõ" — tuyệt
+     * đối KHÔNG đoán ngược từ job_slug/project_id: log V1 và V2 cũ nằm lẫn nhau trong cùng cột
+     * job_slug nên đoán ra là bịa một bằng chứng trông như thật.
+     *
+     * varchar chứ không enum: enum MariaDB phải ALTER TABLE mỗi lần thêm giá trị.
+     */
+    sourceKind: varchar('source_kind', { length: 24 }).notNull().default(''),
     /** Model thực dùng (đã tính cả override vision) — 2 lượt cùng bước có thể khác model. */
     model: varchar('model', { length: 191 }).notNull(),
     /**
@@ -71,10 +86,18 @@ export const aiCallLogs = mysqlTable(
      *
      * Cột thứ 3 là `row_id` chứ KHÔNG phải `created_at`: `created_at` do app sinh (`new Date()`)
      * nên nhiều process PM2 ghi gần nhau có thể cho row_id lớn hơn mà created_at nhỏ hơn. Sắp xếp
-     * và cắt tỉa đều theo row_id (thứ tự ghi THẬT của AUTO_INCREMENT); created_at chỉ để hiển thị.
+     * và phân trang đều theo row_id (thứ tự ghi THẬT của AUTO_INCREMENT) — đây cũng là lý do tab
+     * log toàn cục lật trang bằng con trỏ row_id chứ không OFFSET theo thời gian; created_at chỉ
+     * để hiển thị.
      */
     lookupIdx: index('ix_ai_call_logs_lookup').on(t.jobSlug, t.stepKey, t.rowId),
     /** Cùng trục đọc với lookupIdx nhưng cho luồng review: N lượt gần nhất của (project, bước). */
     projectIdx: index('ix_ai_call_logs_project').on(t.projectId, t.stepKey, t.rowId),
+    /**
+     * Trục đọc của TAB LOG TOÀN CỤC (/logs): lọc theo loại dây chuyền rồi lật trang theo row_id.
+     * Hai index trên đều bắt đầu bằng job_slug/project_id nên không phục vụ được truy vấn không
+     * có chủ sở hữu. Cột 2 là row_id, cùng lý do đã ghi ở lookupIdx.
+     */
+    sourceIdx: index('ix_ai_call_logs_source').on(t.sourceKind, t.rowId),
   })
 );

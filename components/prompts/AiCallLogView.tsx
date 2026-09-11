@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { shortTimeVn } from '@/lib/format/datetime';
 
 /**
  * Mục thu gọn "Lượt chạy gần nhất": hiện INPUT/OUTPUT THẬT của các lượt gọi AI ở một bước.
@@ -50,11 +51,6 @@ const SCOPE_LABEL: Record<string, string> = {
   default: 'mặc định hệ thống',
 };
 
-/** "2026-09-03 14:32:07.123" → "14:32:07 03/09". Dữ liệu từ DB nên định dạng cố định, cắt là đủ. */
-function shortTime(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2}:\d{2})/.exec(iso);
-  return m ? `${m[4]} ${m[3]}/${m[2]}` : iso;
-}
 
 export function AiCallLogView({
   stepKey,
@@ -156,7 +152,7 @@ export function AiCallLogView({
           >
             {runs.map((r, i) => (
               <option key={r.rowId} value={r.rowId}>
-                {i === 0 ? '● mới nhất' : `${i + 1}.`} {shortTime(r.createdAt)} ·{' '}
+                {i === 0 ? '● mới nhất' : `${i + 1}.`} {shortTimeVn(r.createdAt)} ·{' '}
                 {(r.durationMs / 1000).toFixed(1)}s
                 {r.attempts > 1 ? ` · ${r.attempts} lần thử` : ''}
                 {r.productId ? ` · sp ${r.productId.slice(0, 8)}` : ''} {r.ok ? '✅' : '❌ lỗi'}

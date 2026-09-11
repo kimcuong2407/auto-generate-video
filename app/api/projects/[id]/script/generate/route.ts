@@ -137,6 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           {
             stepKey: 'review_script',
             projectId: params.id,
+            sourceKind: 'product-review',
             promptScope: prompts.scopeOf('review_script'),
           },
           () =>

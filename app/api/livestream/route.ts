@@ -79,8 +79,14 @@ async function createJob(req: NextRequest) {
   await createJobDirs(slug);
   const inputsDir = jobInputsDir(slug);
 
+  // Nhãn V1/V2 phải biết TRƯỚC khi ingest: các bước AI lúc ingest (chuẩn hoá mô tả, đọc ảnh) ghi
+  // log ngay tại đó, mà row livestream_v2_inputs thì mãi dưới kia mới ghi. Tra DB ở trong ingest
+  // sẽ luôn ra 'livestream-v1' cho cả job V2 — log gắn sai nhãn mà trông y như thật.
+  const v2Raw = String(form.get('v2Input') || '').trim();
+  const sourceKind = v2Raw ? 'livestream-v2' : 'livestream-v1';
+
   const results = await runWithConcurrency(entries, INGEST_CONCURRENCY, (entry, index) =>
-    ingestEntry(entry, form, inputsDir, index, slug)
+    ingestEntry(entry, form, inputsDir, index, slug, sourceKind)
   );
 
   const products = results.flatMap((r) => r.products);
@@ -113,7 +119,6 @@ async function createJob(req: NextRequest) {
   // Form gửi kèm `v2Input` = tạo job cho tab Livestream V2: ghi bản ghi input Shopee NGAY trong
   // lượt tạo. Ghi ở đây (không để client PUT riêng sau) vì nếu lượt PUT đó lỗi, job sẽ nằm lại ở
   // tab V1 với prompt V1 — sai tab và sai cả kịch bản, rất khó nhận ra.
-  const v2Raw = String(form.get('v2Input') || '').trim();
   if (v2Raw) {
     try {
       await writeV2Input(slug, JSON.parse(v2Raw) as LivestreamV2Input);

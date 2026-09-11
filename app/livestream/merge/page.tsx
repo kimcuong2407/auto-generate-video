@@ -4,15 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { TopNav } from '@/components/TopNav';
+import { fullTimeVn } from '@/lib/format/datetime';
 import type { LivestreamJobSummary, LivestreamMergeSummary } from '@/lib/livestream/types';
 
-function formatUpdatedAt(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString('vi-VN');
-  } catch {
-    return iso;
-  }
-}
 
 function statusBadgeClass(status: string): string {
   if (status === 'done') return 'badge-done';
@@ -122,7 +116,7 @@ export default function LivestreamMergeListPage() {
                           {j.name} <span className="badge badge-pending">{j.aspectRatio}</span>
                         </td>
                         <td>{j.productCount}</td>
-                        <td>{formatUpdatedAt(j.updatedAt)}</td>
+                        <td>{fullTimeVn(j.updatedAt)}</td>
                         <td>{idx >= 0 ? idx + 1 : '—'}</td>
                       </tr>
                     );
@@ -185,7 +179,7 @@ export default function LivestreamMergeListPage() {
                     <td>
                       <span className={`badge ${statusBadgeClass(m.status)}`}>{m.status}</span>
                     </td>
-                    <td>{formatUpdatedAt(m.updatedAt)}</td>
+                    <td>{fullTimeVn(m.updatedAt)}</td>
                     <td>
                       <Link href={`/livestream/merge/${m.id}`} className="back-link">Mở →</Link>
                     </td>

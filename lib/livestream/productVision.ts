@@ -24,7 +24,9 @@ export interface ExtractedProduct {
 export async function extractProductFromImage(
   imageAbsPath: string,
   /** Slug job — gắn log vào job để xem được ở job detail. Bỏ trống = phạm vi toàn hệ thống. */
-  jobSlug?: string
+  jobSlug?: string,
+  /** Nhãn V1/V2 do route truyền xuống — xem lý do ở lib/livestream/productExtract.ts. */
+  sourceKind?: string
 ): Promise<ExtractedProduct> {
   const visionModel = process.env.AI_VISION_MODEL || '';
   if (!visionModel) {
@@ -41,6 +43,7 @@ export async function extractProductFromImage(
     {
       stepKey: 'vision_screenshot',
       jobSlug,
+      sourceKind,
       promptScope: prompts.scopeOf('vision_screenshot'),
       imagePaths: [path.basename(imageAbsPath)],
     },

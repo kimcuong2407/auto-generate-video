@@ -16,14 +16,16 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-// 1. pruneAiCallLogs: scope cắt tỉa phải gồm CẢ project_id.
+// 1. Log giữ VĨNH VIỄN: mọi truy vấn ĐỌC phải có trần.
+//    Trước kia cắt tỉa giữ sẵn 20 dòng/nhóm nên `limit` chỉ là hình thức. Bỏ cắt tỉa thì bảng chỉ
+//    tăng — một route đọc quên `limit` sẽ kéo cả bảng mediumtext, và triệu chứng (tab đứng) trông
+//    giống hệt lỗi mạng nên rất khó lần ra.
 {
   const src = fs.readFileSync('lib/ai/callLog.ts', 'utf8');
-  const fn = src.slice(src.indexOf('async function pruneAiCallLogs'));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /eq\(aiCallLogs\.jobSlug,\s*jobSlug\)/, 'phải lọc theo jobSlug');
-  assert.match(body, /eq\(aiCallLogs\.projectId,\s*projectId\)/, 'PHẢI lọc theo projectId, nếu không log mọi project cắt lẫn nhau');
-  assert.match(body, /eq\(aiCallLogs\.stepKey,\s*stepKey\)/, 'phải lọc theo bước');
+  assert.doesNotMatch(src, /pruneAiCallLogs/, 'cắt tỉa phải đã bị gỡ hẳn — Mr.D chốt giữ log vĩnh viễn');
+
+  const route = fs.readFileSync('app/api/ai-logs/route.ts', 'utf8');
+  assert.match(route, /\.limit\(/, 'route đọc log PHẢI có limit khi log không còn bị cắt tỉa');
 }
 
 // 2. recordAiCall nhận projectId, và chatClient truyền nó xuống — thiếu mắt xích nào thì cột
@@ -35,6 +37,12 @@ import fs from 'node:fs';
 
   const chat = fs.readFileSync('lib/ai/chatClient.ts', 'utf8');
   assert.match(chat, /projectId: ctx\.projectId \?\? ''/, 'chatClient phải truyền projectId xuống recordAiCall');
+
+  // sourceKind đi CÙNG mắt xích: thiếu một khâu thì cột source_kind luôn rỗng và bộ lọc "loại
+  // dây chuyền" của tab /logs không lọc được gì — hỏng im lặng, không lỗi nào báo.
+  assert.match(callLog, /export async function recordAiCall\(row: \{[\s\S]*?sourceKind: string;/, 'recordAiCall phải nhận sourceKind');
+  assert.match(callLog, /export interface AiCallContext \{[\s\S]*?sourceKind\?: string;/, 'AiCallContext phải có sourceKind');
+  assert.match(chat, /sourceKind: ctx\.sourceKind \?\? ''/, 'chatClient phải truyền sourceKind xuống recordAiCall');
 }
 
 // 3. Route đọc log: project_id luôn nằm trong WHERE, kể cả khi rỗng.
@@ -81,4 +89,24 @@ import fs from 'node:fs';
   assert.doesNotMatch(ddl, /CREATE TABLE/i, 'KHÔNG được có CREATE TABLE — 3 bảng đó đã tồn tại trên DB thật');
 }
 
-console.log('✅ check-ai-log-scope: 5/5 pass');
+// 6. Migration 0025 (tab log): cùng luật IF NOT EXISTS như 0023.
+//    Khác 0023 một điểm: 0025 ĐƯỢC PHÉP có CREATE TABLE vì shopee_ingests/flow_job_logs là bảng
+//    thật sự mới. Nhưng chúng cũng phải IF NOT EXISTS — deploy chạy lại lần hai không được fail.
+{
+  const sql = fs.readFileSync('lib/db/migrations/0025_ai_log_tab.sql', 'utf8');
+  const ddl = sql
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+  const stmts = ddl.split(';').filter((x) => /ALTER TABLE|CREATE INDEX|CREATE TABLE/i.test(x));
+  assert.ok(stmts.length >= 6, `migration 0025 phải có đủ câu DDL, đang có ${stmts.length}`);
+  for (const st of stmts) {
+    assert.match(st, /IF NOT EXISTS/i, `câu DDL phải có IF NOT EXISTS: ${st.trim().slice(0, 70)}`);
+  }
+  // Hai bảng mới phải thực sự được tạo ở đây, không thì schema Drizzle khai mà DB không có.
+  assert.match(ddl, /CREATE TABLE IF NOT EXISTS `shopee_ingests`/, 'thiếu bảng shopee_ingests');
+  assert.match(ddl, /CREATE TABLE IF NOT EXISTS `flow_job_logs`/, 'thiếu bảng flow_job_logs');
+  assert.match(ddl, /ADD COLUMN IF NOT EXISTS `source_kind`/, 'thiếu cột source_kind');
+}
+
+console.log('✅ check-ai-log-scope: 6/6 pass');

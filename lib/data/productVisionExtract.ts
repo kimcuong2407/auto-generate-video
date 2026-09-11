@@ -102,6 +102,7 @@ export async function extractVisualDescription(
     {
       stepKey: 'review_product_vision',
       projectId,
+      sourceKind: 'product-review',
       imagePaths: picked.map((p) => path.basename(p)),
       promptScope: prompts.scopeOf('review_product_vision'),
     },

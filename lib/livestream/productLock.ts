@@ -7,6 +7,7 @@ import { ensureLocalImage } from './imageR2';
 import { resolveWithinJob } from './paths';
 import { PRODUCT_LOCK_SYSTEM_PROMPT } from './promptDefaults';
 import { loadPromptSet } from './promptStore';
+import { resolveLivestreamKind } from './v2Store';
 import type { LivestreamJob, LivestreamProductLock } from './types';
 
 /**
@@ -122,6 +123,7 @@ export async function ensureProductLock(
       {
         stepKey: 'product_lock',
         jobSlug: job.slug,
+        sourceKind: await resolveLivestreamKind(job.slug),
         promptScope: prompts.scopeOf('product_lock'),
         imagePaths: refPaths,
       },

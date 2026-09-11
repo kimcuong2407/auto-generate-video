@@ -12,6 +12,7 @@ import {
   SHOPEE_V2_PREFILL_KEY,
 } from '@/lib/shopee/toProjectPayload';
 import { MediaModal } from '@/components/MediaModal';
+import { fullTimeVn } from '@/lib/format/datetime';
 
 // Số ảnh tối đa gửi lên /api/projects (khớp MAX_IMAGE_COUNT server-side). Không import từ
 // @/lib/constants vì file đó dùng node:path (server-only), sẽ vỡ bundle client component này.
@@ -324,7 +325,7 @@ export default function ShopeeCrawlPage() {
         )}
         {receivedAt && (
           <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-            Nhận lúc: {new Date(receivedAt).toLocaleString('vi-VN')}
+            Nhận lúc: {fullTimeVn(receivedAt)}
           </span>
         )}
       </div>

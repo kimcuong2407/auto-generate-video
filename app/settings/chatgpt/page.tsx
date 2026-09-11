@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { TopNav } from '@/components/TopNav';
+import { fullTimeVn } from '@/lib/format/datetime';
 
 interface AccountRow {
   id: string;
@@ -117,7 +118,7 @@ export default function ChatgptAuthPage() {
                       )}
                     </td>
                     <td style={{ padding: '8px 6px', fontSize: 12 }}>
-                      {acc.lastOkAt ? new Date(acc.lastOkAt).toLocaleString('vi-VN') : '—'}
+                      {acc.lastOkAt ? fullTimeVn(acc.lastOkAt) : '—'}
                     </td>
                     <td style={{ padding: '8px 6px' }}>
                       {!acc.isDefault && (

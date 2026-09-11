@@ -3,15 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TopNav } from '@/components/TopNav';
+import { fullTimeVn } from '@/lib/format/datetime';
 import type { LivestreamJobSummary } from '@/lib/livestream/types';
 
-function formatUpdatedAt(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString('vi-VN');
-  } catch {
-    return iso;
-  }
-}
 
 function statusBadgeClass(status: LivestreamJobSummary['status']): string {
   if (status === 'done') return 'badge-done';
@@ -94,7 +88,7 @@ export default function LivestreamListPage() {
                       <td>
                         <span className={`badge ${statusBadgeClass(j.status)}`}>{j.status}</span>
                       </td>
-                      <td>{formatUpdatedAt(j.updatedAt)}</td>
+                      <td>{fullTimeVn(j.updatedAt)}</td>
                       <td>
                         <Link href={`/livestream/${j.id}`} className="back-link">
                           Mở →

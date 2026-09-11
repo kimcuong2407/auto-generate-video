@@ -117,6 +117,7 @@ function logAiCall(d: {
     jobSlug: ctx.jobSlug ?? '',
     productId: ctx.productId ?? '',
     projectId: ctx.projectId ?? '',
+    sourceKind: ctx.sourceKind ?? '',
     promptScope: ctx.promptScope ?? 'default',
     model: d.model,
     systemPrompt: d.system,

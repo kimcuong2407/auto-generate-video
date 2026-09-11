@@ -33,6 +33,7 @@ import { waitForConfirm, abandonGates } from '@/lib/livestream/stepGate';
 import { PRODUCT_LOCK_USER_PROMPT, pickProductLockRefPaths } from '@/lib/livestream/productLock';
 import { buildStageBibleUserPrompt } from '@/lib/livestream/stageBible';
 import { getPromptStep, type PromptStepKey } from '@/lib/livestream/promptSteps';
+import { resolveLivestreamKind } from '@/lib/livestream/v2Store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -131,6 +132,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // là 6 round-trip DB cho dữ liệu không đổi. Chốt snapshot ở đây cũng đúng ngữ nghĩa: sửa
       // prompt giữa lúc đang gen 32 đoạn thì kết quả không bị lai 2 phiên bản.
       const prompts = await loadPromptSet(job.slug);
+      // Tra MỘT LẦN ngoài vòng lặp: nhãn V1/V2 giống nhau cho mọi sản phẩm của cùng job, mà vòng
+      // dưới chạy tới 32 sản phẩm.
+      const jobKind = await resolveLivestreamKind(job.slug);
       // Params `${...}` PHẢI fill trong vòng lặp bên dưới: giá trị khác nhau theo từng sản phẩm.
       const systemPromptTemplate = prompts.get('script', { isV2: !!v2Input });
 
@@ -162,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           visualDescription = await describeProductAppearance(
             refPaths.map((rel) => resolveWithinJob(job.id, rel)),
             prompts.get('product_visual'),
-            { jobSlug: job.slug, promptScope: prompts.scopeOf('product_visual') }
+            { jobSlug: job.slug, sourceKind: jobKind, promptScope: prompts.scopeOf('product_visual') }
           );
         } catch {
           // bỏ qua — script vẫn sinh bình thường không có mô tả ngoại hình bổ sung.
@@ -314,6 +318,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               stepKey: 'script',
               jobSlug: job.slug,
               productId: product.id,
+              sourceKind: jobKind,
               promptScope: prompts.scopeOf('script'),
             },
             () =>
@@ -361,6 +366,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                   {
                     jobSlug: job.slug,
                     productId: product.id,
+                    sourceKind: jobKind,
                     promptScope: prompts.scopeOf('shorten'),
                   }
                 );
@@ -408,6 +414,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             ? await reviewScriptQuality(segments, prompts.get('script_qa'), {
                 jobSlug: job.slug,
                 productId: product.id,
+                sourceKind: jobKind,
                 promptScope: prompts.scopeOf('script_qa'),
               })
             : [];

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { EVAL_WARN_THRESHOLD } from '@/lib/data/veoPromptAudit';
 import type { Project, ScriptEvaluation } from '@/lib/types';
+import { fullTimeVn } from '@/lib/format/datetime';
 
 const DIMENSION_LABELS: Record<string, string> = {
   visualCompleteness: 'Đủ 7 thành phần',
@@ -132,7 +133,7 @@ export function ScriptEvaluationPanel({ project, onRefresh }: { project: Project
             )}
 
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
-              Chấm lúc {new Date(evaluation.evaluatedAt).toLocaleString('vi-VN')}
+              Chấm lúc {fullTimeVn(evaluation.evaluatedAt)}
             </div>
           </>
         )}

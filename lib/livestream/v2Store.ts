@@ -61,10 +61,49 @@ export async function readV2Input(jobSlug: string): Promise<LivestreamV2Input | 
   return rows[0] ? toInput(rows[0]) : null;
 }
 
+/**
+ * Cache nhãn V1/V2 theo slug, phạm vi 1 process.
+ *
+ * Nhãn này gần như bất biến sau khi job được tạo (row V2 ghi lúc tạo job, không đường nào xoá),
+ * còn bước sinh kịch bản gọi log 3 lần cho MỖI sản phẩm — job 32 sản phẩm là ~96 truy vấn cho
+ * một giá trị tĩnh. writeV2Input cập nhật cache để ca "tạo job V1 rồi ghi input V2 ngay sau đó"
+ * không kẹt nhãn cũ.
+ */
+const kindCache = new Map<string, LivestreamKind>();
+
+export type LivestreamKind = 'livestream-v1' | 'livestream-v2';
+
+/**
+ * Job này thuộc luồng V1 hay V2 — dùng để gắn `source_kind` cho log.
+ *
+ * KHÔNG DÙNG ĐƯỢC ở các bước chạy lúc TẠO job (extract / vision_screenshot): thời điểm đó row
+ * livestream_v2_inputs CHƯA được ghi nên hàm này trả 'livestream-v1' cho cả job V2. Ở những chỗ
+ * đó phải truyền nhãn từ route xuống — xem lib/livestream/ingestEntry.ts.
+ *
+ * KHÔNG NÉM: log là phụ trợ. DB lỗi thì trả 'livestream-v1' + ghi console, chứ để nó làm fail một
+ * lượt gen là đổi quan sát lấy hồi quy thật (cùng nguyên tắc recordAiCall).
+ */
+export async function resolveLivestreamKind(jobSlug: string): Promise<LivestreamKind> {
+  const cached = kindCache.get(jobSlug);
+  if (cached) return cached;
+  try {
+    const kind: LivestreamKind = (await readV2Input(jobSlug)) ? 'livestream-v2' : 'livestream-v1';
+    kindCache.set(jobSlug, kind);
+    return kind;
+  } catch (err) {
+    // KHÔNG cache khi lỗi: vòng sau DB khoẻ lại thì phải tra được nhãn đúng.
+    console.error(`[v2Store] không xác định được loại job ${jobSlug}: ${(err as Error).message}`);
+    return 'livestream-v1';
+  }
+}
+
 /** Ghi (insert hoặc update) input V2 — đánh dấu job này là job V2. */
 export async function writeV2Input(jobSlug: string, input: LivestreamV2Input): Promise<void> {
   const id = await jobRowId(jobSlug);
   if (id == null) throw new Error(`Livestream job không tồn tại: ${jobSlug}`);
+  // Job vừa được đánh dấu V2 — nếu trước đó có ai gọi resolveLivestreamKind (khi row chưa tồn
+  // tại) thì cache đang giữ 'livestream-v1' và sẽ gắn sai nhãn cho mọi log về sau của job này.
+  kindCache.set(jobSlug, 'livestream-v2');
   const now = isoToSql(new Date().toISOString())!;
   const values = {
     jobId: id,

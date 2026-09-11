@@ -46,10 +46,12 @@ export interface IngestEntryResult {
 async function extractOrFallback(
   text: string,
   /** Slug job đang tạo — để log lượt AI gắn thẳng vào job, xem được ở job detail. */
-  jobSlug: string
+  jobSlug: string,
+  /** Nhãn V1/V2 từ route — xem lý do ở lib/livestream/productExtract.ts. */
+  sourceKind: string
 ): Promise<{ name: string; description: string; ingestError: string | null }> {
   try {
-    const info = await extractProductInfo(text, jobSlug);
+    const info = await extractProductInfo(text, jobSlug, sourceKind);
     return { name: info.name, description: info.description, ingestError: null };
   } catch (err) {
     const firstLine = text.split('\n').find((l) => l.trim())?.trim().slice(0, 80) || 'Sản phẩm chưa rõ tên';
@@ -68,6 +70,8 @@ async function ingestTextBlocks(
   warnings: string[],
   sourceFilePath: string | null,
   jobSlug: string,
+  /** Nhãn V1/V2 từ route — xem doc-comment tham số cùng tên của ingestEntry. */
+  sourceKind: string,
   sourceRaw?: unknown
 ): Promise<LivestreamProduct[]> {
   let blocks = splitProductBlocks(text);
@@ -80,7 +84,7 @@ async function ingestTextBlocks(
 
   return Promise.all(
     blocks.map(async (block, blockIndex) => {
-      const info = await extractOrFallback(block, jobSlug);
+      const info = await extractOrFallback(block, jobSlug, sourceKind);
       return buildProduct({
         order: 0,
         sourceType,
@@ -106,7 +110,14 @@ export async function ingestEntry(
   inputsDir: string,
   entryIndex: number,
   /** Slug job đang tạo — để log lượt AI (chuẩn hoá mô tả / đọc ảnh) gắn thẳng vào job. */
-  jobSlug: string
+  jobSlug: string,
+  /**
+   * 'livestream-v1' | 'livestream-v2' — do ROUTE truyền xuống, KHÔNG tra DB ở đây.
+   *
+   * Bước ingest chạy TRƯỚC khi row livestream_v2_inputs tồn tại, nên resolveLivestreamKind sẽ
+   * trả 'livestream-v1' cho cả job V2. Gắn nhãn sai còn tệ hơn không gắn: log trông như thật.
+   */
+  sourceKind: string
 ): Promise<IngestEntryResult> {
   const warnings: string[] = [];
   const targetDurationSec = Math.max(1, Math.round(Number(entry.targetDurationSec) || 0) || 60);
@@ -134,7 +145,7 @@ export async function ingestEntry(
         warnings,
       };
     }
-    const info = await extractOrFallback(fetched, jobSlug);
+    const info = await extractOrFallback(fetched, jobSlug, sourceKind);
     return {
       products: [
         buildProduct({
@@ -165,6 +176,7 @@ export async function ingestEntry(
       warnings,
       null,
       jobSlug,
+      sourceKind,
       entry.sourceRaw
     );
 
@@ -248,7 +260,8 @@ export async function ingestEntry(
     try {
       const info = await extractProductFromImage(
         path.join(inputsDir, path.basename(savedImagePaths[0])),
-        jobSlug
+        jobSlug,
+        sourceKind
       );
       ingestStatus = 'ready';
       ingestError = null;
@@ -295,7 +308,8 @@ export async function ingestEntry(
       targetDurationSec,
       warnings,
       path.join('inputs', fileName),
-      jobSlug
+      jobSlug,
+      sourceKind
     );
     return { products, warnings };
   }

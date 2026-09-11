@@ -172,7 +172,7 @@ async function runPromptGeneration(
   const visionModel = process.env.AI_VISION_MODEL || '';
   // Bọc CẢ hai nhánh bằng 1 lượt withAiCallContext: đây là hai đường tới cùng một lượt gọi AI,
   // bọc riêng từng nhánh thì nhánh nào quên là lượt đó rơi khỏi log mà không ai thấy.
-  return withAiCallContext({ stepKey, projectId, promptScope }, () => {
+  return withAiCallContext({ stepKey, projectId, sourceKind: 'product-review', promptScope }, () => {
     if (refs.images.length > 0 && visionModel) {
       return chatCompletion(system, user, { model: visionModel, images: refs.images });
     }

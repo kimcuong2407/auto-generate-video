@@ -8,3 +8,5 @@ export * from './projects';
 export * from './chatgptImage';
 export * from './prompts';
 export * from './aiCallLogs';
+export * from './shopeeIngests';
+export * from './flowJobLogs';

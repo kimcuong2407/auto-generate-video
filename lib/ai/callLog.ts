@@ -17,14 +17,12 @@
  * rơi hết vào rỗng một cách im lặng.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { and, desc, eq, inArray, lte } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '../db/client';
 import { DB_ENABLED } from '../db/config';
 import { aiCallLogs } from '../db/schema/aiCallLogs';
 import type { PromptStepKey } from '../livestream/promptSteps';
 
-/** Số lượt giữ lại cho mỗi cặp (job, bước) — cũ hơn thì bị cắt tỉa ngay sau khi ghi. */
-export const KEEP_RUNS = 20;
 
 /** Nhãn của một lượt gọi AI: ai đang gọi, cho job nào, sản phẩm nào. */
 export interface AiCallContext {
@@ -40,6 +38,16 @@ export interface AiCallContext {
    * lib/db/schema/aiCallLogs.ts.
    */
   projectId?: string;
+  /**
+   * Dây chuyền sinh ra lượt này (xem lib/logs/sourceKind.ts). Bỏ trống = '' → tab log hiện
+   * "không rõ".
+   *
+   * Vì sao phải TRUYỀN VÀO thay vì tự tra: nhãn livestream V1/V2 chỉ phân biệt được bằng row
+   * trong livestream_v2_inputs, mà các bước chạy lúc TẠO job (extract / vision_screenshot) chạy
+   * TRƯỚC khi row đó được ghi — tự tra ở đó sẽ gán nhầm mọi job V2 thành V1. Nơi biết chắc là
+   * route tạo job, nên nhãn đi từ trên xuống.
+   */
+  sourceKind?: string;
   /** Tầng prompt đang thắng, lấy từ PromptSet.scopeOf(step) — có sẵn ở mọi call-site, không tốn query. */
   promptScope?: 'job' | 'global' | 'default';
   /** relPath/tên ảnh gửi kèm. chatCompletion chỉ nhận base64 nên tên ảnh PHẢI đi qua đây. */
@@ -98,28 +106,29 @@ export function currentAiCallContext(): AiCallContext | undefined {
   return store.getStore();
 }
 
-/**
- * Trong danh sách rowId đã sắp GIẢM DẦN, trả về các rowId phải xoá để chỉ còn `keep` lượt mới nhất.
- *
- * Tách hàm thuần để self-check khoá lại off-by-one mà không cần DB — sai một nhịp ở đây là XOÁ
- * DỮ LIỆU THẬT, không phải hiện sai màn hình.
- */
-export function rowIdsToDelete(sortedDescRowIds: number[], keep: number): number[] {
-  return sortedDescRowIds.slice(keep);
-}
 
 /**
- * Ghi 1 lượt vào DB rồi cắt tỉa còn KEEP_RUNS lượt gần nhất của cặp (job, bước).
+ * Ghi 1 lượt gọi AI vào DB. GIỮ VĨNH VIỄN — không cắt tỉa.
+ *
+ * Trước đây hàm này cắt còn 20 lượt gần nhất mỗi cặp (job, bước). Bỏ hẳn theo yêu cầu của Mr.D:
+ * mục đích của bảng là truy vết lại về sau, mà cắt tỉa thì đúng lúc cần đối chiếu với lượt chạy
+ * vài tuần trước là log đã mất. Hệ quả phải chấp nhận: bảng CHỈ TĂNG.
+ *
+ * Vì không còn cơ chế tự thu dọn, hai thứ thay chỗ nó — thiếu một trong hai là bảng phình âm thầm:
+ *   - `npm run check:log-size` để canh dung lượng (cảnh báo khi vượt ngưỡng).
+ *   - Nút xoá theo bộ lọc ở tab /logs (có xác nhận) — đường DUY NHẤT làm mất log, cố ý thủ công.
+ * Và mọi truy vấn đọc BẮT BUỘC có `limit`: trước kia cắt tỉa đã chặn sẵn nên trần chỉ là hình
+ * thức, giờ query không trần sẽ kéo cả bảng.
  *
  * TUYỆT ĐỐI KHÔNG ĐƯỢC NÉM: log là phụ trợ, để nó làm fail một lượt gen 32 đoạn là đổi tính năng
- * quan sát lấy một hồi quy thật. Hai try/catch TÁCH RIÊNG (insert / cắt tỉa) để insert thành công
- * mà cắt tỉa lỗi thì log VẪN xem được, và đọc log server phân biệt được ca nào hỏng.
+ * quan sát lấy một hồi quy thật.
  */
 export async function recordAiCall(row: {
   stepKey: PromptStepKey;
   jobSlug: string;
   productId: string;
   projectId: string;
+  sourceKind: string;
   model: string;
   promptScope: string;
   systemPrompt: string;
@@ -148,55 +157,8 @@ export async function recordAiCall(row: {
   } finally {
     slot?.done();
   }
-
-  try {
-    await pruneAiCallLogs(row.jobSlug, row.projectId, row.stepKey);
-  } catch (err) {
-    console.error(`[callLog] cắt tỉa thất bại (${row.stepKey}): ${(err as Error).message}`);
-  }
 }
 
-/**
- * Giữ KEEP_RUNS lượt gần nhất của 1 cặp (job, bước): 1 SELECT lấy mốc + 1 DELETE.
- *
- * VÌ SAO KHÔNG `DELETE ... WHERE row_id NOT IN (SELECT ... LIMIT n)`: MariaDB cấm subquery đọc
- * chính bảng đang DELETE (error 1093), và bọc thêm `SELECT * FROM (...) t` để lách thì mất index
- * → quét full bảng.
- *
- * `lte` chứ không `lt`: offset(KEEP_RUNS) với thứ tự giảm dần trả về lượt thứ (KEEP_RUNS + 1), nên
- * phải xoá CẢ nó mới còn đúng KEEP_RUNS lượt.
- *
- * An toàn với nhiều process PM2 ghi đồng thời mà không cần lock: mốc tính từ ảnh chụp tại thời
- * điểm SELECT nên không bao giờ xoá lượt MỚI hơn mốc. Hai process cắt song song cùng lắm để bảng
- * tạm giữ hơn KEEP_RUNS một nhịp rồi lần ghi sau cắt tiếp — ngưỡng là MỀM, thứ phải đúng là
- * "không mất lượt gần nhất".
- */
-async function pruneAiCallLogs(
-  jobSlug: string,
-  projectId: string,
-  stepKey: PromptStepKey
-): Promise<void> {
-  const db = getDb();
-  // Cắt theo ĐÚNG phạm vi vừa ghi. Bỏ project_id ra khỏi điều kiện thì mọi lượt của luồng review
-  // dồn chung vào nhóm jobSlug='' và cắt lẫn nhau giữa các project khác nhau — vừa mất log, vừa
-  // để nhóm đó phình theo số project. Đây đúng là cái bẫy doc-comment của bảng đã cảnh báo.
-  const scope = and(
-    eq(aiCallLogs.jobSlug, jobSlug),
-    eq(aiCallLogs.projectId, projectId),
-    eq(aiCallLogs.stepKey, stepKey)
-  );
-
-  const [cutoff] = await db
-    .select({ rowId: aiCallLogs.rowId })
-    .from(aiCallLogs)
-    .where(scope)
-    .orderBy(desc(aiCallLogs.rowId))
-    .limit(1)
-    .offset(KEEP_RUNS);
-
-  if (!cutoff) return; // chưa đủ KEEP_RUNS lượt → không có gì để cắt
-  await db.delete(aiCallLogs).where(and(scope, lte(aiCallLogs.rowId, cutoff.rowId)));
-}
 
 /**
  * GÁN các dòng log đã ghi ở phạm vi toàn hệ thống về cho một job vừa được tạo.

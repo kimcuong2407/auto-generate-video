@@ -9,6 +9,7 @@ import { pickScriptRefEntries, stageBibleFingerprint } from './refImages';
 import { resolveWithinJob } from './paths';
 import { STAGE_BIBLE_SYSTEM_PROMPT } from './promptDefaults';
 import { loadPromptSet } from './promptStore';
+import { resolveLivestreamKind } from './v2Store';
 import type { LivestreamJob, LivestreamStageBible } from './types';
 
 /**
@@ -197,6 +198,7 @@ async function generateStageBible(
     {
       stepKey: 'stage_bible',
       jobSlug: job.slug,
+      sourceKind: await resolveLivestreamKind(job.slug),
       promptScope,
       imagePaths: refs.images.length > 0 ? refs.relPaths : undefined,
     },

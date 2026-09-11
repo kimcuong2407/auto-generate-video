@@ -20,11 +20,19 @@ export async function extractProductInfo(
    * Slug job đang được tạo. Bước này chạy lúc ingest — job đã có slug (sinh ở route trước khi gọi
    * ingestEntry) dù row DB chưa ghi, nên gắn được ngay để log hiện trong job detail.
    */
-  jobSlug?: string
+  jobSlug?: string,
+  /**
+   * Nhãn V1/V2 do ROUTE truyền xuống, không tự tra.
+   *
+   * Vì sao: bước này chạy lúc ingest, TRƯỚC khi row livestream_v2_inputs được ghi — gọi
+   * resolveLivestreamKind ở đây sẽ gắn 'livestream-v1' cho mọi job V2. Route tạo job là nơi duy
+   * nhất biết chắc mình đang tạo luồng nào.
+   */
+  sourceKind?: string
 ): Promise<ExtractedProduct> {
   const prompts = await loadPromptSet();
   const raw = await withAiCallContext(
-    { stepKey: 'extract', jobSlug, promptScope: prompts.scopeOf('extract') },
+    { stepKey: 'extract', jobSlug, sourceKind, promptScope: prompts.scopeOf('extract') },
     () => chatCompletion(prompts.get('extract'), rawText)
   );
   const parsed = JSON.parse(extractJson(raw)) as Partial<ExtractedProduct>;

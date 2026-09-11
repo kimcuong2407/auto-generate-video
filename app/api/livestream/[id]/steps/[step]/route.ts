@@ -7,6 +7,7 @@ import { ensureStageBible } from '@/lib/livestream/stageBible';
 import { ensureLocalImage } from '@/lib/livestream/imageR2';
 import { resolveWithinJob } from '@/lib/livestream/paths';
 import { readV2Input } from '@/lib/livestream/v2Store';
+import { resolveLivestreamKind } from '@/lib/livestream/v2Store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,7 +94,7 @@ export async function POST(
     const description = await describeProductAppearance(
       refPaths.map((rel) => resolveWithinJob(job.id, rel)),
       prompts.get('product_visual'),
-      { jobSlug: job.slug, promptScope: prompts.scopeOf('product_visual') }
+      { jobSlug: job.slug, sourceKind: await resolveLivestreamKind(job.slug), promptScope: prompts.scopeOf('product_visual') }
     );
 
     return NextResponse.json({ step, description, refPaths });

@@ -38,7 +38,10 @@
     "check:image-job-requeue": "tsx scripts/check-image-job-requeue.ts",
     "check:image-server-queue": "node scripts/check-image-server-queue.mjs",
     "check:livestream-consistency": "tsx scripts/check-livestream-consistency.ts",
+    "check:log-datetime": "tsx scripts/check-log-datetime.ts",
+    "check:log-source-kind": "tsx scripts/check-log-source-kind.ts",
     "check:maria-json": "tsx scripts/check-maria-json.ts",
+    "check:mcp-flow": "tsx scripts/check-mcp-flow.ts",
     "check:media-url-version": "tsx scripts/check-media-url-version.ts",
     "check:model-key": "tsx scripts/check-model-key.ts",
     "check:negative-prompt": "tsx scripts/check-negative-prompt.ts",
@@ -88,8 +91,7 @@
     "image-server": "node scripts/chatgpt-image-server.mjs",
     "lint": "next lint",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
-    "check:mcp-flow": "tsx scripts/check-mcp-flow.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",

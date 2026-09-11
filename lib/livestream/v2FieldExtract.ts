@@ -68,6 +68,9 @@ export async function extractV2Fields(
       {
         stepKey: 'v2_field_extract',
         jobSlug,
+        // HẰNG, không tra DB: bước này CHỈ tồn tại ở luồng V2 (form Shopee V2 gọi), và nó chạy ở
+        // trang crawl khi job còn chưa được tạo — không có gì để tra.
+        sourceKind: 'livestream-v2',
         promptScope: prompts.scopeOf('v2_field_extract'),
         out: slot,
       },

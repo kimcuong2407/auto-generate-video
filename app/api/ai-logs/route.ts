@@ -3,8 +3,16 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { DB_ENABLED } from '@/lib/db/config';
 import { aiCallLogs } from '@/lib/db/schema/aiCallLogs';
-import { KEEP_RUNS } from '@/lib/ai/callLog';
 import { isPromptStepKey } from '@/lib/livestream/promptSteps';
+
+/**
+ * Trần số lượt trả về. Trước kia cắt tỉa giữ sẵn 20 lượt/bước nên `limit` chỉ là hình thức; từ khi
+ * log giữ VĨNH VIỄN (xem recordAiCall) đây là thứ DUY NHẤT chặn một job đã gen lại 200 lần kéo cả
+ * bảng mediumtext về client.
+ */
+const LIST_LIMIT = 30;
+/** Timeline gộp mọi bước × mọi sản phẩm nên cần trần cao hơn 1 bước, nhưng vẫn phải có trần. */
+const TIMELINE_LIMIT = 300;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -80,9 +88,7 @@ export async function GET(req: NextRequest) {
     .from(aiCallLogs)
     .where(scope)
     .orderBy(desc(aiCallLogs.rowId))
-    // Timeline gộp nhiều bước × nhiều sản phẩm nên trần phải cao hơn 1 bước; vẫn có trần để
-    // response không phình theo job đã gen lại nhiều lần.
-    .limit(wantTimeline ? KEEP_RUNS * 11 : KEEP_RUNS);
+    .limit(wantTimeline ? TIMELINE_LIMIT : LIST_LIMIT);
 
   return NextResponse.json({ runs });
 }
