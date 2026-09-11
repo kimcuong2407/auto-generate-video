@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { shortTimeVn } from '@/lib/format/datetime';
+import { AiRunDetail } from '@/components/logs/AiRunDetail';
 import { PROMPT_STEPS } from '@/lib/livestream/promptSteps';
 
 /**
@@ -156,32 +157,7 @@ export function AiRunTimeline({
               {!detail && <div style={{ fontSize: 12, opacity: 0.7 }}>Đang tải nội dung...</div>}
               {detail && detail.rowId === r.rowId && (
                 <>
-                  <div className="source-compare">
-                    <div className="source-compare-col">
-                      <div className="source-compare-head">
-                        ① INPUT — system prompt (đã ghép {'${params}'})
-                      </div>
-                      <pre>{detail.systemPrompt}</pre>
-                    </div>
-                    <div className="source-compare-col">
-                      <div className="source-compare-head">② INPUT — user prompt</div>
-                      <pre>{detail.userPrompt}</pre>
-                    </div>
-                    <div className="source-compare-col">
-                      <div className="source-compare-head">③ OUTPUT — AI trả về (thô)</div>
-                      <pre>{detail.output ?? '(lượt này lỗi — không có output)'}</pre>
-                    </div>
-                  </div>
-                  {detail.errorMessage && (
-                    <div className="banner banner-error" style={{ marginTop: 8 }}>
-                      {detail.errorMessage}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-                    {detail.model} · prompt {detail.promptScope}
-                    {detail.imagePaths && detail.imagePaths.length > 0 &&
-                      ` · ảnh: ${detail.imagePaths.join(', ')}`}
-                  </div>
+                  <AiRunDetail detail={detail} />
                 </>
               )}
             </div>

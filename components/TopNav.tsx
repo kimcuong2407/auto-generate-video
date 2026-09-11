@@ -20,6 +20,7 @@ const TABS = [
     match: (p: string) => p.startsWith('/livestream-v2'),
   },
   { href: '/shopee-crawl', label: 'Shopee Crawl', icon: '🛍️', match: (p: string) => p.startsWith('/shopee-crawl') },
+  { href: '/logs', label: 'Log AI & Video', icon: '🗂️', match: (p: string) => p.startsWith('/logs') },
   { href: '/settings/ai', label: 'Cài đặt AI', icon: '⚙️', match: (p: string) => p === '/settings/ai' },
   { href: '/settings/prompts', label: 'Prompt AI', icon: '📝', match: (p: string) => p === '/settings/prompts' },
   { href: '/settings/flow', label: 'Tài khoản Veo', icon: '🔑', match: (p: string) => p === '/settings/flow' },

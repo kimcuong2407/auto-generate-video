@@ -30,8 +30,15 @@ import {
   generateStoryboardImageMcp,
 } from './mcpJobs';
 
-/** Cờ /settings/flow: đi qua Orino MCP thay vì batchexecute. Đọc mỗi lần gọi để bật/tắt có hiệu lực ngay, không cần restart. */
-function useMcp(): boolean {
+/**
+ * Cờ /settings/flow: đi qua Orino MCP thay vì batchexecute. Đọc mỗi lần gọi để bật/tắt có hiệu lực
+ * ngay, không cần restart.
+ *
+ * Tên hàm KHÔNG được bắt đầu bằng "use": ESLint rule react-hooks/rules-of-hooks coi mọi hàm `use*`
+ * là React Hook và cấm gọi nó trong hàm thường — `next build` fail, chặn cả deploy. Trường setting
+ * bên dưới vẫn tên `useMcp` (đó là khoá lưu trong DB/API, đổi là hỏng dữ liệu cũ).
+ */
+function isMcpEnabled(): boolean {
   return readAppSettings().useMcp === true;
 }
 
@@ -43,7 +50,7 @@ export interface FlowStatusResult {
 }
 
 export async function getFlowStatus(): Promise<FlowStatusResult> {
-  if (useMcp()) return getFlowStatusMcp();
+  if (isMcpEnabled()) return getFlowStatusMcp();
   try {
     const account = await resolveActiveAccount();
     // Điều kiện gen được = cookie + `at` (XSRF). accessToken cũ luôn null kể từ khi Google gỡ
@@ -170,7 +177,7 @@ export async function generateSceneVideo(
 
   // Rẽ MCP SAU khi đã dựng prompt/duration (logic nghiệp vụ dùng chung cho cả hai luồng) nhưng
   // TRƯỚC khi đụng cookie/reCAPTCHA — luồng MCP dùng phiên đăng nhập của app Orino.
-  if (useMcp()) {
+  if (isMcpEnabled()) {
     return generateSceneVideoMcp(input, { ...opts, model, refImages }, prompt, duration);
   }
 
@@ -236,7 +243,7 @@ export async function pollJobStatus(
   projectId: string,
   jobAgeMs?: number
 ): Promise<FlowJobStatusResult> {
-  if (useMcp()) return pollJobStatusMcp(jobId);
+  if (isMcpEnabled()) return pollJobStatusMcp(jobId);
   const account = await resolveActiveAccount();
   const result = await pollVideoStatus(flowCredsOf(account), projectId, jobId, jobAgeMs);
 
@@ -310,7 +317,7 @@ export interface CreateFlowProjectResult {
 }
 
 export async function createFlowProject(title: string): Promise<CreateFlowProjectResult> {
-  if (useMcp()) return createFlowProjectMcp(title);
+  if (isMcpEnabled()) return createFlowProjectMcp(title);
   const account = await resolveActiveAccount();
   // Truyền cả account (không chỉ cookie): batchexecute cần thêm `at`/`fsid`/`bl`, rút ra
   // trong projects.ts qua flowCredsOf.
@@ -432,7 +439,7 @@ export async function generateStoryboardImage(params: {
 
   // Rẽ MCP sau các nhánh provider ngoài Google Flow (ChatGPT/OmniRoute ở trên) — chúng không
   // liên quan Flow nên cờ này không đụng tới.
-  if (useMcp()) {
+  if (isMcpEnabled()) {
     return generateStoryboardImageMcp({ ...params, model });
   }
 

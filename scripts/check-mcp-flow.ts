@@ -123,9 +123,9 @@ check('useMcp mặc định false trong appSettingsStore', () => {
   assert.ok(src.includes('useMcp: data.useMcp === true'), 'phải parse tường minh === true');
   assert.ok(src.includes('useMcp: false'), 'fallback khi đọc file lỗi phải là false');
 });
-check('mọi nhánh MCP đều đứng sau guard useMcp()', () => {
-  // Guard có thể ở cùng dòng (`if (useMcp()) return xMcp(...)`) hoặc dòng ngay trên
-  // (`if (useMcp()) {` rồi `return xMcp(...)`). Xét 3 dòng gần nhất là đủ phủ cả hai dạng mà
+check('mọi nhánh MCP đều đứng sau guard isMcpEnabled()', () => {
+  // Guard có thể ở cùng dòng (`if (isMcpEnabled()) return xMcp(...)`) hoặc dòng ngay trên
+  // (`if (isMcpEnabled()) {` rồi `return xMcp(...)`). Xét 3 dòng gần nhất là đủ phủ cả hai dạng mà
   // vẫn bắt được lời gọi trần — nếu nới rộng nữa thì một guard ở xa sẽ "che" nhầm.
   const lines = flowJobsSrc.split('\n');
   const importBlock = flowJobsSrc.slice(0, flowJobsSrc.indexOf("} from './mcpJobs';"));
@@ -134,7 +134,12 @@ check('mọi nhánh MCP đều đứng sau guard useMcp()', () => {
     if (!m) return;
     if (importBlock.includes(line) && !line.includes('return')) return; // dòng trong khối import
     const window = lines.slice(Math.max(0, i - 2), i + 1).join(' ');
-    assert.ok(window.includes('useMcp()'), `gọi ${m[1]} không có guard useMcp() trong 3 dòng gần nhất: ${line.trim()}`);
+    // Tên hàm là isMcpEnabled chứ không phải useMcp: ESLint rule react-hooks cấm gọi hàm `use*`
+    // trong hàm thường nên `next build` fail. Trường SETTING vẫn tên useMcp (khoá lưu trong DB).
+    assert.ok(
+      window.includes('isMcpEnabled()'),
+      `gọi ${m[1]} không có guard isMcpEnabled() trong 3 dòng gần nhất: ${line.trim()}`
+    );
   });
 });
 
