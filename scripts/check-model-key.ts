@@ -9,36 +9,73 @@
  * Chạy: npx tsx scripts/check-model-key.ts
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { resolveVideoModelKey, __testables } from '../lib/googleFlow/videoGen';
 import { __testables as jobTestables } from '../lib/googleFlow/flowJobs';
 
 const { modelKeyCandidates } = __testables;
 
 // 1. Key nền cho i2v_s + lite, duration 8s (mặc định → không hậu tố duration).
+//
+// ĐỔI 2026-09-11: trước đây hàm sinh `veo_3_1_i2v_s_lite` rồi TRÔNG CHỜ modelKeyCandidates
+// sửa hộ — nhưng candidates là code CHẾT (không được gọi ở đâu, xem docstring của nó), nên
+// thực tế mọi lần gen tier lite kèm ảnh đầu đều gửi key không tồn tại và bị Google từ chối
+// bằng response RỖNG. Nay sinh thẳng dạng rút gọn, khớp cả hai nguồn:
+//   - thực nghiệm 2026-08-25: `veo_3_1_i2v_s_lite` → 404; `veo_3_1_i2v_lite` → chạy;
+//   - HAR gen thật 2026-09-11: trang Flow gửi `veo_3_1_i2v_lite_low_priority`.
 const base = resolveVideoModelKey('veo_3_1_lite', 'i2v_s', 8, false);
-assert.equal(base, 'veo_3_1_i2v_s_lite');
+assert.equal(base, 'veo_3_1_i2v_lite', 'tier lite phải dùng mode RÚT GỌN i2v (không có _s)');
 
-// 2. Ứng viên PHẢI chứa veo_3_1_i2v_lite — key duy nhất Google chấp nhận (xác minh 2026-08-25).
-const cands = modelKeyCandidates(base);
-assert.ok(
-  cands.includes('veo_3_1_i2v_lite'),
-  'thiếu veo_3_1_i2v_lite → gen video i2v tier lite sẽ 404 trở lại'
+// fast/quality vẫn giữ dạng dài `i2v_s` — chỉ tier lite rút gọn.
+assert.equal(resolveVideoModelKey('veo_3_1_fast', 'i2v_s', 8, false), 'veo_3_1_i2v_s_fast');
+assert.equal(resolveVideoModelKey('veo_3_1_quality', 'i2v_s', 8, false), 'veo_3_1_i2v_s_quality');
+
+// Tier lite_low_priority: đúng key HAR gen thật gửi.
+assert.equal(
+  resolveVideoModelKey('veo_3_1_lite_low_priority', 'i2v_s', 8, false),
+  'veo_3_1_i2v_lite_low_priority',
+  'phải khớp key trong HAR gen thật (docs/create-project-flow.google.com.har)'
 );
 
-// 3. Key nền luôn được thử ĐẦU TIÊN (không đổi hành vi khi key nền vốn đúng).
-assert.equal(cands[0], base);
+// 2. Ứng viên vẫn giữ biến thể dài, phòng khi Google đổi lại quy ước.
+const cands = modelKeyCandidates(resolveVideoModelKey('veo_3_1_fast', 'i2v_s', 8, false));
+assert.ok(
+  cands.includes('veo_3_1_i2v_fast'),
+  'candidates phải có dạng rút gọn để fallback được khi key dài bị từ chối'
+);
+
+// 3. abra: HAR gen thật gửi `abra_i2v_8s` — mode rút gọn + LUÔN có hậu tố duration (kể cả 8s,
+// khác quy tắc của veo_3_1). Sai một trong hai là Google từ chối bằng response rỗng.
+assert.equal(resolveVideoModelKey('abra', 'i2v_s', 8, false), 'abra_i2v_8s');
+assert.equal(resolveVideoModelKey('abra', 'i2v_s', 6, false), 'abra_i2v_6s');
+assert.equal(resolveVideoModelKey('abra', 't2v', 8, false), 'abra_t2v_8s');
+assert.equal(resolveVideoModelKey('abra', 'r2v', 8, false), 'abra_i2v_8s', 'abra r2v gộp vào i2v');
+
+// 4. Key nền luôn được thử ĐẦU TIÊN (không đổi hành vi khi key nền vốn đúng).
+const fastBase = resolveVideoModelKey('veo_3_1_fast', 'i2v_s', 8, false);
+assert.equal(cands[0], fastBase);
 
 // 4. Không trùng lặp — mỗi lần thử là 1 request thật tới Google.
 assert.equal(new Set(cands).size, cands.length);
 
-// 5. Không tự đổi tier: mọi ứng viên vẫn phải là `lite`, không được nhảy sang fast/quality.
-for (const k of cands) {
-  assert.ok(!/_fast|_quality/.test(k), `ứng viên "${k}" đổi tier — vượt quyền quyết định của người dùng`);
+// 5. Không tự đổi tier: ứng viên chỉ được đổi DẠNG HẬU TỐ, giữ nguyên tier người dùng chọn —
+// tier quyết định chi phí và chất lượng, đổi ngầm là vượt quyền quyết định của người dùng.
+for (const [tier, keys] of [
+  ['lite', modelKeyCandidates(base)],
+  ['fast', cands],
+] as const) {
+  for (const k of keys) {
+    assert.ok(
+      k.includes(`_${tier}`),
+      `ứng viên "${k}" rời khỏi tier "${tier}" — vượt quyền quyết định của người dùng`
+    );
+  }
 }
 
-// 6. KHÔNG được có biến thể `_low_priority`: Google trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED
-// cho tier này, và 403 không được thử tiếp → một ứng viên như vậy giết cả lần gen.
-for (const k of cands) {
+// 6. KHÔNG tự thêm biến thể `_low_priority`: Google trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED
+// cho tier này với tài khoản không được cấp, và 403 không được thử tiếp → một ứng viên như
+// vậy giết cả lần gen. (Key nền VỐN là low_priority thì khác — đó là lựa chọn của người dùng.)
+for (const k of modelKeyCandidates(base)) {
   assert.ok(!k.endsWith('_low_priority'), `ứng viên "${k}" sẽ trả 403 và giết cả lần gen`);
 }
 
@@ -131,3 +168,58 @@ assert.strictEqual(
 }
 
 console.log('OK — model key + duration + r2v tier lock: tất cả assert pass');
+// ---------------------------------------------------------------
+// 10. Fallback model key phải được NỐI THẬT vào generateVideo.
+//
+// Vì sao check bằng đọc source: modelKeyCandidates từng là code CHẾT suốt từ lúc port sang
+// batchexecute — docstring cũ ghi rõ "HIỆN KHÔNG ĐƯỢC GỌI Ở ĐÂU". Hệ quả: sự cố 2026-09-09
+// (key r2v sai, Google từ chối 17 lần) không có gì chặn, và mọi lần gen tier lite kèm ảnh đầu
+// đều gửi key không tồn tại. Một hàm fallback không được gọi thì tệ hơn không có, vì nhìn vào
+// code ai cũng tưởng đang được bảo vệ.
+// ---------------------------------------------------------------
+{
+  const src = readFileSync(new URL('../lib/googleFlow/videoGen.ts', import.meta.url), 'utf8');
+  const gen = src.slice(src.indexOf('export async function generateVideo'));
+  const body = gen.slice(0, gen.indexOf('\n}\n') + 2);
+
+  assert.ok(
+    /modelKeyCandidates\(/.test(body),
+    'generateVideo PHẢI gọi modelKeyCandidates — không gọi thì fallback là code chết'
+  );
+  assert.ok(
+    /isInvalidModelKeyError\(/.test(body),
+    'chỉ được thử biến thể khi lỗi là "key không hợp lệ" — 403 thiếu quyền thử tiếp là vô ích'
+  );
+
+  // 403 KHÔNG được thử tiếp: key đúng, tài khoản thiếu quyền.
+  const guard = src.slice(src.indexOf('function isInvalidModelKeyError'));
+  assert.ok(
+    /err\.code === 403/.test(guard.slice(0, guard.indexOf('\n}\n'))),
+    'isInvalidModelKeyError phải loại trừ 403 tường minh'
+  );
+}
+
+// ---------------------------------------------------------------
+// 11. Kiểm model khả dụng TRƯỚC khi gửi lệnh gen.
+//
+// yBhWQ trả danh sách tier Google cấp cho tài khoản (gọi thật 2026-09-11:
+// veo_3_1_quality, veo_3_1_lite, veo_3_1_fast, veo_3_1_lite_low_priority, abra).
+// Không kiểm thì model sai bị từ chối bằng response RỖNG — không mã lỗi, không phân biệt
+// được với token reCAPTCHA hỏng, và mỗi lần thử lại tiêu thêm 1 reCAPTCHA token.
+// ---------------------------------------------------------------
+{
+  const src = readFileSync(new URL('../lib/googleFlow/flowJobs.ts', import.meta.url), 'utf8');
+  assert.ok(/assertModelAvailable\(/.test(src), 'generateSceneVideo phải kiểm model trước khi gen');
+  assert.ok(/rpcAvailableModels/.test(src), 'phải hỏi Google danh sách model thật, không hardcode');
+
+  const fn = src.slice(src.indexOf('async function assertModelAvailable'));
+  const body = fn.slice(0, fn.indexOf('\n}\n') + 2);
+  // KHÔNG được chặn oan khi RPC phụ trợ hỏng — thà để lệnh gen chạy và tự báo lỗi.
+  assert.ok(/catch/.test(body) && /return;/.test(body), 'đọc danh sách lỗi thì bỏ qua bước kiểm, không chặn oan');
+  assert.ok(
+    /models\.length === 0/.test(body),
+    'danh sách rỗng = Google đổi cấu trúc response, không phải tài khoản không có model — không chặn'
+  );
+}
+
+console.log('check-model-key (bổ sung fallback + kiểm model): OK');

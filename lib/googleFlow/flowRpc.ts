@@ -20,6 +20,8 @@ export const RPC_UPLOAD_IMAGE = 'maseQ';
 export const RPC_GENERATE_VIDEO = 'eb1hJf';
 export const RPC_POLL = 'jwpduf';
 export const RPC_MEDIA_URL = 'as29s';
+/** Danh sách model video tài khoản được cấp quyền. Payload rỗng, gọi rất rẻ. */
+export const RPC_AVAILABLE_MODELS = 'yBhWQ';
 
 /**
  * Hằng số `22` ở vị trí [1] của clientContext.
@@ -226,6 +228,28 @@ export async function rpcGenerateVideo(opts: {
     throw new FlowApiError(describeEmptyGenResponse(res));
   }
   return ids;
+}
+
+/**
+ * Model video tài khoản này được Google cấp quyền.
+ *
+ * XÁC MINH 2026-09-11 (docs/create-project-flow.google.com.har): payload `[]`, response
+ * `[[["veo_3_1_quality",1],["veo_3_1_lite_low_priority",1],["veo_3_1_fast",1],["abra",1],
+ * ["veo_3_1_lite",1]]]` — mảng cặp [tên model, cờ]. Đây là danh sách TIER (veo_3_1_lite,
+ * abra…), KHÔNG phải videoModelKey đầy đủ (veo_3_1_i2v_lite_8s) mà lệnh gen gửi đi; dùng để
+ * kiểm tier trước khi gen, không dùng để dựng key.
+ */
+export async function rpcAvailableModels(creds: FlowBatchCreds, projectId: string): Promise<string[]> {
+  const res = await batchExecute(RPC_AVAILABLE_MODELS, [], {
+    creds,
+    sourcePath: `/project/${projectId}`,
+    timeoutMs: 30_000,
+  });
+  const rows = at(res, [0]);
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => (Array.isArray(row) ? row[0] : null))
+    .filter((name): name is string => typeof name === 'string' && name.length > 0);
 }
 
 export type FlowJobState = 'running' | 'done' | 'error';

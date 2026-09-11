@@ -17,10 +17,11 @@ import { generateOmniImage } from '../omniroute/imageGen';
 import { generateChatgptImage } from '../chatgptImage/imageGen';
 import { CHATGPT_EXTENSION_MODEL, CHATGPT_LOCAL_MODEL } from '../imageModels';
 import { generateVideo, pollVideoStatus } from './videoGen';
+import { rpcAvailableModels } from './flowRpc';
 import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
 import { FlowApiError } from './errors';
-import type { FlowAccount } from './authStore';
+import type { FlowAccount, FlowBatchCreds } from './authStore';
 
 export interface FlowStatusResult {
   flow_connected: boolean;
@@ -157,6 +158,12 @@ export async function generateSceneVideo(
   }
 
   const creds = flowCredsOf(account);
+
+  // Chặn TRƯỚC khi gửi: model tier người dùng chọn có nằm trong danh sách Google cấp cho tài
+  // khoản này không. Không kiểm thì lệnh gen bị từ chối bằng response RỖNG — không mã lỗi,
+  // không phân biệt được với token reCAPTCHA hỏng, và mỗi lần thử lại tiêu thêm 1 token.
+  await assertModelAvailable(creds, opts.flowProjectId, model);
+
   // Mint 1 token dùng chung cho upload ảnh + lệnh gen của lần này (trang thật cũng vậy).
   // Mint lại ở lần thử thứ hai vì token one-time-use: lần đầu đã tiêu nó rồi.
   const run = async (projectId: string, freshUploads: boolean) =>
@@ -226,6 +233,56 @@ export async function pollJobStatus(
     return { status: 'running', phase: result.phase };
   }
   return { status: 'pending', phase: result.phase };
+}
+
+/**
+ * Cache danh sách model khả dụng theo accountId.
+ *
+ * Quyền model đổi rất chậm (Google cấp/thu theo tài khoản), mà gen video thì gọi liên tục —
+ * hỏi lại mỗi lần là thêm một round-trip vào đúng đường nóng. TTL 10 phút đủ để Mr.D thấy
+ * thay đổi trong một phiên làm việc mà không phải restart.
+ */
+const modelCache = new Map<string, { at: number; models: string[] }>();
+const MODEL_CACHE_TTL_MS = 10 * 60_000;
+
+/**
+ * Ném lỗi NÓI RÕ nếu tier model không được cấp cho tài khoản này.
+ *
+ * yBhWQ trả danh sách TIER (veo_3_1_lite, abra…), không phải videoModelKey đầy đủ mà lệnh gen
+ * gửi đi (veo_3_1_i2v_lite_8s) — nên chỉ kiểm được tier, đúng tầng mà người dùng chọn ở UI.
+ *
+ * KHÔNG chặn khi không đọc được danh sách (mạng lỗi, Google đổi rpc): thà để lệnh gen chạy và
+ * tự báo lỗi, còn hơn chặn oan một lần gen hợp lệ vì một RPC phụ trợ hỏng.
+ */
+async function assertModelAvailable(
+  creds: FlowBatchCreds,
+  projectId: string,
+  model: VeoModel
+): Promise<void> {
+  const key = creds.cookie.slice(-32);
+  const cached = modelCache.get(key);
+  let models = cached && Date.now() - cached.at < MODEL_CACHE_TTL_MS ? cached.models : null;
+
+  if (!models) {
+    try {
+      models = await rpcAvailableModels(creds, projectId);
+      modelCache.set(key, { at: Date.now(), models });
+    } catch (err) {
+      console.warn('[flow gen] không đọc được danh sách model khả dụng, bỏ qua bước kiểm:', err);
+      return;
+    }
+  }
+
+  // Danh sách rỗng = Google đổi cấu trúc response chứ không phải tài khoản không có model nào
+  // (không có model nào thì trang Flow cũng không dùng được). Không chặn.
+  if (models.length === 0) return;
+  if (models.includes(model)) return;
+
+  throw new FlowApiError(
+    `Model "${model}" không được cấp cho tài khoản Veo đang dùng. ` +
+      `Tài khoản này hiện có: ${models.join(', ')}. ` +
+      `Đổi model ở Cài đặt → AI (hoặc trong project) sang một trong các model trên rồi gen lại.`
+  );
 }
 
 export interface CreateFlowProjectResult {

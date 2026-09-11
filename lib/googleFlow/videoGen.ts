@@ -78,7 +78,19 @@ export function resolveVideoModelKey(
   if (model === 'abra') {
     // Omni Flash: key đơn giản `abra_<mode>`, edit dùng `abra_edit` (xác minh trong collection).
     if (mode === 'edit') return 'abra_edit';
-    return `abra_${mode}${durationSuffix(duration)}${useFl ? '_fl' : ''}`;
+    // XÁC MINH 2026-09-11 từ HAR gen THẬT (docs/create-project-flow.google.com.har): trang Flow
+    // gửi `abra_i2v_8s` cho một lần gen có ảnh đầu, duration 8s. Hai điểm lệch với quy tắc cũ:
+    //   1. mode `i2v_s` phải RÚT GỌN thành `i2v` (giống tier lite của nhánh veo_3_1 bên dưới);
+    //      key cũ sinh `abra_i2v_s` — không tồn tại.
+    //   2. abra LUÔN kèm hậu tố duration, kể cả 8s. durationSuffix() bỏ hậu tố ở 8s theo quy
+    //      tắc của veo_3_1, áp cho abra là sinh `abra_i2v` — cũng không tồn tại.
+    // Cả hai đều khiến Google trả response RỖNG (không mã lỗi), triệu chứng giống hệt token
+    // reCAPTCHA hỏng nên rất dễ chẩn đoán nhầm.
+    // r2v gộp luôn vào i2v: batchexecute chỉ có MỘT slot ảnh (startMediaId), không phân biệt
+    // r2v với i2v — cùng lý do đã xác minh cho nhánh veo_3_1 bên dưới, key `*_r2v_*` là di sản
+    // của kiến trúc REST cũ Google đã gỡ.
+    const abraMode = mode === 'i2v_se' || mode === 'i2v_s' || mode === 'r2v' ? 'i2v' : mode;
+    return `abra_${abraMode}_${duration}s${useFl ? '_fl' : ''}`;
   }
 
   // Mode reference-to-video (r2v — @Characters/ảnh người mẫu) luôn bị ép về tier lite bất kể
@@ -116,7 +128,15 @@ export function resolveVideoModelKey(
   }
 
   const { base, suffix } = coreParts(model);
-  const modeInfix = mode === 'i2v_se' ? 'i2v_s' : mode;
+  // Tier lite dùng tên mode RÚT GỌN `i2v` (không có `_s`) — XÁC MINH hai nguồn độc lập:
+  //   - thực nghiệm 2026-08-25: `veo_3_1_i2v_s_lite` và `_fl` đều 404, `veo_3_1_i2v_lite` chạy;
+  //   - HAR gen thật 2026-09-11: trang Flow gửi đúng `veo_3_1_i2v_lite_low_priority`.
+  // fast/quality vẫn dùng dạng dài `i2v_s`. Trước đây quy tắc này chỉ nằm trong
+  // modelKeyCandidates (fallback), mà fallback thì lại là code chết — nên mọi lần gen ở tier
+  // lite kèm ảnh đầu đều gửi key không tồn tại và bị Google từ chối bằng response RỖNG.
+  const shortI2v = base === 'lite';
+  const modeInfix =
+    (mode === 'i2v_se' || mode === 'i2v_s') && shortI2v ? 'i2v' : mode === 'i2v_se' ? 'i2v_s' : mode;
   return `veo_3_1_${modeInfix}_${base}${durationSuffix(duration)}${suffix}${useFl ? '_fl' : ''}`;
 }
 
@@ -146,6 +166,8 @@ export interface GenerateVideoResult {
   job_id: string;
   /** mediaId của các ảnh vừa upload MỚI (chưa có trong cache) — caller lưu lại để tái dùng lần sau. */
   uploadedMediaIds: Record<string, string>;
+  /** Model key THỰC SỰ được Google chấp nhận (có thể là biến thể fallback, không phải key gốc). */
+  modelKey?: string;
 }
 
 /** Trả mediaId có sẵn nếu đã cache, ngược lại upload rồi ghi nhận vào `uploaded`. */
@@ -194,24 +216,70 @@ export async function generateVideo(params: GenerateVideoParams): Promise<Genera
     mode = 't2v';
   }
 
-  const modelKey = resolveVideoModelKey(params.model, mode, params.duration, mode === 'i2v_se');
-  const ids = await rpcGenerateVideo({
-    creds: params.creds,
-    projectId: params.projectId,
-    recaptchaToken: params.recaptchaToken,
-    scenes: [{ prompt: params.prompt, modelKey, startMediaId }],
-  });
+  const baseKey = resolveVideoModelKey(params.model, mode, params.duration, mode === 'i2v_se');
 
-  return { job_id: ids[0], uploadedMediaIds };
+  // Thử lần lượt các biến thể key khi Google TỪ CHỐI vì key không tồn tại.
+  //
+  // Vì sao bây giờ mới nối: modelKeyCandidates() nằm chết từ khi port sang batchexecute (ghi
+  // rõ trong chính docstring của nó), nên sự cố 2026-09-09 — key r2v sai, Google trả lỗi 17
+  // lần — không có gì chặn. videoModelKey là chuỗi reverse-engineered, Google KHÔNG công bố
+  // danh sách hợp lệ, nên sai key là chuyện sẽ còn xảy ra mỗi lần họ đổi tên.
+  //
+  // CHỈ thử tiếp khi lỗi là "key không hợp lệ" (response rỗng / 404). 403
+  // PUBLIC_ERROR_MODEL_ACCESS_DENIED nghĩa là key ĐÚNG nhưng tài khoản không có quyền — thử
+  // biến thể khác chỉ tốn thêm request, và mỗi lần gửi là một lần tiêu reCAPTCHA token.
+  const candidates = modelKeyCandidates(baseKey);
+  let lastErr: unknown = null;
+
+  for (const [i, modelKey] of candidates.entries()) {
+    try {
+      const ids = await rpcGenerateVideo({
+        creds: params.creds,
+        projectId: params.projectId,
+        recaptchaToken: params.recaptchaToken,
+        scenes: [{ prompt: params.prompt, modelKey, startMediaId }],
+      });
+      if (i > 0) {
+        console.warn(
+          `[flow gen] model key "${baseKey}" bị từ chối, dùng được biến thể "${modelKey}" ` +
+            `(thử ${i + 1}/${candidates.length}). Cân nhắc sửa resolveVideoModelKey cho khớp.`
+        );
+      }
+      return { job_id: ids[0], uploadedMediaIds, modelKey };
+    } catch (err) {
+      lastErr = err;
+      if (!isInvalidModelKeyError(err)) throw err;
+      console.warn(
+        `[flow gen] model key "${modelKey}" bị từ chối (${i + 1}/${candidates.length})` +
+          `${i + 1 < candidates.length ? ' — thử biến thể kế' : ''}`
+      );
+    }
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new FlowApiError(`Không model key nào dùng được: đã thử ${candidates.join(', ')}`);
 }
 
 /**
- * ⚠️ HIỆN KHÔNG ĐƯỢC GỌI Ở ĐÂU — code chết từ khi port sang batchexecute.
+ * Lỗi này có phải "model key không tồn tại" không — tức có đáng thử biến thể khác.
  *
- * Ghi rõ để không ai tưởng nó đang bảo vệ: sự cố 2026-09-09 (key r2v sai, Google trả
- * "Media not found." 17 lần) KHÔNG có fallback nào chặn, đúng vì hàm này không được nối vào.
- * Muốn có fallback thật thì phải gọi nó trong generateSceneVideo khi gặp lỗi key; giữ lại
- * vì danh sách biến thể là kiến thức đã xác minh thực nghiệm, viết lại sẽ tốn quota để đo lại.
+ * Response RỖNG là ứng viên chính: XÁC MINH 2026-09-11 bằng probe thật, Google trả HTTP 200 +
+ * payload `null` cho mọi đầu vào bị từ chối, không kèm mã lỗi. Nên key sai và token hỏng nhìn
+ * giống hệt nhau từ ngoài — thử biến thể key là cách rẻ nhất để loại trừ một trong hai.
+ *
+ * 403 (ACCESS_DENIED) KHÔNG tính: key đúng, tài khoản thiếu quyền — thử tiếp vô ích.
+ */
+function isInvalidModelKeyError(err: unknown): boolean {
+  if (!(err instanceof FlowApiError)) return false;
+  if (err.code === 403) return false;
+  if (err.code === 404) return true;
+  return /trả về rỗng, không có operationId/.test(err.message);
+}
+
+/**
+ * ĐÃ ĐƯỢC NỐI VÀO generateVideo() từ 2026-09-11 (trước đó là code chết suốt từ lúc port sang
+ * batchexecute — sự cố 2026-09-09 key r2v sai, Google từ chối 17 lần, không gì chặn).
  *
  * Các biến thể videoModelKey để thử khi Google trả 404 cho key dựng theo quy tắc.
  *
@@ -233,6 +301,15 @@ function modelKeyCandidates(baseKey: string): string[] {
   if (baseKey.includes('_i2v_s_')) {
     const short = baseKey.replace('_i2v_s_', '_i2v_');
     out.push(short, `${short}_fl`);
+  }
+  // Nhánh abra (Omni Flash): HAR 2026-09-11 cho thấy key thật là `abra_i2v_8s` — mode rút gọn
+  // + LUÔN có hậu tố duration. resolveVideoModelKey đã sinh đúng dạng đó, nhưng nếu Google đổi
+  // lại quy ước thì hai biến thể dưới đây là ứng viên gần nhất: bỏ hậu tố duration, và giữ
+  // dạng mode dài `i2v_s`.
+  if (baseKey.startsWith('abra_')) {
+    const noDuration = baseKey.replace(/_\d+s$/, '');
+    if (noDuration !== baseKey) out.push(noDuration);
+    if (baseKey.includes('abra_i2v_')) out.push(baseKey.replace('abra_i2v_', 'abra_i2v_s_'));
   }
   // KHÔNG thêm biến thể `_low_priority`: tier này tài khoản thường không được cấp quyền →
   // Google trả 403 PUBLIC_ERROR_MODEL_ACCESS_DENIED (xác minh 2026-08-25). 403 khác 404 ở chỗ
