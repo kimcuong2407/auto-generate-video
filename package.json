@@ -40,6 +40,8 @@
     "check:image-server-queue": "node scripts/check-image-server-queue.mjs",
     "check:livestream-consistency": "tsx scripts/check-livestream-consistency.ts",
     "check:log-datetime": "tsx scripts/check-log-datetime.ts",
+    "check:log-delete-guard": "tsx scripts/check-log-delete-guard.ts",
+    "check:log-size": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/check-log-size.ts",
     "check:log-source-kind": "tsx scripts/check-log-source-kind.ts",
     "check:maria-json": "tsx scripts/check-maria-json.ts",
     "check:mcp-flow": "tsx scripts/check-mcp-flow.ts",
