@@ -8,10 +8,18 @@
  *   Google Flow" / 401 cookie hết hạn) → trả null → ensureProjectFlowId trả null →
  *   generateSceneVideo throw thông điệp vô nghĩa. Không log nào để lần ra.
  *
+ * CẬP NHẬT 2026-09-11 (bug thứ hai, cùng gốc): thông điệp khi đó đã hết vô nghĩa nhưng vẫn
+ * ĐOÁN nguyên nhân — "chưa cấu hình tài khoản, hoặc cookie/token đã hết hạn, cần mở lại tab
+ * Flow để extension gửi session". Lỗi thật lại là Google gỡ endpoint labs.google/fx/api/trpc
+ * (xem lib/googleFlow/projects.ts), tài khoản hoàn toàn bình thường. Mr.D gửi lại session
+ * nhiều lần vô ích vì thông điệp chỉ sai chỗ. Nên nay bắt buộc GHÉP lý do gốc
+ * (lastCreateFlowProjectError) thay vì hardcode một nguyên nhân phỏng đoán.
+ *
  * Ranh giới cần giữ:
- * - resolveFlowProjectIdSafe phải LOG lý do trước khi trả null (không catch trống).
+ * - resolveFlowProjectIdSafe phải LOG lý do trước khi trả null (không catch trống) và GIỮ
+ *   lại lý do đó cho caller đọc.
  * - ensureProjectFlowId / ensureJobFlowId phải THROW nguyên nhân thật, không trả null xuống
- *   cho caller dịch thành thông điệp sai.
+ *   cho caller dịch thành thông điệp sai, và không được tự đoán nguyên nhân.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,6 +39,16 @@ const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'u
   assert.ok(
     /catch\s*\(\s*err\s*\)/.test(body) && /console\.error/.test(body),
     'resolveFlowProjectIdSafe phải bắt err và console.error lý do (kèm code lỗi) để còn điều tra'
+  );
+  // Log ra console là chưa đủ: log nằm trên VPS, người bấm nút không đọc được. Lý do phải
+  // giữ lại để caller ghép vào thông điệp hiện trên UI.
+  assert.ok(
+    /lastFlowProjectError\s*=/.test(body),
+    'resolveFlowProjectIdSafe phải giữ lý do gốc vào lastFlowProjectError cho caller đọc'
+  );
+  assert.ok(
+    /export function lastCreateFlowProjectError/.test(src),
+    'flowJobs.ts phải export lastCreateFlowProjectError() để caller lấy lý do thật'
   );
 }
 
@@ -54,8 +72,14 @@ for (const [file, fnName] of [
     `${fnName} phải throw FlowApiError khi không tạo được Flow project`
   );
   assert.ok(
-    /Tài khoản Veo/.test(body),
-    `${fnName}: thông điệp lỗi phải chỉ chỗ sửa (Cài đặt → Tài khoản Veo), không chỉ báo "thiếu id"`
+    /lastCreateFlowProjectError\(\)/.test(body),
+    `${fnName}: thông điệp lỗi phải ghép lý do GỐC qua lastCreateFlowProjectError(), không tự đoán`
+  );
+  // Chốt chặn chống tái phát: thông điệp không được hardcode một nguyên nhân phỏng đoán.
+  // Đúng câu này từng bắt Mr.D gửi lại session nhiều lần trong khi lỗi nằm ở endpoint đã chết.
+  assert.ok(
+    !/cookie\/token đã hết hạn/.test(body),
+    `${fnName}: không được đoán "cookie/token đã hết hạn" — phải lấy lý do thật từ Flow API`
   );
 }
 

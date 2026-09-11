@@ -179,7 +179,7 @@ export async function generateSceneVideo(
     return { ...result, flowProjectId: opts.flowProjectId };
   } catch (err) {
     if (!isEntityNotFound(err) || !opts.flowProjectTitle) throw err;
-    const { id: newProjectId } = await createProject(account.cookie, opts.flowProjectTitle);
+    const { id: newProjectId } = await createProject(account, opts.flowProjectTitle);
     const result = await run(newProjectId, true);
     return { ...result, flowProjectId: newProjectId };
   }
@@ -235,26 +235,50 @@ export interface CreateFlowProjectResult {
 
 export async function createFlowProject(title: string): Promise<CreateFlowProjectResult> {
   const account = await resolveActiveAccount();
-  return createProject(account.cookie, title);
+  // Truyền cả account (không chỉ cookie): batchexecute cần thêm `at`/`fsid`/`bl`, rút ra
+  // trong projects.ts qua flowCredsOf.
+  return createProject(account, title);
+}
+
+/**
+ * Lý do gần nhất khiến resolveFlowProjectIdSafe trả null.
+ *
+ * Vì sao cần: caller chỉ nhận `null` rồi tự đoán nguyên nhân, và đoán SAI suốt — thông điệp
+ * "chưa cấu hình tài khoản, hoặc cookie/token đã hết hạn" từng bắt Mr.D gửi lại session
+ * nhiều lần trong khi lỗi thật là endpoint labs.google/fx/api/trpc đã bị Google gỡ
+ * (xem lib/googleFlow/projects.ts). Giữ lỗi gốc ở đây để caller ghép vào thông báo, thay vì
+ * bắt người dùng mở log PM2 trên VPS mới biết.
+ *
+ * Module-level (không phải per-call) là đủ: caller đọc ngay sau khi nhận null, và hai lượt
+ * tạo project chạy song song mà cùng hỏng thì lý do gần như luôn giống nhau.
+ */
+let lastFlowProjectError: string | null = null;
+
+/** Lý do thất bại gần nhất, hoặc null nếu chưa lần nào hỏng. */
+export function lastCreateFlowProjectError(): string | null {
+  return lastFlowProjectError;
 }
 
 /**
  * Tạo Flow project an toàn — trả null khi chưa cấu hình account thay vì chặn luồng.
  *
- * Log lý do thật (account chưa cấu hình, cookie/`at` hết hạn, Flow API lỗi) vì caller chỉ
- * thấy `null` rồi báo "Chưa có flowProjectId" — thông điệp đó không nói được nguyên nhân,
- * trước đây `catch` trống nuốt mất lỗi gốc nên không điều tra được.
+ * Log lý do thật (account chưa cấu hình, cookie/`at` hết hạn, Flow API lỗi) VÀ giữ lại ở
+ * lastFlowProjectError để caller báo đúng nguyên nhân; trước đây `catch` trống nuốt mất lỗi
+ * gốc nên không điều tra được.
  */
 export async function resolveFlowProjectIdSafe(title: string): Promise<string | null> {
   try {
     const { id } = await createFlowProject(title);
     if (!id) {
+      lastFlowProjectError = 'Flow trả về rỗng — không có projectId';
       console.error(`[flow] createFlowProject("${title}") trả về rỗng — không có id`);
       return null;
     }
+    lastFlowProjectError = null;
     return id;
   } catch (err) {
     const code = err instanceof FlowApiError ? ` code=${err.code ?? '-'}` : '';
+    lastFlowProjectError = `${String(err)}${code}`;
     console.error(`[flow] Tạo Flow project "${title}" thất bại${code}: ${String(err)}`);
     return null;
   }
@@ -351,7 +375,7 @@ export async function generateStoryboardImage(params: {
     flowProjectId = params.projectId;
   } catch (err) {
     if (!isEntityNotFound(err) || !params.projectTitle) throw err;
-    const { id: newProjectId } = await createProject(account.cookie, params.projectTitle);
+    const { id: newProjectId } = await createProject(account, params.projectTitle);
     result = await run(newProjectId, true);
     flowProjectId = newProjectId;
   }

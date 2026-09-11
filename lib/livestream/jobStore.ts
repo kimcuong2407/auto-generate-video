@@ -23,7 +23,7 @@ import * as schema from '../db/schema';
 import { isoToSql, sqlToIso } from '../db/datetime';
 import { LIVESTREAM_DATA_ROOT } from './constants';
 import { jobDir, assertValidJobId } from './paths';
-import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
+import { resolveFlowProjectIdSafe, lastCreateFlowProjectError } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import type {
   ConcatState,
@@ -483,10 +483,9 @@ export async function ensureJobFlowId(jobId: string): Promise<string> {
 
   const flowProjectId = await resolveFlowProjectIdSafe(job.name);
   if (!flowProjectId) {
-    // Lý do gốc đã được resolveFlowProjectIdSafe log ra console kèm code lỗi.
+    // Kèm lý do GỐC thay vì đoán — cùng lý do như bên projectStore.ensureProjectFlowId.
     throw new FlowApiError(
-      `Không tạo được Flow project cho "${job.name}" — kiểm tra Cài đặt → Tài khoản Veo ` +
-        `(chưa cấu hình tài khoản, hoặc cookie/token đã hết hạn, cần mở lại tab Flow để extension gửi session).`
+      `Không tạo được Flow project cho "${job.name}": ${lastCreateFlowProjectError() ?? 'không rõ lý do'}`
     );
   }
 

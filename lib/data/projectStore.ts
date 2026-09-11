@@ -20,7 +20,7 @@ import * as schema from '../db/schema';
 import { isoToSql, sqlToIso } from '../db/datetime';
 import { DATA_ROOT } from '../constants';
 import { projectDir, assertValidProjectId } from '../paths';
-import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
+import { resolveFlowProjectIdSafe, lastCreateFlowProjectError } from '../googleFlow/flowJobs';
 import { FlowApiError } from '../googleFlow/errors';
 import type {
   Project,
@@ -396,10 +396,11 @@ export async function ensureProjectFlowId(projectId: string): Promise<string> {
 
   const flowProjectId = await resolveFlowProjectIdSafe(project.name);
   if (!flowProjectId) {
-    // Lý do gốc đã được resolveFlowProjectIdSafe log ra console kèm code lỗi.
+    // Kèm lý do GỐC thay vì đoán: thông điệp cũ đổ tại "chưa cấu hình tài khoản / cookie hết
+    // hạn" cho mọi thất bại, nên khi Google gỡ endpoint tạo project thì Mr.D gửi lại session
+    // nhiều lần vô ích. Xem lastCreateFlowProjectError ở lib/googleFlow/flowJobs.ts.
     throw new FlowApiError(
-      `Không tạo được Flow project cho "${project.name}" — kiểm tra Cài đặt → Tài khoản Veo ` +
-        `(chưa cấu hình tài khoản, hoặc cookie/token đã hết hạn, cần mở lại tab Flow để extension gửi session).`
+      `Không tạo được Flow project cho "${project.name}": ${lastCreateFlowProjectError() ?? 'không rõ lý do'}`
     );
   }
 
