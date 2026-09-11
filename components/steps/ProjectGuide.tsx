@@ -25,6 +25,11 @@ function describeVideoInputs(project: Project): string {
   if (!first) return 'Chưa có cảnh nào — duyệt kịch bản ở Bước 2 trước';
 
   const plan = planVideoInputs(project, first);
+  // Thứ tự nhánh bám đúng planVideoInputs: frame chain có thể nằm trong refRelPaths (kèm ảnh
+  // người dùng chọn) chứ không chỉ ở startRelPath — xem ghi chú luật mới bên đó.
+  if (plan.chainFrameRelPath && plan.refRelPaths.length > 1) {
+    return `Ref images (r2v): khung hình cuối cảnh trước + ${plan.refRelPaths.length - 1} ảnh đã chọn — vừa nối liền mạch vừa giữ đúng sản phẩm`;
+  }
   if (plan.chained) {
     return 'Khung khởi điểm (i2v) = khung hình cuối cảnh trước — nối liền mạch';
   }

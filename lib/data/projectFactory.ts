@@ -300,6 +300,7 @@ export function createNewProject(params: {
     sceneChaining: true,
     burnOnScreenText: false,
     videoRefImagePaths: [],
+    flowMediaIds: {},
     flowProjectId: null,
     template: params.template,
     product: params.product,

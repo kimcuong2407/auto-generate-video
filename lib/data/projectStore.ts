@@ -119,6 +119,8 @@ function assembleProject(
     sceneChaining: row.sceneChaining,
     burnOnScreenText: row.burnOnScreenText,
     videoRefImagePaths: (row.videoRefImagePaths as string[] | null) ?? [],
+    // null = project tạo trước khi có cột này → chưa cache mediaId nào.
+    flowMediaIds: (row.flowMediaIds as Record<string, string> | null) ?? {},
     flowProjectId: row.flowProjectId,
     template: row.template,
     product: row.product,
@@ -162,6 +164,7 @@ function projectToRow(project: Project): typeof projects.$inferInsert {
     sceneChaining: project.sceneChaining,
     burnOnScreenText: project.burnOnScreenText,
     videoRefImagePaths: project.videoRefImagePaths ?? [],
+    flowMediaIds: project.flowMediaIds ?? {},
     flowProjectId: project.flowProjectId ?? null,
     scriptAngleId: project.scriptAngleId ?? null,
     template: project.template as Template,

@@ -236,6 +236,11 @@ export interface Project {
    * [] = không chọn thêm ảnh nào, chỉ dùng storyboard.
    */
   videoRefImagePaths: string[];
+  /**
+   * Cache relPath ảnh → mediaId Google Flow đã upload. Tránh upload lại cùng một ảnh ở mọi
+   * cảnh. Bị xoá khi flowProjectId đổi (mediaId gắn với Flow project cũ sẽ không hợp lệ).
+   */
+  flowMediaIds: Record<string, string>;
   flowProjectId: string | null;
   template: Template;
   product: ProductInfo;

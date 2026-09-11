@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, readProject, updateProject } from '@/lib/data/projectStore';
 import { getFlowStatus } from '@/lib/googleFlow/flowJobs';
-import { syncGeneratingScenes, runChainingForJustDone } from '@/lib/data/sceneSync';
+import { syncGeneratingScenes, runChainingForJustDone, resumeStalledProject } from '@/lib/data/sceneSync';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +42,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // 3. Chain khung hình cho các scene vừa done (tách khỏi mutator sync để tránh deadlock
   // write-queue theo projectId — xem ghi chú trong sceneSync.ts).
   await runChainingForJustDone(id, justDoneSceneIds);
+
+  // 4. Nối lại dây chuyền nếu nó đứt giữa chừng (cảnh đang chạy bị failed → không cảnh nào
+  // "vừa done" nên bước 3 không cascade được). Cùng hàm poller nền dùng.
+  await resumeStalledProject(id);
 
   const project = await readProject(id);
   return NextResponse.json({ project });

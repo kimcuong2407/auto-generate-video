@@ -64,6 +64,16 @@ export const projects = mysqlTable('projects', {
   // Tối đa 3 ảnh chọn thêm (sản phẩm/người mẫu/background) gửi kèm ref khi gen video Bước 4.
   // Nullable (không default) vì cột mới thêm trên bảng đã có data — đọc ra fallback về [].
   videoRefImagePaths: mariaJson('video_ref_image_paths').$type<string[]>(),
+  /**
+   * Cache relPath ảnh → mediaId Google Flow đã upload, để không upload lại cùng một ảnh ở mọi
+   * cảnh (mỗi lần gen video hiện upload lại toàn bộ ref qua rpc maseQ). Cùng cơ chế
+   * livestream_jobs.flow_media_ids.
+   *
+   * Nullable (không default) vì cột thêm trên bảng đã có data — đọc ra fallback về {}.
+   * mediaId gắn với Flow project: khi flowProjectId đổi (Google 404 → tạo project mới) thì
+   * cache này phải bị xoá, nếu không Flow nhận mediaId của project cũ và trả lỗi.
+   */
+  flowMediaIds: mariaJson('flow_media_ids').$type<Record<string, string>>(),
   // Script meta (totalDuration + aspectRatio) — scenes tách bảng scenes.
   scriptTotalDuration: int('script_total_duration').notNull(),
   scriptAspectRatio: mysqlEnum('script_aspect_ratio', ASPECT_RATIOS).notNull(),
