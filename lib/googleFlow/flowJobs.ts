@@ -238,12 +238,24 @@ export async function createFlowProject(title: string): Promise<CreateFlowProjec
   return createProject(account.cookie, title);
 }
 
-/** Tạo Flow project an toàn — trả null khi chưa cấu hình account thay vì chặn luồng. */
+/**
+ * Tạo Flow project an toàn — trả null khi chưa cấu hình account thay vì chặn luồng.
+ *
+ * Log lý do thật (account chưa cấu hình, cookie/`at` hết hạn, Flow API lỗi) vì caller chỉ
+ * thấy `null` rồi báo "Chưa có flowProjectId" — thông điệp đó không nói được nguyên nhân,
+ * trước đây `catch` trống nuốt mất lỗi gốc nên không điều tra được.
+ */
 export async function resolveFlowProjectIdSafe(title: string): Promise<string | null> {
   try {
     const { id } = await createFlowProject(title);
-    return id ?? null;
-  } catch {
+    if (!id) {
+      console.error(`[flow] createFlowProject("${title}") trả về rỗng — không có id`);
+      return null;
+    }
+    return id;
+  } catch (err) {
+    const code = err instanceof FlowApiError ? ` code=${err.code ?? '-'}` : '';
+    console.error(`[flow] Tạo Flow project "${title}" thất bại${code}: ${String(err)}`);
     return null;
   }
 }

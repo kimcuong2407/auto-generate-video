@@ -21,6 +21,7 @@ import { isoToSql, sqlToIso } from '../db/datetime';
 import { DATA_ROOT } from '../constants';
 import { projectDir, assertValidProjectId } from '../paths';
 import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
+import { FlowApiError } from '../googleFlow/errors';
 import type {
   Project,
   ProjectSummary,
@@ -383,19 +384,30 @@ export async function updateProject<T = void>(
 /**
  * Trả về flowProjectId hiện có của project, hoặc tạo mới (qua flow_create_project) và
  * lưu lại nếu chưa có — dùng làm fallback khi bước gán sớm lúc tạo project đã thất bại.
- * Không throw khi Flow không kết nối được — trả về null.
+ *
+ * Ném lỗi khi không tạo được thay vì trả null: caller (gen video/ảnh/background) trước đây
+ * nhận null rồi báo "Chưa có flowProjectId — cần tạo Flow project trước khi gen video",
+ * thông điệp đó vừa sai (người dùng không tự tạo được) vừa giấu nguyên nhân thật, thường là
+ * chưa cấu hình tài khoản Veo hoặc cookie/`at` hết hạn.
  */
-export async function ensureProjectFlowId(projectId: string): Promise<string | null> {
+export async function ensureProjectFlowId(projectId: string): Promise<string> {
   const project = await readProject(projectId);
   if (project.flowProjectId) return project.flowProjectId;
 
   const flowProjectId = await resolveFlowProjectIdSafe(project.name);
-  if (!flowProjectId) return null;
+  if (!flowProjectId) {
+    // Lý do gốc đã được resolveFlowProjectIdSafe log ra console kèm code lỗi.
+    throw new FlowApiError(
+      `Không tạo được Flow project cho "${project.name}" — kiểm tra Cài đặt → Tài khoản Veo ` +
+        `(chưa cấu hình tài khoản, hoặc cookie/token đã hết hạn, cần mở lại tab Flow để extension gửi session).`
+    );
+  }
 
   const { project: updated } = await updateProject(projectId, (p) => {
     if (!p.flowProjectId) p.flowProjectId = flowProjectId;
   });
-  return updated.flowProjectId;
+  // Giữ giá trị đang có nếu luồng khác gán trước (mutator chỉ ghi khi còn trống).
+  return updated.flowProjectId ?? flowProjectId;
 }
 
 // ------------------------------------------------------------------

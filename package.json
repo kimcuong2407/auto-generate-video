@@ -27,6 +27,7 @@
     "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts",
     "check:flow-job-timeout": "tsx scripts/check-flow-job-timeout.ts",
     "check:flow-login-cookies": "tsx scripts/check-flow-login-cookies.ts",
+    "check:flow-project-error": "tsx scripts/check-flow-project-error.ts",
     "check:flow-rpc": "tsx scripts/check-flow-rpc.ts",
     "check:flow-session-discovery": "tsx scripts/check-flow-session-discovery.ts",
     "check:global-image-model": "tsx scripts/check-global-image-model.ts",

@@ -24,6 +24,7 @@ import { isoToSql, sqlToIso } from '../db/datetime';
 import { LIVESTREAM_DATA_ROOT } from './constants';
 import { jobDir, assertValidJobId } from './paths';
 import { resolveFlowProjectIdSafe } from '../googleFlow/flowJobs';
+import { FlowApiError } from '../googleFlow/errors';
 import type {
   ConcatState,
   FlowStatusCache,
@@ -472,18 +473,28 @@ export async function updateJob<T = void>(
   });
 }
 
-/** Fallback tạo/lưu flowProjectId muộn cho job — xem ensureProjectFlowId ở lib/data/projectStore.ts. */
-export async function ensureJobFlowId(jobId: string): Promise<string | null> {
+/**
+ * Fallback tạo/lưu flowProjectId muộn cho job — xem ensureProjectFlowId ở lib/data/projectStore.ts.
+ * Ném lỗi nói rõ nguyên nhân thay vì trả null, cùng lý do như bên project.
+ */
+export async function ensureJobFlowId(jobId: string): Promise<string> {
   const job = await readJob(jobId);
   if (job.flowProjectId) return job.flowProjectId;
 
   const flowProjectId = await resolveFlowProjectIdSafe(job.name);
-  if (!flowProjectId) return null;
+  if (!flowProjectId) {
+    // Lý do gốc đã được resolveFlowProjectIdSafe log ra console kèm code lỗi.
+    throw new FlowApiError(
+      `Không tạo được Flow project cho "${job.name}" — kiểm tra Cài đặt → Tài khoản Veo ` +
+        `(chưa cấu hình tài khoản, hoặc cookie/token đã hết hạn, cần mở lại tab Flow để extension gửi session).`
+    );
+  }
 
   const { job: updated } = await updateJob(jobId, (j) => {
     if (!j.flowProjectId) j.flowProjectId = flowProjectId;
   });
-  return updated.flowProjectId;
+  // Giữ giá trị đang có nếu luồng khác gán trước (mutator chỉ ghi khi còn trống).
+  return updated.flowProjectId ?? flowProjectId;
 }
 
 /**

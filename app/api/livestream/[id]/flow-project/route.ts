@@ -40,16 +40,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       });
     }
     const flowProjectId = await ensureJobFlowId(id);
-    if (!flowProjectId) {
-      return NextResponse.json(
-        {
-          error:
-            'Không tạo được Flow project — phiên đăng nhập Google Flow có thể đã hết hạn, ' +
-            'vui lòng kết nối lại ở Settings › Flow.',
-        },
-        { status: 502 }
-      );
-    }
     return NextResponse.json({ flowProjectId });
   } catch (err) {
     const message =
