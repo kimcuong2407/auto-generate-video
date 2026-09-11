@@ -451,10 +451,12 @@ Chấm theo 4 chiều, mỗi chiều 0-10:
      nhân bản tay. Trích đúng mốc bị nhồi khi báo.
    - Tổng các mốc không khớp duration của cảnh, hoặc lời thoại bị cắt nhỏ rải vào nhiều mốc thay
      vì giữ nguyên một khối liền ở phần Dialogue.
-   - Cảnh có tương tác vật chất (rót/đổ chất lỏng, vải rủ, bóc bao bì, mở nắp, đặt vật xuống
-     mặt bàn, vật rơi/bật, khói/hơi nước) mà THIẾU từ khoá vật lý ("vật lý chân thực chi phối
-     chuyển động", "trọng lượng và quán tính đúng thực tế", "vải rủ tự nhiên theo trọng lực"...).
-     Thiếu là sản phẩm trông nhẹ bẫng/trôi lơ lửng.
+   - Soi TỪNG MỐC (không phải cả cảnh): mốc nào có vật bị chạm/di chuyển/biến dạng mà THIẾU từ
+     khoá vật lý thì trừ điểm, KỂ CẢ tương tác nghe rất nhẹ — đặt miếng bọt biển xuống bàn, thả
+     tép tỏi vào hộp, dựng chai cho đứng vững, nước loang trên mặt bàn đều tính. Đây đúng chỗ Veo
+     hay vẽ vật trôi lơ lửng hoặc xuyên qua mặt bàn. Từ khoá hợp lệ: "vật lý chân thực chi phối
+     chuyển động", "nước loang theo trọng lực tự nhiên", "trọng lượng và quán tính đúng thực tế",
+     "vật đặt xuống có trọng lượng thật"... Báo rõ mốc nào thiếu.
    - Mọi cảnh đều dùng chung một kiểu máy tĩnh ("static") trong khi diễn biến cho phép động tác
      máy có chủ đích (orbit khoe sản phẩm, rack_focus đổi nét, tilt dọc hợp khung 9:16...).
 
@@ -467,6 +469,12 @@ Chấm theo 4 chiều, mỗi chiều 0-10:
    kèm ảnh thật của sản phẩm, và ảnh thể hiện hình dáng chính xác hơn mọi câu chữ. Chữ tả sai dù
    1 chi tiết cũng kéo model vẽ lệch khỏi sản phẩm thật. Chỉ được nêu màu và chất liệu tổng quát.
    Cũng kiểm: tên/đặc điểm sản phẩm trong lời thoại có mâu thuẫn với mô tả ảnh thật không.
+   LỖI NẶNG NHẤT ở chiều này — BỊA BIẾN THỂ: kịch bản có đưa vào chiếc thứ hai khác màu/khác cỡ,
+   dựng cảnh so sánh giữa các phiên bản, hoặc để lời thoại nói "có sẵn màu X và Y" / "nhiều kích
+   cỡ" trong khi mô tả ảnh thật KHÔNG nêu đích danh biến thể đó không? Nếu có thì đây là "error",
+   không phải "warn", và phải kéo điểm productFidelity xuống rõ rệt: biến thể bịa ra không có ảnh
+   reference để model bám nên chắc chắn vẽ sai, và video quảng cáo một phiên bản có thể không tồn
+   tại. Nêu rõ cảnh nào bịa và trích đúng cụm chữ.
 
 4. continuity — Từ cảnh 2 trở đi, Veo nhận KHUNG HÌNH CUỐI của cảnh trước làm khung khởi điểm và
    diễn tiếp từ đó (không vẽ lại từ đầu). Câu mở đầu veoPrompt của cảnh 2+ có mô tả rõ phần tiếp
@@ -624,6 +632,15 @@ Với mỗi cảnh tự thiết kế, xác định:
       - Nếu phần "Mô tả hình ảnh thật từ ảnh sản phẩm" bên dưới có nêu màu/chất liệu, dùng đúng màu/chất
         liệu đó và giữ nhất quán xuyên suốt MỌI cảnh, nhưng vẫn KHÔNG chép lại các con số/chi tiết hình học
         từ đó vào veoPrompt. TUYỆT ĐỐI KHÔNG tự bịa/suy diễn/đổi màu, chất liệu;
+      - CẤM BỊA BIẾN THỂ SẢN PHẨM (đọc kỹ — đây là lỗi đắt nhất): chỉ tồn tại ĐÚNG MỘT phiên bản sản
+        phẩm, là phiên bản trong ảnh thật. TUYỆT ĐỐI KHÔNG đưa thêm vào kịch bản một chiếc thứ hai khác
+        màu, khác cỡ, khác kiểu; KHÔNG dựng cảnh so sánh giữa các màu/phiên bản; KHÔNG nói trong lời
+        thoại rằng sản phẩm "có nhiều màu", "có sẵn màu X và Y", "nhiều kích cỡ" — trừ khi phần "Mô tả
+        hình ảnh thật" bên dưới nêu ĐÍCH DANH các biến thể đó. Hai lý do: (a) biến thể bịa ra KHÔNG có
+        ảnh reference nào để model bám theo nên chắc chắn bị vẽ sai hình dáng; (b) video sẽ quảng cáo
+        một phiên bản có thể không tồn tại, người mua nhận hàng khác với video là lỗi bán hàng thật.
+        Muốn nói về lựa chọn thì nói chung chung ("nhiều lựa chọn phù hợp góc bếp nhà mình"), KHÔNG
+        nêu tên màu/cỡ cụ thể;
   (2) Action — hành động/cử chỉ/micro-expression cụ thể đang diễn ra; với cảnh thứ 2 trở đi,
       câu mô tả hành động mở đầu PHẢI tiếp nối trực tiếp từ tư thế/vị trí/hành động kết thúc
       của cảnh ngay trước (xem chỉ dẫn image-to-video chaining ở trên).
@@ -680,13 +697,23 @@ Với mỗi cảnh tự thiết kế, xác định:
       "[00:00-00:03] cô đặt hộp xuống mặt bàn gỗ, hai tay giữ hai bên hộp.
        [00:03-00:06] cô xoay hộp lại để lộ mặt sau, ngón cái bật nhẹ nắp. SFX: tiếng nắp bật khẽ.
        [00:06-00:08] cô ngẩng lên nhìn thẳng camera, tay phải vẫn đặt trên nắp hộp."
-      VẬT LÝ CHÂN THỰC (thêm khi cảnh có tương tác vật chất):
-      Veo mô phỏng vật lý tốt nhưng phải được yêu cầu rõ, không tự làm. Khi cảnh có rót/đổ chất
-      lỏng, vải rủ/gấp, bóc bao bì, mở nắp, đặt vật xuống mặt bàn, vật rơi/bật, khói/hơi nước —
-      BẮT BUỘC chèn từ khoá vật lý phù hợp: "vật lý chân thực chi phối chuyển động", "chất lỏng
-      chảy theo động lực học tự nhiên", "trọng lượng và quán tính đúng thực tế", "vải rủ tự nhiên
-      theo trọng lực", "chất liệu phản ứng đúng đặc tính". Thiếu những cụm này là nguyên nhân
-      khiến sản phẩm trông nhẹ bẫng như đồ nhựa rỗng, nước chảy sai hướng, hoặc vật trôi lơ lửng.
+      VẬT LÝ CHÂN THỰC — XÉT THEO TỪNG MỐC, KHÔNG XÉT CẢ CẢNH:
+      Veo mô phỏng vật lý tốt nhưng phải được yêu cầu rõ, không tự làm. Cách xét: đọc lại TỪNG
+      mốc thời gian vừa viết, hỏi "trong mốc này có vật nào bị chạm vào, di chuyển, hay biến
+      dạng không?". Nếu CÓ thì mốc đó BẮT BUỘC có từ khoá vật lý — kể cả khi nghe rất nhẹ nhàng.
+      Đừng tự phán "cảnh này đơn giản, không cần": tay đặt một vật xuống bàn cũng là vật rơi có
+      trọng lượng, và đó đúng là chỗ Veo hay vẽ vật trôi lơ lửng hoặc xuyên qua mặt bàn.
+      Tính là tương tác vật chất — không giới hạn ở đây:
+      - đặt/thả/nhấc/dựng một vật (kể cả nhẹ như miếng bọt biển, tép tỏi)
+      - rót/đổ/nhỏ giọt/loang/thấm chất lỏng
+      - bóc bao bì, mở/đậy nắp, lột miếng dán, ấn/nén/dán
+      - vải rủ/gấp, vật rơi/bật/lăn, khói/hơi nước
+      Từ khoá chọn theo đúng loại tương tác, KHÔNG chèn bừa cả cụm: "vật lý chân thực chi phối
+      chuyển động", "chất lỏng chảy theo động lực học tự nhiên", "nước loang theo trọng lực tự
+      nhiên", "trọng lượng và quán tính đúng thực tế", "vật đặt xuống có trọng lượng thật, tiếp
+      xúc mặt bàn dứt khoát", "vải rủ tự nhiên theo trọng lực", "chất liệu phản ứng đúng đặc
+      tính". Thiếu những cụm này là nguyên nhân khiến sản phẩm trông nhẹ bẫng như đồ nhựa rỗng,
+      nước chảy sai hướng, hoặc vật trôi lơ lửng.
   (3) Scene — bối cảnh quay chung đã xác định ở Bước 1 (không gian, ánh sáng, phong cách máy quay), PHẢI
       nhắc lại nhất quán để liền mạch với các scene khác;
   (4) Style — loại cảnh quay (wide/medium/close-up...), góc máy, chuyển động máy quay, phong cách ánh sáng;

@@ -139,13 +139,86 @@ function check(label: string, cond: boolean, detail = '') {
 {
   const p = REVIEW_SCRIPT_SYSTEM_PROMPT;
   check('giữ ràng buộc tay/chân', /Mỗi người CHỈ có đúng 2 tay/.test(p));
-  check('giữ chỉ dẫn vật lý', /vật lý chân thực chi phối chuyển động/.test(p));
+  // \s+ chứ không phải dấu cách: prompt xuống dòng giữa cụm này để giữ độ rộng dòng.
+  check('giữ chỉ dẫn vật lý', /vật lý chân thực chi phối\s+chuyển động/.test(p));
   check('giữ chaining cảnh 2+', /tiếp nối trực tiếp/.test(p));
   check('giữ câu "Âm thanh:" bắt buộc', /Âm thanh:/.test(p));
   check(
     'SFX theo mốc là BỔ SUNG, không thay câu "Âm thanh:"',
     /KHÔNG thay thế nó/.test(p),
     'thiếu câu này thì AI bỏ luôn câu Âm thanh tổng thể → audit báo missing_audio'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 7. CẤM BỊA BIẾN THỂ SẢN PHẨM.
+//
+// Ca lỗi thật (kịch bản gen 11/09/2026, cảnh tidy-result + cta): ảnh thật chỉ có hộp TRẮNG,
+// AI tự thêm "chiếc hộp gấu thứ hai màu nâu" và cho người dẫn nói "có sẵn hai màu trắng và
+// nâu". Biến thể bịa không có ảnh reference để model bám → chắc chắn vẽ sai; nặng hơn là video
+// quảng cáo một phiên bản có thể không tồn tại. Chỉ dẫn cũ chỉ cấm "đổi màu" nên không chặn
+// được việc THÊM một chiếc khác màu, và không đụng gì tới lời thoại.
+// ---------------------------------------------------------------------------
+{
+  const p = REVIEW_SCRIPT_SYSTEM_PROMPT;
+  check('cấm bịa biến thể', /CẤM BỊA BIẾN THỂ SẢN PHẨM/.test(p));
+  check(
+    'cấm cả trong LỜI THOẠI',
+    /có nhiều màu|có sẵn màu/.test(p),
+    'phải cấm nói biến thể trong thoại, không chỉ cấm mô tả hình'
+  );
+  check(
+    'nêu lý do thiếu ảnh reference',
+    /không có\s+ảnh reference/i.test(p),
+    'không nêu lý do thì AI coi là luật tuỳ tiện và bỏ qua'
+  );
+  check(
+    'chừa lối nói chung chung',
+    /nhiều lựa chọn/.test(p),
+    'cấm mà không chừa lối thay thế thì AI vẫn bịa để có cái mà nói'
+  );
+
+  const e = VEO_PROMPT_EVAL_SYSTEM_PROMPT;
+  check('eval soi việc bịa biến thể', /BỊA BIẾN THỂ/.test(e));
+  check(
+    'eval xếp bịa biến thể là error',
+    /là "error"/.test(e),
+    'phải nói rõ mức error, nếu không AI chấm thành warn rồi Mr.D bỏ qua'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 8. Vật lý xét THEO MỐC, phủ cả tương tác nhẹ.
+//
+// Ca lỗi thật (cùng kịch bản): chỉ 2/7 cảnh có từ khoá vật lý. Eval bắt đúng hai chỗ thiếu —
+// "đặt bọt biển xuống bàn, nước loang" và "dựng chai đứng vững, thả tỏi gừng". Chỉ dẫn cũ nói
+// "khi cảnh có tương tác vật chất" nên AI tự phán cảnh nào đủ nặng để tính; nay xét từng mốc.
+// ---------------------------------------------------------------------------
+{
+  const p = REVIEW_SCRIPT_SYSTEM_PROMPT;
+  check('vật lý xét theo mốc', /XÉT THEO TỪNG MỐC/.test(p));
+  check(
+    'phủ tương tác nhẹ',
+    /kể cả khi nghe rất nhẹ nhàng|kể cả nhẹ như/.test(p),
+    'không nói rõ thì AI bỏ qua việc đặt vật nhẹ xuống bàn'
+  );
+  check(
+    'chặn thói tự phán "cảnh này đơn giản"',
+    /Đừng tự phán/.test(p),
+    'đây đúng là cách AI đã bỏ sót ở kịch bản thật'
+  );
+  check(
+    'có từ khoá cho vật đặt xuống',
+    /vật đặt xuống có trọng lượng thật/.test(p),
+    'thiếu từ khoá sẵn thì AI không biết chèn gì'
+  );
+
+  const e = VEO_PROMPT_EVAL_SYSTEM_PROMPT;
+  check('eval soi vật lý theo mốc', /Soi TỪNG MỐC/.test(e));
+  check(
+    'eval nêu ví dụ tương tác nhẹ',
+    /bọt biển|tép tỏi/.test(e),
+    'ví dụ cụ thể giúp AI chấm không bỏ sót loại nhẹ'
   );
 }
 
