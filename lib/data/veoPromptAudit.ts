@@ -52,9 +52,39 @@ const NO_SUBTITLE = 'không phụ đề';
  */
 const CREATURE_WORDS = ['gấu', 'mèo', 'thỏ', 'heo', 'lợn', 'cún', 'chó', 'vịt', 'cừu', 'hổ', 'voi', 'khủng long'];
 
+/**
+ * Bỏ dấu tiếng Việt về ASCII: "gấu"/"gáu" → "gau", "chó" → "cho".
+ *
+ * Vì sao cần (ca lỗi thật, project hop-dung-do-nha-bep-hinh-gau-...): AI vision gõ "hộp gáu"
+ * (sai dấu) thay vì "hộp gấu". So khớp theo chữ có dấu thì vế ảnh trượt hoàn toàn, chỉ còn vế
+ * tên listing khớp "gấu" → audit kết luận ngược là hai nguồn mâu thuẫn. Bỏ dấu trước khi so
+ * khiến "gáu" và "gấu" gặp nhau ở "gau".
+ *
+ * đ→d xử riêng vì NFD không tách được nó thành d + dấu.
+ */
+function stripDiacritics(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase();
+}
+
+/**
+ * Ranh giới từ cho tiếng Việt.
+ *
+ * Vì sao KHÔNG dùng `\b` (ca lỗi thật, cùng project trên): `\b` của JS chỉ coi [A-Za-z0-9_] là
+ * ký tự-từ, nên chữ có dấu nằm ngay sau nó bị tính là ranh giới. `\bchó\b` khớp vào "chó" bên
+ * trong "nhanh chóng" (ó = U+00F3 không thuộc \w → JS thấy ranh giới ngay sau ó) và audit báo
+ * sản phẩm là con chó. Sau khi bỏ dấu thì "chong" toàn ASCII nên `\b` chạy đúng trở lại — nhưng
+ * vẫn dùng lookaround tường minh cho chắc, không phụ thuộc đặc thù của \b.
+ */
 function findCreatures(text: string): string[] {
-  const lower = text.toLowerCase();
-  return CREATURE_WORDS.filter((w) => new RegExp(`\\b${w}\\b`, 'i').test(lower));
+  const plain = stripDiacritics(text);
+  return CREATURE_WORDS.filter((w) => {
+    const needle = stripDiacritics(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?<![a-z0-9])${needle}(?![a-z0-9])`, 'i').test(plain);
+  });
 }
 
 /** Mô tả giọng đã chốt, trích từ cú pháp colon. null = cảnh không có thoại hoặc sai cú pháp. */
@@ -69,6 +99,33 @@ export function extractVoiceDescription(veoPrompt: string): string | null {
  * `project` chỉ dùng để lấy nguồn sự thật về sản phẩm (visualDescription + name); truyền phần tối
  * thiểu để hàm test được mà không cần dựng cả Project.
  */
+/**
+ * Ép câu thoại trong veoPrompt về ĐÚNG NGUYÊN VĂN voiceoverVi.
+ *
+ * Vì sao cần (ca lỗi thật, kịch bản gen 11/09/2026 cảnh "reveal"): system prompt đã dặn "lấy
+ * NGUYÊN VĂN từ voiceoverVi" ở nhiều chỗ, AI vẫn tự thêm chữ — voiceoverVi kết thúc bằng
+ * "...đó mọi người." còn trong veoPrompt thành "...đó mọi người ơi". 1/7 cảnh lệch.
+ *
+ * Vì sao sửa veoPrompt theo voiceoverVi mà KHÔNG phải chiều ngược lại: voiceoverVi là nguồn
+ * được dùng để đo độ dài thoại và hiển thị cho người duyệt; veoPrompt chỉ là chỗ nhúng lại câu
+ * đó cho Veo đọc. Đồng bộ ngược sẽ hợp thức hoá việc AI tự sửa lời thoại đã duyệt.
+ *
+ * Chỉ thay phần trong cặp ngoặc kép ngay sau `nói rằng:` — giữ nguyên toàn bộ phần còn lại
+ * (mô tả giọng, mốc thời gian, Âm thanh, Technical). Không tìm thấy cú pháp đó thì trả nguyên
+ * veoPrompt: khi ấy lỗi thuộc về cú pháp colon, đã có `missing_colon_syntax` báo riêng.
+ */
+export function enforceVerbatimVoiceover(veoPrompt: string, voiceoverVi: string): string {
+  const line = voiceoverVi.trim();
+  if (!line || !veoPrompt.trim()) return veoPrompt;
+
+  const re = /(nói rằng:\s*")([^"]*)(")/;
+  const m = veoPrompt.match(re);
+  if (!m) return veoPrompt;
+  if (m[2] === line) return veoPrompt;
+
+  return veoPrompt.replace(re, (_all, head: string, _old: string, tail: string) => `${head}${line}${tail}`);
+}
+
 export function auditVeoPrompts(
   scenes: Scene[],
   product: Pick<Project['product'], 'name' | 'visualDescription'>

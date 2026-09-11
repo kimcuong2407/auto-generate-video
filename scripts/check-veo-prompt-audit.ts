@@ -9,7 +9,12 @@
  * Chạy: npx tsx scripts/check-veo-prompt-audit.ts
  */
 import assert from 'node:assert/strict';
-import { auditVeoPrompts, extractVoiceDescription, summarizeAudit } from '../lib/data/veoPromptAudit';
+import {
+  auditVeoPrompts,
+  enforceVerbatimVoiceover,
+  extractVoiceDescription,
+  summarizeAudit,
+} from '../lib/data/veoPromptAudit';
 import type { Scene } from '../lib/types';
 
 const VOICE = 'giọng nữ trẻ trung khoảng 25-30 tuổi, âm vực vừa, cheerful upbeat voice';
@@ -129,4 +134,88 @@ const CLEAN = { name: 'Hộp đựng đồ', visualDescription: 'hộp nhựa tr
 assert.equal(extractVoiceDescription(goodPrompt('x')), VOICE);
 assert.equal(extractVoiceDescription('không có cú pháp giọng'), null);
 
-console.log('✅ check-veo-prompt-audit: 11/11 pass');
+
+// ---------------------------------------------------------------------------
+// 12. Dấu tiếng Việt: "chó" KHÔNG được khớp vào "nhanh chóng".
+//
+// Ca lỗi thật (project hop-dung-do-nha-bep-hinh-gau-..., 11/09/2026): visualDescription có cụm
+// "thoát nước nhanh chóng", regex cũ dùng `\b` → `ó` (U+00F3) không thuộc \w nên JS thấy ranh
+// giới ngay sau nó, khớp "chó" trong "chóng" và audit báo sản phẩm là con chó.
+// ---------------------------------------------------------------------------
+{
+  const product = {
+    name: 'Hộp đựng đồ hình gấu treo tường',
+    visualDescription: 'Hộp nhựa trắng, thiết kế thoát nước nhanh chóng để không bị ứ nước.',
+  };
+  const codes = auditVeoPrompts([], product).map((x) => x.code);
+  assert.ok(
+    !codes.includes('product_identity_conflict'),
+    `"chóng" không được bị đọc thành "chó", nhận: ${codes}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 13. Vision gõ thiếu dấu ("gáu") vẫn phải khớp với "gấu" ở tên listing.
+//     Cùng ca lỗi trên: vế ảnh trượt hoàn toàn nên audit kết luận ngược.
+// ---------------------------------------------------------------------------
+{
+  const product = {
+    name: 'Hộp Đựng Đồ Hình Gấu Homebox Treo Tường',
+    visualDescription: 'Hộp gáu đa năng treo tường, thân nhựa màu trắng mờ, phần đầu gáu có hai tai.',
+  };
+  const codes = auditVeoPrompts([], product).map((x) => x.code);
+  assert.ok(
+    !codes.includes('product_identity_conflict'),
+    `"gáu" (thiếu dấu) phải khớp "gấu", nhận: ${codes}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 14. Mâu thuẫn THẬT vẫn phải bắt được — đừng nới lỏng tới mức bỏ sót.
+// ---------------------------------------------------------------------------
+{
+  const product = {
+    name: 'Hộp đựng đồ hình mèo dễ thương',
+    visualDescription: 'Hộp nhựa tạo hình con thỏ với hai tai dài dựng đứng.',
+  };
+  const codes = auditVeoPrompts([], product).map((x) => x.code);
+  assert.ok(
+    codes.includes('product_identity_conflict'),
+    `mèo-vs-thỏ là mâu thuẫn thật, phải báo; nhận: ${codes}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 15. enforceVerbatimVoiceover: ép câu thoại về đúng nguyên văn voiceoverVi.
+//
+// Ca lỗi thật: AI sinh voiceoverVi "...đó mọi người." nhưng nhúng vào veoPrompt thành
+// "...đó mọi người ơi" → audit báo voiceover_not_verbatim ở mức error trên mọi kịch bản.
+// ---------------------------------------------------------------------------
+{
+  const line = 'Đây rồi, cứu tinh của mình nè!';
+  const p = goodPrompt('Đây rồi, cứu tinh của mình nè ơi', VOICE);
+  const fixed = enforceVerbatimVoiceover(p, line);
+  assert.ok(fixed.includes(`nói rằng: "${line}"`), 'phải thay câu thoại về đúng nguyên văn');
+  // Phần còn lại của prompt không được đụng tới.
+  assert.ok(fixed.includes('Âm thanh:'), 'giữ nguyên câu Âm thanh');
+  assert.ok(fixed.includes('không phụ đề'), 'giữ nguyên cụm chặn phụ đề');
+  assert.ok(fixed.includes(VOICE), 'giữ nguyên mô tả giọng');
+  // Sau khi ép thì audit phải sạch lỗi verbatim.
+  const s = scene({ id: 'a', order: 1, voiceoverVi: line, veoPrompt: fixed });
+  const codes = auditVeoPrompts([s], CLEAN).map((x) => x.code);
+  assert.ok(!codes.includes('voiceover_not_verbatim'), `ép xong phải hết lỗi, nhận: ${codes}`);
+}
+
+// 16. Không có cú pháp colon → trả nguyên, không đụng vào (lỗi đó đã có code riêng báo).
+{
+  const p = 'Một đoạn mô tả không có cú pháp thoại nào cả.';
+  assert.equal(enforceVerbatimVoiceover(p, 'Xin chào'), p);
+}
+
+// 17. voiceoverVi rỗng (cảnh im lặng) → không được xoá gì trong prompt.
+{
+  const p = goodPrompt('Xin chào');
+  assert.equal(enforceVerbatimVoiceover(p, ''), p);
+}
+
+console.log('✅ check-veo-prompt-audit: 17/17 pass');

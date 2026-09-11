@@ -5,6 +5,7 @@ import { ChatApiError } from '@/lib/ai/chatClient';
 import type { ChatStreamEvent } from '@/lib/ai/chatClient';
 import { findScriptAngle } from '@/lib/scriptAngles';
 import { evaluateScript } from '@/lib/data/veoPromptEvaluate';
+import { enforceVerbatimVoiceover } from '@/lib/data/veoPromptAudit';
 import { withAiCallContext } from '@/lib/ai/callLog';
 import {
   buildSceneFromFields,
@@ -258,6 +259,7 @@ function sanitizeDraftScenes(
     const duration = clampDuration(item.duration);
     const camera = (item.camera || 'static').trim();
     const label = (item.label || `Cảnh ${index + 1}`).trim();
+    const voiceoverVi = item.voiceoverVi || '';
 
     return buildSceneFromFields(
       {
@@ -266,9 +268,11 @@ function sanitizeDraftScenes(
         duration,
         camera,
         type: item.type,
-        voiceoverVi: item.voiceoverVi || '',
+        voiceoverVi,
         onScreenText: item.onScreenText || '',
-        veoPrompt: item.veoPrompt || '',
+        // AI hay tự thêm/bớt chữ ở câu thoại nhúng trong veoPrompt dù prompt đã dặn lấy nguyên
+        // văn — ép về đúng voiceoverVi để Veo đọc trùng khớp lời đã duyệt.
+        veoPrompt: enforceVerbatimVoiceover(item.veoPrompt || '', voiceoverVi),
       },
       index + 1
     );
