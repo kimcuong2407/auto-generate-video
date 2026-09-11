@@ -25,6 +25,17 @@ export interface AppSettings {
    * thì tắt một lần cho mọi job — không phải thứ cần bật lẻ từng job.
    */
   debugConfirmSteps: boolean;
+  /**
+   * Gọi Google Flow qua app Orino Flow (MCP) thay vì batchexecute trực tiếp.
+   *
+   * Tắt (mặc định) = giữ nguyên luồng cũ, không đổi gì. Bật = mọi lệnh tạo project / gen video /
+   * gen ảnh Flow đi qua MCP, dùng phiên đăng nhập của app Orino (không cần cookie/reCAPTCHA
+   * cấu hình trong app này).
+   *
+   * Cờ TOÀN HỆ THỐNG, cùng lý do với debugConfirmSteps: đây là chọn đường đi tới Google, không
+   * phải thuộc tính của từng job.
+   */
+  useMcp: boolean;
 }
 
 export function readAppSettings(): AppSettings {
@@ -36,9 +47,10 @@ export function readAppSettings(): AppSettings {
       veoModel: data.veoModel || null,
       imageModel: data.imageModel || null,
       debugConfirmSteps: data.debugConfirmSteps === true,
+      useMcp: data.useMcp === true,
     };
   } catch {
-    return { chatModel: null, veoModel: null, imageModel: null, debugConfirmSteps: false };
+    return { chatModel: null, veoModel: null, imageModel: null, debugConfirmSteps: false, useMcp: false };
   }
 }
 

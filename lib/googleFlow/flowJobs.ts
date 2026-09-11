@@ -22,6 +22,18 @@ import type { RefImageInput, GenerateVideoResult } from './videoGen';
 import { downloadMedia } from './download';
 import { FlowApiError } from './errors';
 import type { FlowAccount, FlowBatchCreds } from './authStore';
+import {
+  getFlowStatusMcp,
+  createFlowProjectMcp,
+  generateSceneVideoMcp,
+  pollJobStatusMcp,
+  generateStoryboardImageMcp,
+} from './mcpJobs';
+
+/** Cờ /settings/flow: đi qua Orino MCP thay vì batchexecute. Đọc mỗi lần gọi để bật/tắt có hiệu lực ngay, không cần restart. */
+function useMcp(): boolean {
+  return readAppSettings().useMcp === true;
+}
 
 export interface FlowStatusResult {
   flow_connected: boolean;
@@ -31,6 +43,7 @@ export interface FlowStatusResult {
 }
 
 export async function getFlowStatus(): Promise<FlowStatusResult> {
+  if (useMcp()) return getFlowStatusMcp();
   try {
     const account = await resolveActiveAccount();
     // Điều kiện gen được = cookie + `at` (XSRF). accessToken cũ luôn null kể từ khi Google gỡ
@@ -141,8 +154,6 @@ export async function generateSceneVideo(
     seed?: number;
   }
 ): Promise<GenerateVideoResult & { flowProjectId: string }> {
-  const account = await resolveActiveAccount();
-
   // Model global ở /settings/flow đè model lưu trong project/job. Ép tại đây — cửa duy nhất
   // mọi luồng gen video (product review + livestream) đi qua — nên không luồng nào lọt.
   const model = readAppSettings().veoModel || opts.model;
@@ -157,6 +168,13 @@ export async function generateSceneVideo(
     throw new FlowApiError('Chưa có flowProjectId — cần tạo Flow project trước khi gen video');
   }
 
+  // Rẽ MCP SAU khi đã dựng prompt/duration (logic nghiệp vụ dùng chung cho cả hai luồng) nhưng
+  // TRƯỚC khi đụng cookie/reCAPTCHA — luồng MCP dùng phiên đăng nhập của app Orino.
+  if (useMcp()) {
+    return generateSceneVideoMcp(input, { ...opts, model, refImages }, prompt, duration);
+  }
+
+  const account = await resolveActiveAccount();
   const creds = flowCredsOf(account);
 
   // Chặn TRƯỚC khi gửi: model tier người dùng chọn có nằm trong danh sách Google cấp cho tài
@@ -218,6 +236,7 @@ export async function pollJobStatus(
   projectId: string,
   jobAgeMs?: number
 ): Promise<FlowJobStatusResult> {
+  if (useMcp()) return pollJobStatusMcp(jobId);
   const account = await resolveActiveAccount();
   const result = await pollVideoStatus(flowCredsOf(account), projectId, jobId, jobAgeMs);
 
@@ -291,6 +310,7 @@ export interface CreateFlowProjectResult {
 }
 
 export async function createFlowProject(title: string): Promise<CreateFlowProjectResult> {
+  if (useMcp()) return createFlowProjectMcp(title);
   const account = await resolveActiveAccount();
   // Truyền cả account (không chỉ cookie): batchexecute cần thêm `at`/`fsid`/`bl`, rút ra
   // trong projects.ts qua flowCredsOf.
@@ -406,11 +426,17 @@ export async function generateStoryboardImage(params: {
     };
   }
 
-  const account = await resolveActiveAccount();
-
   if (!params.projectId) {
     throw new FlowApiError('Chưa có flowProjectId — cần tạo Flow project trước khi gen ảnh');
   }
+
+  // Rẽ MCP sau các nhánh provider ngoài Google Flow (ChatGPT/OmniRoute ở trên) — chúng không
+  // liên quan Flow nên cờ này không đụng tới.
+  if (useMcp()) {
+    return generateStoryboardImageMcp({ ...params, model });
+  }
+
+  const account = await resolveActiveAccount();
 
   const refImages = params.refImages && params.refImages.length > 0 ? params.refImages : undefined;
   const run = (projectId: string, freshUploads: boolean) =>

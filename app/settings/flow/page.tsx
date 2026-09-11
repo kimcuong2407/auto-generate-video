@@ -39,6 +39,8 @@ export default function FlowAuthPage() {
 
   // Model Veo dùng chung cho mọi luồng gen ('' = theo cấu hình từng project/job).
   const [veoModel, setVeoModel] = useState<VeoModel | ''>('');
+  const [useMcp, setUseMcp] = useState(false);
+  const [savingMcp, setSavingMcp] = useState(false);
   const [modelOptions, setModelOptions] = useState<VeoModel[]>([]);
   const [savingModel, setSavingModel] = useState(false);
 
@@ -63,10 +65,30 @@ export default function FlowAuthPage() {
       .then((r) => r.json())
       .then((d) => {
         setVeoModel(d.veoModel || '');
+        setUseMcp(d.useMcp === true);
         setModelOptions(d.options || []);
       })
       .catch(() => {});
   }, [load]);
+
+  async function handleToggleMcp(next: boolean) {
+    setSavingMcp(true);
+    try {
+      const res = await fetch('/api/flow-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useMcp: next }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Lưu thất bại');
+      setUseMcp(d.useMcp === true);
+      setMessage(next ? 'Đã bật: gọi Google Flow qua app Orino Flow (MCP).' : 'Đã tắt: quay lại gọi Google Flow trực tiếp.');
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSavingMcp(false);
+    }
+  }
 
   async function handleSaveModel(next: VeoModel | '') {
     setVeoModel(next);
@@ -153,6 +175,35 @@ export default function FlowAuthPage() {
     <div className="page-shell">
       <TopNav />
       <div className="home-wrap">
+        <div className="card">
+          <div className="card-header">🔌 <span>Đường gọi Google Flow</span></div>
+
+          <div className="banner banner-info">
+            Mặc định app gọi thẳng Google Flow (batchexecute, cần cookie + reCAPTCHA bên dưới).
+            Bật tuỳ chọn này để đi qua app <strong>Orino Flow</strong> — dùng phiên đăng nhập của
+            Orino, không cần cookie/extension ở app này. Yêu cầu: app Orino đang chạy và đã bật
+            công tắc &quot;MCP Server&quot;, và <code>ORINO_FLOW_MCP_TOKEN</code> có trong
+            <code>.env.local</code>.
+          </div>
+
+          <div className="field-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={useMcp}
+                disabled={savingMcp}
+                onChange={(e) => handleToggleMcp(e.target.checked)}
+              />
+              <span>Gọi qua Orino Flow (MCP)</span>
+            </label>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+              Áp dụng cho: tạo Flow project, gen video Veo, gen ảnh storyboard, poll trạng thái.
+              Chưa hỗ trợ qua MCP: seed cố định, kiểm model khả dụng trước khi gen, tự tạo lại
+              project khi project bị xoá.
+            </div>
+          </div>
+        </div>
+
         <div className="card">
           <div className="card-header">🎬 <span>Model gen video (áp dụng cho tất cả)</span></div>
 

@@ -87,7 +87,8 @@
     "image-server": "node scripts/chatgpt-image-server.mjs",
     "lint": "next lint",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:mcp-flow": "tsx scripts/check-mcp-flow.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1110.0",
