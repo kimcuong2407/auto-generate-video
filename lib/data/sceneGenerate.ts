@@ -3,7 +3,7 @@ import { resolveWithinProject } from '../paths';
 import { ensureLocalFile } from '../r2/client';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
-import { FlowApiError, isQuotaError } from '../googleFlow/errors';
+import { FlowApiError, isQuotaError, isMcpUnavailableError } from '../googleFlow/errors';
 import { planVideoInputs, MAX_REF_IMAGES } from './videoInputs';
 import type { Project, Scene } from '../types';
 
@@ -14,6 +14,8 @@ export interface TriggerResult {
   error?: string;
   /** true = thất bại vì HẾT QUOTA Veo phía Google, không phải lỗi tạm thời (xem isQuotaError). */
   quotaExceeded?: boolean;
+  /** true = không gọi được app Orino Flow (MCP tắt/chưa bật/token sai) — lỗi hạ tầng, không phải lỗi cảnh. */
+  mcpUnavailable?: boolean;
 }
 
 /** Tra R2 URL của 1 relPath (ảnh storyboard/sản phẩm/người mẫu/background) để ensureLocalFile khôi phục khi mất local. */
@@ -156,13 +158,16 @@ export async function triggerSceneGeneration(
   } catch (err) {
     const message = err instanceof FlowApiError ? err.message : (err as Error).message;
     const quota = isQuotaError(err);
+    // MCP chết = lỗi hạ tầng, cùng loại với hết quota: không tính vào attempts (xem bên dưới).
+    const mcpDown = isMcpUnavailableError(err);
     // Log ĐẦY ĐỦ lý do fail — cùng bài học đã trả giá ở livestream: chuỗi sự cố không để lại
     // dấu vết nào thì phải suy đoán nguyên nhân từ trạng thái tĩnh trong DB. Kèm code lỗi +
     // attempts để phân biệt lỗi tạm thời (401/timeout) với lỗi vĩnh viễn (404 model key).
     console.error(
       `[flow gen] project=${projectId} scene=${scene.order} → THẤT BẠI` +
         `${err instanceof FlowApiError && err.code ? ` HTTP ${err.code}` : ''}` +
-        `${quota ? ' (HẾT QUOTA)' : ''} attempts=${scene.attempts} — ${message.slice(0, 300)}`
+        `${quota ? ' (HẾT QUOTA)' : ''}${mcpDown ? ' (ORINO MCP KHÔNG KẾT NỐI ĐƯỢC)' : ''}` +
+        ` attempts=${scene.attempts} — ${message.slice(0, 300)}`
     );
     await updateProject(projectId, (p) => {
       const s = p.script.scenes.find((x) => x.id === sceneId);
@@ -176,10 +181,13 @@ export async function triggerSceneGeneration(
       // Lỗi xảy ra TRƯỚC applyGeneratingState nên attempts chưa được tăng ở lượt này; cộng 1
       // tại đây để lần thử hỏng vẫn được đếm (không cộng thì lỗi luôn ở ngay bước dựng input
       // sẽ retry vô hạn vì attempts đứng yên mãi ở 0).
-      if (!quota) s.attempts += 1;
+      // Lỗi MCP không kết nối được cũng KHÔNG tính attempts, cùng lý do với quota: app Orino
+      // tắt vài phút là đủ đốt sạch trần retry của mọi cảnh, rồi dây chuyền đứng im vĩnh viễn
+      // kể cả khi MCP đã sống lại. Backoff thời gian vẫn chặn vòng lặp.
+      if (!quota && !mcpDown) s.attempts += 1;
       s.lastUpdatedAt = new Date().toISOString();
     });
-    return { sceneId, ok: false, error: message, quotaExceeded: quota };
+    return { sceneId, ok: false, error: message, quotaExceeded: quota, mcpUnavailable: mcpDown };
   }
 }
 

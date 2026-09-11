@@ -26,3 +26,19 @@ export function isQuotaError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? '');
   return /PUBLIC_ERROR_USER_QUOTA_REACHED|RESOURCE_EXHAUSTED|HTTP 429/i.test(message);
 }
+
+/**
+ * Lỗi KHÔNG kết nối được tới app Orino Flow (MCP) — app tắt, chưa bật công tắc "MCP Server",
+ * hoặc token sai.
+ *
+ * Cùng bản chất với isQuotaError: lỗi HẠ TẦNG, không phải lỗi nội dung của cảnh. Nếu tính vào
+ * `attempts` thì mở app Orino muộn vài phút là đủ đốt sạch trần retry của mọi cảnh, và cả dây
+ * chuyền đứng im vĩnh viễn dù về sau MCP đã sống lại — đúng cái bẫy mà quota đã trả giá.
+ *
+ * Nhận diện qua câu chữ vì lỗi đi qua nhiều lớp (fetch → FlowApiError → chuỗi): mcpClient luôn
+ * gắn "Không gọi được Orino MCP" hoặc "Chưa cấu hình ORINO_FLOW_MCP_TOKEN" vào message.
+ */
+export function isMcpUnavailableError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /Không gọi được Orino MCP|Chưa cấu hình ORINO_FLOW_MCP_TOKEN/i.test(message);
+}

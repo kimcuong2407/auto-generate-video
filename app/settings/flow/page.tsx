@@ -41,6 +41,8 @@ export default function FlowAuthPage() {
   const [veoModel, setVeoModel] = useState<VeoModel | ''>('');
   const [useMcp, setUseMcp] = useState(false);
   const [savingMcp, setSavingMcp] = useState(false);
+  const [mcpCheck, setMcpCheck] = useState<string | null>(null);
+  const [checkingMcp, setCheckingMcp] = useState(false);
   const [modelOptions, setModelOptions] = useState<VeoModel[]>([]);
   const [savingModel, setSavingModel] = useState(false);
 
@@ -70,6 +72,26 @@ export default function FlowAuthPage() {
       })
       .catch(() => {});
   }, [load]);
+
+  async function handleCheckMcp() {
+    setCheckingMcp(true);
+    setMcpCheck(null);
+    try {
+      const res = await fetch('/api/mcp-status', { cache: 'no-store' });
+      const d = await res.json();
+      if (!d.reachable) {
+        setMcpCheck(`❌ Không gọi được MCP (${d.url}). ${d.error || ''}`);
+      } else if (d.warning) {
+        setMcpCheck(`⚠️ ${d.warning} (${d.tookMs}ms)`);
+      } else {
+        setMcpCheck(`✅ Gọi MCP thành công (${d.tookMs}ms) — Orino đã đăng nhập Google Flow.`);
+      }
+    } catch (e) {
+      setMcpCheck(`❌ ${String(e)}`);
+    } finally {
+      setCheckingMcp(false);
+    }
+  }
 
   async function handleToggleMcp(next: boolean) {
     setSavingMcp(true);
@@ -196,7 +218,16 @@ export default function FlowAuthPage() {
               />
               <span>Gọi qua Orino Flow (MCP)</span>
             </label>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="btn" onClick={handleCheckMcp} disabled={checkingMcp}>
+                {checkingMcp ? 'Đang kiểm tra...' : '🔍 Kiểm tra kết nối MCP'}
+              </button>
+              {mcpCheck && (
+                <div style={{ fontSize: 13, marginTop: 8 }}>{mcpCheck}</div>
+              )}
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10 }}>
               Áp dụng cho: tạo Flow project, gen video Veo, gen ảnh storyboard, poll trạng thái.
               Chưa hỗ trợ qua MCP: seed cố định, kiểm model khả dụng trước khi gen, tự tạo lại
               project khi project bị xoá.

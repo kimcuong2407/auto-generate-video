@@ -261,6 +261,11 @@ export async function resumeStalledProject(projectId: string): Promise<string | 
       // Hết quota là trạng thái CHỜ, không phải hỏng — log gọn để khỏi ngập log mỗi vòng poll.
       if (res.quotaExceeded) {
         console.warn(`[project resume] ${projectId}: hết quota Veo, chờ quota reset rồi tự chạy tiếp`);
+      } else if (res.mcpUnavailable) {
+        console.warn(
+          `[project resume] ${projectId}: không gọi được Orino MCP — bật app Orino Flow + công tắc ` +
+            `"MCP Server" rồi dây chuyền tự chạy tiếp. Lý do: ${res.error}`
+        );
       } else {
         console.error(`[project resume] trigger lại ${candidate.id} thất bại: ${res.error}`);
       }
@@ -328,6 +333,16 @@ export async function runChainingForJustDone(
         // tự chạy lại.
         if (res.quotaExceeded) {
           console.warn(`[project chaining] ${projectId}: hết quota Veo, tạm dừng cascade`);
+          return;
+        }
+        // MCP chết → dừng cả vòng, cùng lý do quota: mọi cảnh sau cũng không gọi được, thử tiếp
+        // chỉ sinh log rác. Cảnh giữ 'failed' + attempts KHÔNG tăng nên vòng poll sau (khi Mr.D
+        // bật lại app Orino) tự nối lại dây chuyền, không cần bấm tay.
+        if (res.mcpUnavailable) {
+          console.warn(
+            `[project chaining] ${projectId}: không gọi được Orino MCP, tạm dừng cascade — ` +
+              `bật app Orino Flow + công tắc "MCP Server" rồi dây chuyền tự chạy tiếp. Lý do: ${res.error}`
+          );
           return;
         }
       } catch (err) {

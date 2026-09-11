@@ -170,4 +170,51 @@ check('tên biến env trong code khớp .env.example (bẫy đã mắc: ORINO_M
   }
 });
 
+// ---------- 4. Cascade không đứt khi đi MCP ----------
+console.log('4. Cascade / retry khi đi MCP');
+const mcpJobsSrc = readFileSync(new URL('../lib/googleFlow/mcpJobs.ts', import.meta.url), 'utf8');
+const sceneGenSrc = readFileSync(new URL('../lib/data/sceneGenerate.ts', import.meta.url), 'utf8');
+const sceneSyncSrc = readFileSync(new URL('../lib/data/sceneSync.ts', import.meta.url), 'utf8');
+
+check('video từ MCP được copy về tmp của repo (không trả thẳng path Orino)', () => {
+  // Trả thẳng path Orino → sceneSync.copyFile lỗi → scene kẹt generating → justDoneSceneIds
+  // rỗng → cascade sang cảnh kế KHÔNG chạy. Đây là bug đã sửa, khoá lại.
+  const fn = mcpJobsSrc.slice(mcpJobsSrc.indexOf('export async function pollJobStatusMcp'));
+  assert.ok(fn.includes('TMP_VIDEO_DIR'), 'pollJobStatusMcp phải copy video về TMP_VIDEO_DIR của repo');
+  assert.ok(fn.includes('fs.copyFile'), 'phải copyFile, không trả thẳng res.video_path');
+  const iCopy = fn.indexOf('fs.copyFile');
+  const iReturn = fn.indexOf("return { status: 'done'");
+  assert.ok(iCopy > 0 && iCopy < iReturn, 'copy phải xảy ra TRƯỚC khi trả done');
+  assert.ok(!/video_path: res\.video_path/.test(fn), 'không được trả path gốc của Orino');
+});
+check('isMcpUnavailableError nhận diện đúng câu lỗi mcpClient sinh ra', () => {
+  const clientSrc = readFileSync(new URL('../lib/googleFlow/mcpClient.ts', import.meta.url), 'utf8');
+  const errSrc = readFileSync(new URL('../lib/googleFlow/errors.ts', import.meta.url), 'utf8');
+  // Câu chữ trong mcpClient và regex trong errors phải khớp nhau, nếu không thì đổi lời báo lỗi
+  // một chỗ là hàm nhận diện câm lặng trả false và attempts lại bị đốt.
+  for (const phrase of ['Không gọi được Orino MCP', 'Chưa cấu hình ORINO_FLOW_MCP_TOKEN']) {
+    assert.ok(clientSrc.includes(phrase), `mcpClient không còn sinh câu "${phrase}"`);
+    assert.ok(errSrc.includes(phrase), `isMcpUnavailableError không bắt câu "${phrase}"`);
+  }
+});
+check('lỗi MCP chết KHÔNG tính vào attempts (như hết quota)', () => {
+  assert.ok(
+    /if \(!quota && !mcpDown\) s\.attempts \+= 1;/.test(sceneGenSrc),
+    'attempts phải bỏ qua cả quota lẫn mcpDown — nếu không, Orino tắt vài phút là đốt sạch trần retry'
+  );
+});
+check('cascade và resume đều dừng gọn khi MCP chết', () => {
+  assert.ok(sceneSyncSrc.includes('res.mcpUnavailable'), 'cascade phải xét res.mcpUnavailable');
+  const chaining = sceneSyncSrc.slice(sceneSyncSrc.indexOf('export async function runChainingForJustDone'));
+  assert.ok(chaining.includes('mcpUnavailable'), 'runChainingForJustDone phải dừng khi MCP chết');
+});
+check('shouldAutoTrigger vẫn cho cảnh failed được thử lại trong trần', () => {
+  // Bảo đảm cơ chế tự retry Mr.D yêu cầu vẫn còn nguyên sau các sửa đổi trên.
+  assert.ok(sceneSyncSrc.includes('MAX_SEGMENT_AUTO_RETRIES'), 'mất trần retry');
+  assert.ok(sceneSyncSrc.includes('SEGMENT_RETRY_BACKOFF_MS'), 'mất backoff');
+  const fn = sceneSyncSrc.slice(sceneSyncSrc.indexOf('export function shouldAutoTrigger'));
+  assert.ok(/status === 'idle'\) return true/.test(fn), 'cảnh idle phải được trigger');
+  assert.ok(/status !== 'failed'\) return false/.test(fn), 'chỉ idle/failed mới auto-trigger');
+});
+
 console.log(`\n✅ ${passed} assert passed`);
