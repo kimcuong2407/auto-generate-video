@@ -5,6 +5,7 @@ import { generateSceneVideo } from '../googleFlow/flowJobs';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError, isQuotaError, isMcpUnavailableError } from '../googleFlow/errors';
 import { flowLog } from '../flowLog';
+import { recordFlowJob } from '../flow/flowJobLog';
 import { planVideoInputs, MAX_REF_IMAGES } from './videoInputs';
 import type { Project, Scene } from '../types';
 
@@ -126,7 +127,8 @@ export async function triggerSceneGeneration(
       startImage: startImage ? '1' : '0',
       flowProjectId,
     });
-    const { job_id, flowProjectId: usedFlowProjectId, uploadedMediaIds } = await generateSceneVideo(
+    const sentAt = Date.now();
+    const { job_id, flowProjectId: usedFlowProjectId, uploadedMediaIds, finalPrompt } = await generateSceneVideo(
       {
         veoPrompt: scene.veoPrompt,
         voiceoverVi: scene.voiceoverVi,
@@ -164,6 +166,29 @@ export async function triggerSceneGeneration(
     });
 
     flowLog('gen', `✓ scene order=${scene.order} đã nhận jobId`, { sceneId, jobId: job_id, flowProjectId: usedFlowProjectId });
+    // void: KHÔNG await — một project có hàng chục cảnh, chờ DB ở đây là cộng độ trễ vào từng lượt.
+    void recordFlowJob({
+      sourceKind: 'product-review',
+      projectId,
+      unitId: sceneId,
+      unitOrder: scene.order,
+      flowJobId: job_id,
+      flowProjectId: usedFlowProjectId,
+      model: project.veoModel,
+      aspect: project.aspectRatio,
+      durationSec: scene.duration,
+      // finalPrompt = bản ĐÃ ghép lời Việt + negative. Thiếu nó thì rơi về bản thô, và cờ
+      // promptIsRaw nói rõ điều đó thay vì để người đọc tưởng đây là chuỗi Google nhận.
+      veoPrompt: finalPrompt ?? scene.veoPrompt,
+      promptIsRaw: !finalPrompt,
+      voiceoverVi: scene.voiceoverVi,
+      negativePrompt: scene.negativePrompt,
+      refImagePaths: refRelPaths.length > 0 ? refRelPaths : null,
+      startImagePath: startRelPath ?? '',
+      chained,
+      attempts: scene.attempts,
+      durationMs: Date.now() - sentAt,
+    });
     return { sceneId, ok: true, jobId: job_id };
   } catch (err) {
     const message = err instanceof FlowApiError ? err.message : (err as Error).message;
@@ -187,6 +212,31 @@ export async function triggerSceneGeneration(
       mcpDown,
       code: err instanceof FlowApiError && err.code ? err.code : '-',
       err: message.slice(0, 250),
+    });
+    // Lượt hỏng cũng PHẢI có dòng log: nhìn bảng chỉ thấy các lượt thành công thì một cảnh fail 3
+    // lần trông y như cảnh chưa ai bấm gen.
+    //
+    // errorKind lấy từ quota/mcpDown đã tính ở trên, KHÔNG so lại chuỗi lỗi — đây chính là thứ
+    // quyết định lượt này có tính vào attempts hay không (xem updateProject ngay dưới).
+    //
+    // Prompt ghi bản THÔ + promptIsRaw: lỗi có thể xảy ra trước cả khi generateSceneVideo kịp
+    // dựng prompt cuối, nên không có bản thật để ghi. Nói rõ còn hơn để người đọc tưởng nhầm.
+    void recordFlowJob({
+      sourceKind: 'product-review',
+      projectId,
+      unitId: sceneId,
+      unitOrder: scene.order,
+      model: project.veoModel,
+      aspect: project.aspectRatio,
+      durationSec: scene.duration,
+      veoPrompt: scene.veoPrompt,
+      promptIsRaw: true,
+      voiceoverVi: scene.voiceoverVi,
+      negativePrompt: scene.negativePrompt,
+      errorMessage: message,
+      errorKind: quota ? 'quota' : mcpDown ? 'mcp' : 'api',
+      attempts: scene.attempts,
+      durationMs: 0,
     });
     await updateProject(projectId, (p) => {
       const s = p.script.scenes.find((x) => x.id === sceneId);

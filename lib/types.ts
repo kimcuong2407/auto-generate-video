@@ -47,6 +47,14 @@ export interface ProductInfo {
    * storyboard, thay cho việc để model text tự bịa. Mặc định '' cho project cũ.
    */
   visualDescription: string;
+  /**
+   * itemId Shopee nếu project được tạo từ trang crawl — khoá truy ngược về bảng shopee_ingests
+   * (data gốc: giá/sold/rating/JSON thô của lần crawl gần nhất).
+   *
+   * Vì sao chỉ lưu id chứ không nhân bản cả JSON gốc vào đây: shopee_ingests đã giữ bền rồi, lưu
+   * hai nơi là hai nguồn sự thật rồi sẽ lệch nhau. Optional vì project nhập tay không có.
+   */
+  shopeeItemId?: string;
 }
 
 export interface Scene {

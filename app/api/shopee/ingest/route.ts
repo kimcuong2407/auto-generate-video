@@ -45,14 +45,14 @@ export async function POST(req: Request) {
 
   // Lưu raw = chỉ node item sản phẩm (không phải toàn bộ initialState 342KB) để tiện chẩn đoán mapping.
   const rawItem = pickShopeeItem(body.initialState, body.itemId);
-  const entry = saveIngest(product.itemId, product, rawItem);
+  const entry = await saveIngest(product.itemId, product, rawItem);
   return json({ ok: true, product, receivedAt: entry.receivedAt });
 }
 
 /** Màn hình /shopee-crawl poll để lấy sản phẩm mới nhất extension gửi về. */
 export async function GET(req: Request) {
   const itemId = new URL(req.url).searchParams.get('itemId');
-  const entry = getLatest(itemId);
+  const entry = await getLatest(itemId);
   if (!entry) return json({ ok: true, product: null, receivedAt: null });
   return json({ ok: true, product: entry.product, raw: entry.raw, receivedAt: entry.receivedAt });
 }

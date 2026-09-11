@@ -94,6 +94,9 @@ export async function generateSceneVideoMcp(
     job_id: res.job_id,
     uploadedMediaIds: {},
     flowProjectId: res.project_id || opts.flowProjectId || '',
+    // Nhánh MCP cũng phải trả prompt đã dựng, nếu không log của luồng này ghi bản thô trong khi
+    // luồng batchexecute ghi bản thật — hai luồng cùng một cảnh lại cho hai bằng chứng khác nhau.
+    finalPrompt: prompt,
   };
 }
 

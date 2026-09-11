@@ -6,6 +6,8 @@ import { ensureLocalImage } from './imageR2';
 import { findPreviousSegment, pickRefImagePaths } from './refImages';
 import { loadPromptSet } from './promptStore';
 import { generateSceneVideo } from '../googleFlow/flowJobs';
+import { recordFlowJob } from '../flow/flowJobLog';
+import { resolveLivestreamKind } from './v2Store';
 import { triggerBackgroundImageGeneration } from './backgroundGenerate';
 import { ensureLastFrame } from '../ffmpeg/ensureFrame';
 import { FlowApiError, isQuotaError } from '../googleFlow/errors';
@@ -203,16 +205,23 @@ export async function triggerSegmentGeneration(
     const flowProjectId = await ensureJobFlowId(jobId);
     const seed = await ensureJobVideoSeed(jobId);
 
-    const { job_id, uploadedMediaIds, flowProjectId: usedFlowProjectId } = await generateSceneVideo(
+    // Chặn lỗi tay thừa / sản phẩm biến hình / MC đứng dậy ngay ở tầng gen, thay vì để
+    // SCRIPT_QA_SYSTEM_PROMPT đi bắt lỗi SAU khi script đã sinh xong.
+    // Registry giữ ngữ nghĩa 3 trạng thái của resolveNegativePrompt cũ: không có row = mặc định,
+    // row rỗng = người dùng chủ động TẮT HẲN. Xem doc-comment bảng ai_prompts.
+    //
+    // Nhấc ra biến (trước đây gọi inline): log lượt gen cần chính chuỗi này, mà gọi loadPromptSet
+    // lần nữa ở dưới thì vừa thừa một lượt đọc DB vừa có thể ra kết quả khác nếu prompt vừa đổi.
+    const negativePrompt = (await loadPromptSet(job.slug)).get('negative_video');
+    const jobKind = await resolveLivestreamKind(job.slug);
+    const sentAt = Date.now();
+
+    const { job_id, uploadedMediaIds, flowProjectId: usedFlowProjectId, finalPrompt } = await generateSceneVideo(
       {
         veoPrompt: segment.veoPrompt,
         voiceoverVi: segment.voiceoverVi,
         duration: segment.duration,
-        // Chặn lỗi tay thừa / sản phẩm biến hình / MC đứng dậy ngay ở tầng gen, thay vì để
-        // SCRIPT_QA_SYSTEM_PROMPT đi bắt lỗi SAU khi script đã sinh xong.
-        // Registry giữ ngữ nghĩa 3 trạng thái của resolveNegativePrompt cũ: không có row = mặc
-        // định, row rỗng = người dùng chủ động TẮT HẲN. Xem doc-comment bảng ai_prompts.
-        negativePrompt: (await loadPromptSet(job.slug)).get('negative_video'),
+        negativePrompt,
       },
       {
         aspect: job.aspectRatio,
@@ -252,6 +261,27 @@ export async function triggerSegmentGeneration(
       }
     });
 
+    // void: KHÔNG await — 1 job livestream có tới 32 đoạn, chờ DB ở đây là cộng độ trễ vào từng đoạn.
+    void recordFlowJob({
+      sourceKind: jobKind,
+      jobSlug: job.slug,
+      unitId: segmentId,
+      unitOrder: segment.order,
+      flowJobId: job_id,
+      flowProjectId: usedFlowProjectId,
+      model: job.veoModel,
+      aspect: job.aspectRatio,
+      durationSec: segment.duration,
+      // finalPrompt = bản ĐÃ ghép lời Việt + negative; thiếu thì rơi về bản thô và cờ nói rõ.
+      veoPrompt: finalPrompt ?? segment.veoPrompt,
+      promptIsRaw: !finalPrompt,
+      voiceoverVi: segment.voiceoverVi,
+      negativePrompt,
+      refImagePaths: refPathList.length > 0 ? refPathList : null,
+      startImagePath: startImage?.path ?? '',
+      attempts: segment.attempts,
+      durationMs: Date.now() - sentAt,
+    });
     return { segmentId, ok: true, jobId: job_id };
   } catch (err) {
     const message = err instanceof FlowApiError ? err.message : (err as Error).message;
@@ -263,6 +293,32 @@ export async function triggerSegmentGeneration(
       `[flow gen] job=${jobId} seg=${segment.order} → THẤT BẠI` +
         `${err instanceof FlowApiError && err.code ? ` HTTP ${err.code}` : ''}` +
         `${quota ? ' (HẾT QUOTA)' : ''} attempts=${segment.attempts} — ${message.slice(0, 300)}`
+    );
+    // Lượt hỏng cũng phải có dòng log, nếu không một đoạn fail 3 lần trông y như đoạn chưa ai gen.
+    //
+    // errorKind lấy từ `quota` đã tính ở trên, không so lại chuỗi lỗi: đây chính là thứ quyết định
+    // lượt này có tính vào attempts hay không (xem updateJob ngay dưới).
+    //
+    // Tra nhãn lại ở đây (không dùng jobKind của nhánh try): lỗi có thể xảy ra TRƯỚC dòng khai
+    // báo đó, biến sẽ chưa tồn tại. resolveLivestreamKind có cache nên không tốn thêm query.
+    void resolveLivestreamKind(job.slug).then((kind) =>
+      recordFlowJob({
+        sourceKind: kind,
+        jobSlug: job.slug,
+        unitId: segmentId,
+        unitOrder: segment.order,
+        model: job.veoModel,
+        aspect: job.aspectRatio,
+        durationSec: segment.duration,
+        // Bản THÔ + cờ: lỗi có thể xảy ra trước khi generateSceneVideo kịp dựng prompt cuối.
+        veoPrompt: segment.veoPrompt,
+        promptIsRaw: true,
+        voiceoverVi: segment.voiceoverVi,
+        errorMessage: message,
+        errorKind: quota ? 'quota' : 'api',
+        attempts: segment.attempts,
+        durationMs: 0,
+      })
     );
     await updateJob(jobId, (j) => {
       const f = findSegment(j, segmentId);

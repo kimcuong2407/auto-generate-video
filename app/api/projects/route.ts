@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
       material: parsed.material || '',
       keyFeatures: Array.isArray(parsed.keyFeatures) ? parsed.keyFeatures : [],
       visualDescription: parsed.visualDescription || '',
+      // Khoá truy ngược về shopee_ingests. Route dựng `product` bằng danh sách trường CỐ ĐỊNH
+      // (để chặn field lạ từ client), nên thiếu dòng này là id rơi im lặng dù trang crawl có gửi.
+      ...(parsed.shopeeItemId ? { shopeeItemId: String(parsed.shopeeItemId) } : {}),
     };
   } catch {
     return NextResponse.json({ error: 'Thông tin sản phẩm (product) không hợp lệ' }, { status: 400 });

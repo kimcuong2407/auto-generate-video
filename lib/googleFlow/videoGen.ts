@@ -168,6 +168,14 @@ export interface GenerateVideoResult {
   uploadedMediaIds: Record<string, string>;
   /** Model key THỰC SỰ được Google chấp nhận (có thể là biến thể fallback, không phải key gốc). */
   modelKey?: string;
+  /**
+   * Prompt CUỐI CÙNG đã gửi cho Google — sau khi ghép lời thoại Việt, chặn phụ đề và nối negative.
+   *
+   * Vì sao trả ra ngoài: caller chỉ có scene.veoPrompt THÔ. Ghi bản thô vào log rồi soát prompt
+   * trên đó là soát nhầm thứ — đúng bài học doc-comment ai_call_logs đã ghi cho system_prompt
+   * ("bản dựng lại luôn lệch với thứ thật").
+   */
+  finalPrompt?: string;
 }
 
 /** Trả mediaId có sẵn nếu đã cache, ngược lại upload rồi ghi nhận vào `uploaded`. */

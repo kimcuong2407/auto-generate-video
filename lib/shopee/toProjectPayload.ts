@@ -70,6 +70,9 @@ export function shopeeToProductInfo(p: ShopeeProductInfo): ProductInfo {
     keyFeatures,
     // Để rỗng — sẽ được AI vision điền tự động khi sinh kịch bản, hoặc bấm "AI phân tích ảnh" ở Bước 1.
     visualDescription: '',
+    // Khoá truy ngược về shopee_ingests: từ project xem lại được data crawl gốc (giá/sold/JSON thô)
+    // đúng như lúc tạo. Xem doc-comment ProductInfo.shopeeItemId.
+    shopeeItemId: String(p.itemId),
   };
 }
 

@@ -26,6 +26,7 @@
     "check:extension": "node scripts/check-poller-staleness.mjs && node scripts/check-content-handoff.mjs",
     "check:flow-batchexecute": "tsx scripts/check-flow-batchexecute.ts",
     "check:flow-create-project": "tsx scripts/check-flow-create-project.ts",
+    "check:flow-job-log": "tsx scripts/check-flow-job-log.ts",
     "check:flow-job-timeout": "tsx scripts/check-flow-job-timeout.ts",
     "check:flow-login-cookies": "tsx scripts/check-flow-login-cookies.ts",
     "check:flow-project-error": "tsx scripts/check-flow-project-error.ts",

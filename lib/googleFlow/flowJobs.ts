@@ -201,12 +201,12 @@ export async function generateSceneVideo(
 
   try {
     const result = await run(opts.flowProjectId, false);
-    return { ...result, flowProjectId: opts.flowProjectId };
+    return { ...result, flowProjectId: opts.flowProjectId, finalPrompt: prompt };
   } catch (err) {
     if (!isEntityNotFound(err) || !opts.flowProjectTitle) throw err;
     const { id: newProjectId } = await createProject(account, opts.flowProjectTitle);
     const result = await run(newProjectId, true);
-    return { ...result, flowProjectId: newProjectId };
+    return { ...result, flowProjectId: newProjectId, finalPrompt: prompt };
   }
 }
 
