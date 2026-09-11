@@ -212,7 +212,11 @@ export async function batchExecute(
   }
 ): Promise<unknown> {
   const { creds } = opts;
-  const qs = new URLSearchParams({ rpcids: rpcid, 'source-path': opts.sourcePath ?? '/', hl: opts.hl ?? 'vi' });
+  // hl=en-US: trang thật gửi en-US trong MỌI request batchexecute của HAR
+  // (docs/create-project-flow.google.com.har, 2026-09-11 — jHPbke/maseQ/eb1hJf/jwpduf/as29s
+  // đều en-US). Code trước gửi 'vi' theo suy đoán "app tiếng Việt thì gửi vi", không đọc từ
+  // HAR nào. Bám đúng trang thật để bớt một biến khi Google từ chối request.
+  const qs = new URLSearchParams({ rpcids: rpcid, 'source-path': opts.sourcePath ?? '/', hl: opts.hl ?? 'en-US' });
   if (creds.bl) qs.set('bl', creds.bl);
   if (creds.fsid) qs.set('f.sid', creds.fsid);
   qs.set('_reqid', String(nextReqid()));

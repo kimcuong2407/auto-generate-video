@@ -9,6 +9,7 @@
  * Fixture dưới đây là response THẬT cắt từ docs/flow.google.com.har (2026-09-04).
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { parseBatchExecute, __testables } from '../lib/googleFlow/client';
 
 // --- Fixture 1: RPC trả mảng rỗng (mrlkwd) + có envelope rác (di, af.httprm) đi kèm.
@@ -77,3 +78,21 @@ const O30 = ")]}'\n\n1058\n[[\"wrb.fr\",\"o30O0e\",\"[[[\\\"me\\\",1,[\\\"116842
 }
 
 console.log('check-flow-batchexecute: OK');
+
+// --- hl phải là en-US, khớp trang thật.
+//
+// XÁC MINH 2026-09-11 (docs/create-project-flow.google.com.har): MỌI request batchexecute của
+// trang thật gửi hl=en-US — jHPbke, maseQ, eb1hJf, jwpduf, as29s đều vậy. Code từng gửi 'vi'
+// theo suy đoán "app tiếng Việt thì gửi vi", không dựa HAR nào. Giữ đúng trang thật để khi
+// Google từ chối request thì bớt được một biến phải loại trừ.
+{
+  const src = readFileSync(new URL('../lib/googleFlow/client.ts', import.meta.url), 'utf8');
+  const line = src.split('\n').find((l) => /hl:\s*opts\.hl\s*\?\?/.test(l)) || '';
+  assert.ok(line, 'không tìm thấy dòng đặt hl mặc định trong batchExecute');
+  assert.ok(
+    /'en-US'/.test(line),
+    `hl mặc định phải là 'en-US' (khớp HAR), đang là: ${line.trim()}`
+  );
+}
+
+console.log('check-flow-batchexecute (bổ sung hl): OK');
