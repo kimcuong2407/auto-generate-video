@@ -170,6 +170,33 @@ function buildScene(scene: VideoScene): unknown[] {
   ];
 }
 
+/**
+ * Thông điệp khi eb1hJf không trả operationId.
+ *
+ * Vì sao cần cả một hàm riêng: Google trả HTTP 200 kèm payload `null` cho MỌI đầu vào bị từ
+ * chối, không kèm mã lỗi nào. XÁC MINH 2026-09-11 bằng 3 probe thật trên cùng account đang
+ * hoạt động tốt (`at` vừa làm mới 1.8 phút trước):
+ *   token reCAPTCHA rỗng, projectId thật  → null
+ *   token rác,            projectId thật  → null
+ *   token rỗng,           projectId rác   → null
+ * Tức `null` KHÔNG phân biệt được nguyên nhân, và thông điệp cũ in ra "Response: null" nên
+ * người đọc không biết phải sửa gì. Liệt kê đúng các nguyên nhân đã kiểm chứng, xếp theo xác
+ * suất, thay vì đổ lỗi cho một cái.
+ *
+ * Nguyên nhân áp đảo là reCAPTCHA: token sống ~2 phút và one-time-use (xem recaptcha.ts), nên
+ * nó hỏng thường xuyên hơn hẳn projectId — thứ chỉ sai khi project bị xoá phía Google.
+ */
+function describeEmptyGenResponse(res: unknown): string {
+  return (
+    `Gen video (${RPC_GENERATE_VIDEO}) bị Google từ chối: trả về rỗng, không có operationId. ` +
+    `Google dùng CÙNG một response rỗng cho mọi lý do nên không tự phân biệt được; ` +
+    `theo thứ tự hay gặp: (1) token reCAPTCHA hết hạn/đã dùng — token chỉ sống ~2 phút và ` +
+    `dùng một lần, hãy mở sẵn tab https://flow.google.com đã đăng nhập để extension mint kịp; ` +
+    `(2) Flow project không còn tồn tại phía Google; (3) model key không được cấp cho tài ` +
+    `khoản này. Response thô: ${JSON.stringify(res).slice(0, 200)}`
+  );
+}
+
 /** Gen video → danh sách operationId (1 phần tử cho mỗi scene gửi lên). */
 export async function rpcGenerateVideo(opts: {
   creds: FlowBatchCreds;
@@ -196,7 +223,7 @@ export async function rpcGenerateVideo(opts: {
     ? ops.map((job) => (Array.isArray(job) && typeof job[0] === 'string' ? job[0] : null)).filter((x): x is string => !!x)
     : [];
   if (ids.length === 0) {
-    throw new FlowApiError(`Gen video (${RPC_GENERATE_VIDEO}) không trả operationId. Response: ${JSON.stringify(res).slice(0, 300)}`);
+    throw new FlowApiError(describeEmptyGenResponse(res));
   }
   return ids;
 }
@@ -307,6 +334,7 @@ export const __testables = {
   at,
   buildScene,
   clientContext,
+  describeEmptyGenResponse,
   mapJobState,
   jobStatusOf,
   buildPollPayload,

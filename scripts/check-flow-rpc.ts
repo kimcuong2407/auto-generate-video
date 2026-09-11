@@ -133,3 +133,31 @@ assert.equal(STATE_ERROR, 4);
 }
 
 console.log('check-flow-rpc: OK');
+
+// ---------------------------------------------------------------
+// 8. Response rỗng của eb1hJf: thông điệp phải hướng dẫn được, không in "Response: null".
+//
+// XÁC MINH 2026-09-11 bằng probe thật: Google trả HTTP 200 + payload `null` cho MỌI đầu vào
+// bị từ chối (token reCAPTCHA rỗng / token rác / projectId rác đều cho cùng một null). Nên
+// thông điệp KHÔNG được đổ lỗi cho một nguyên nhân duy nhất, và phải nói cách chữa.
+// ---------------------------------------------------------------
+{
+  const msg = __testables.describeEmptyGenResponse(null);
+
+  assert.ok(/reCAPTCHA/i.test(msg), 'phải nêu reCAPTCHA — nguyên nhân áp đảo (token sống ~2 phút, one-time-use)');
+  assert.ok(
+    /flow\.google\.com/.test(msg),
+    'phải chỉ rõ mở tab nào để extension mint được token'
+  );
+  assert.ok(/project/i.test(msg), 'phải nêu cả khả năng Flow project không còn tồn tại');
+  // Chốt chặn chống tái phát: thông điệp cũ chỉ có "không trả operationId. Response: null",
+  // đọc xong không biết sửa gì.
+  assert.ok(
+    msg.length > 200,
+    'thông điệp phải đủ dài để liệt kê nguyên nhân + cách chữa, không phải một câu cụt'
+  );
+  // Vẫn phải giữ response thô để còn điều tra khi Google đổi hành vi.
+  assert.ok(/null/.test(msg), 'phải kèm response thô để lần sau đối chiếu');
+}
+
+console.log('check-flow-rpc (bổ sung eb1hJf rỗng): OK');
