@@ -12,6 +12,29 @@ export const STEP_LABELS = [
   'Ghép video hoàn chỉnh',
 ];
 
+/** Slug hash theo từng step (#upload, #script...) để F5 quay lại đúng step đang xem.
+ *  Index trong mảng = stepNum - 1, khớp 1-1 với STEP_LABELS. */
+export const STEP_SLUGS = [
+  'upload',
+  'script',
+  'storyboard',
+  'generate',
+  'download',
+  'concat',
+];
+
+export function stepFromHash(hash: string): number | null {
+  const slug = hash.replace(/^#/, '').trim().toLowerCase();
+  if (!slug) return null;
+  const idx = STEP_SLUGS.indexOf(slug);
+  return idx === -1 ? null : idx + 1;
+}
+
+export function hashFromStep(step: number): string {
+  const slug = STEP_SLUGS[step - 1];
+  return slug ? `#${slug}` : '';
+}
+
 
 function stepClassName(project: Project, stepNum: number, currentStep: number): string {
   const classes = ['step'];
