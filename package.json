@@ -96,6 +96,7 @@
     "dev": "next dev",
     "image-server": "node scripts/chatgpt-image-server.mjs",
     "lint": "next lint",
+    "merge:video": "tsx scripts/merge-video.ts",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
