@@ -29,7 +29,27 @@ export const SOURCE_KIND_LABEL: Record<string, string> = {
   '': 'không rõ (log cũ)',
 };
 
+/**
+ * Giá trị LỌC ĐƯỢC ở UI — gồm cả '' (log ghi trước migration 0025).
+ *
+ * Vì sao '' phải lọc được dù không nằm trong SOURCE_KINDS: sau khi 0025 chạy, TOÀN BỘ log cũ mang
+ * source_kind = '' (DEFAULT của cột). Nếu chỉ cho lọc 3 giá trị kia thì bấm chip nào cũng ra 0
+ * dòng trong khi bảng có dữ liệu — trông hệt như tính năng hỏng. Đối chiếu DB local `video`
+ * 2026-09-13: 51/51 dòng ai_call_logs có source_kind = ''.
+ */
+export const FILTERABLE_SOURCE_KINDS = ['', ...SOURCE_KINDS] as const;
+
 /** Giá trị đọc từ query string có hợp lệ không — dùng để lọc tham số API trước khi vào WHERE. */
 export function isSourceKind(value: string): value is SourceKind {
   return (SOURCE_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Như isSourceKind nhưng CHẤP NHẬN '' — dùng cho tham số lọc của tab /logs.
+ *
+ * Tách thành hàm riêng thay vì nới lỏng isSourceKind: isSourceKind đang canh chỗ GHI log (nơi ''
+ * là giá trị không được phép ghi mới), nới nó ra là mở đường cho log mới ghi thiếu nhãn.
+ */
+export function isFilterableSourceKind(value: string): boolean {
+  return value === '' || isSourceKind(value);
 }

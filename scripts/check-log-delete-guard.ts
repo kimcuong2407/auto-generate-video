@@ -34,14 +34,24 @@ assert.equal(deleteFiltersOrNull(q('')), null, 'query rỗng mà cho xoá là qu
 assert.equal(deleteFiltersOrNull(q('status=all')), null, 'status=all là mặc định, không phải filter');
 
 // Các dạng "trông như có filter" nhưng thực chất rỗng — đây là chỗ dễ lọt nhất.
-assert.equal(deleteFiltersOrNull(q('sourceKind=')), null, 'csv rỗng');
-assert.equal(deleteFiltersOrNull(q('sourceKind=,,,')), null, 'csv toàn dấu phẩy');
+// `sourceKind=` KHÔNG còn nằm trong nhóm này: từ migration 0025, '' là nhãn THẬT của log ghi
+// trước khi có cột source_kind (51/51 dòng ai_call_logs trên DB local 2026-09-13). Nó là bộ lọc
+// có nghĩa, và cũng là đường DUY NHẤT dọn riêng đám log cũ đó — xem ca khẳng định ở mục 2.
 assert.equal(deleteFiltersOrNull(q('sourceKind=livestream-v9')), null, 'giá trị lạ bị loại → còn rỗng');
 assert.equal(deleteFiltersOrNull(q('owner=%20%20')), null, 'owner toàn khoảng trắng');
 assert.equal(deleteFiltersOrNull(q('model=%20')), null, 'model toàn khoảng trắng');
 assert.equal(deleteFiltersOrNull(q('step=')), null, 'step rỗng');
 assert.equal(deleteFiltersOrNull(q('from=hom-qua')), null, 'ngày sai định dạng phải bị loại, không thành filter');
 assert.equal(deleteFiltersOrNull(q('from=03/09/2026')), null, 'ngày kiểu VN không phải YYYY-MM-DD');
+
+/*
+ * KHỬ TRÙNG LẶP của csvKeepEmpty — vì sao nó là chuyện an toàn, không phải dọn dẹp cho đẹp:
+ *
+ * Không khử thì `sourceKind=,,,` ra ['','',''] — độ dài 3, nên mọi chốt chặn đếm theo `length`
+ * đều thấy "có 3 bộ lọc" và cho qua, kể cả đường XOÁ. Khử rồi thì nó gộp về đúng [''], tức cùng
+ * một tập với `sourceKind=`: một chủ ý duy nhất là "lọc log cũ", đếm đúng bằng 1.
+ */
+assert.deepEqual(q('sourceKind=,,,').sourceKinds, [''], 'dấu phẩy thừa phải gộp về đúng một ""');
 
 // --- 2. Bộ lọc THẬT thì phải cho phép ---
 for (const query of [

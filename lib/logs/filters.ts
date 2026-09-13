@@ -5,14 +5,15 @@
  * một lỗi fetch ở UI làm mọi filter thành undefined, rồi DELETE không điều kiện quét sạch bảng.
  * Từ khi bỏ cắt tỉa, DELETE là đường DUY NHẤT làm mất log, nên nó phải khó bấm nhầm.
  */
-import { isSourceKind, type SourceKind } from './sourceKind';
+import { isFilterableSourceKind, type SourceKind } from './sourceKind';
 import { vnDayToUtcSql } from '../format/datetime';
 
 /** Trạng thái lượt chạy: tất cả / chỉ thành công / chỉ lỗi. */
 export type LogStatus = 'all' | 'ok' | 'error';
 
 export interface LogFilters {
-  sourceKinds: SourceKind[];
+  /** Có thể chứa '' — nhãn của log ghi trước migration 0025. Xem isFilterableSourceKind. */
+  sourceKinds: (SourceKind | '')[];
   steps: string[];
   model: string;
   /** Khớp job_slug HOẶC project_id — Mr.D không phải nhớ id nào thuộc cột nào. */
@@ -36,6 +37,24 @@ function csv(value: string | null): string[] {
 }
 
 /**
+ * Như csv() nhưng GIỮ chuỗi rỗng, vì '' là một giá trị lọc THẬT (log cũ chưa có source_kind).
+ *
+ * csv() thường bỏ '' để ô nhập trống không thành một điều kiện WHERE rỗng nghĩa. Ở riêng cột
+ * source_kind thì ngược lại: bỏ '' đi là bấm chip "không rõ (log cũ)" ra 0 dòng dù bảng đầy dữ
+ * liệu. Tách hàm thay vì thêm cờ cho csv() để chỗ gọi đọc ra ngay là đang cố ý giữ ''.
+ *
+ * Phân biệt "không lọc" với "lọc đúng ''": tham số VẮNG MẶT → parseLogFilters nhận null → mảng
+ * rỗng; tham số CÓ MẶT dạng `sourceKind=` → mảng [''].
+ */
+function csvKeepEmpty(value: string | null): string[] {
+  if (value === null) return [];
+  // Khử trùng lặp: `sourceKind=,,,` là chuỗi RÁC, không phải "chọn log cũ ba lần". Không khử thì
+  // nó thành mảng ['','',''] — độ dài 3 nên lọt qua mọi chốt chặn đếm theo length, và với lệnh
+  // XOÁ thì một chuỗi rác vô tình lại đủ tư cách quét sạch toàn bộ log cũ.
+  return [...new Set(value.split(',').map((x) => x.trim()))];
+}
+
+/**
  * Đọc bộ lọc từ query string. Giá trị lạ bị LOẠI chứ không ném: tab log là chỗ để chẩn đoán, trả
  * 400 vì một tham số thừa sẽ biến nó thành thứ phải đi chẩn đoán trước.
  */
@@ -43,7 +62,7 @@ export function parseLogFilters(params: URLSearchParams): LogFilters {
   const statusRaw = params.get('status');
   const status: LogStatus = statusRaw === 'ok' || statusRaw === 'error' ? statusRaw : 'all';
   return {
-    sourceKinds: csv(params.get('sourceKind')).filter(isSourceKind),
+    sourceKinds: csvKeepEmpty(params.get('sourceKind')).filter(isFilterableSourceKind) as (SourceKind | '')[],
     steps: csv(params.get('step')),
     model: (params.get('model') ?? '').trim(),
     owner: (params.get('owner') ?? '').trim(),

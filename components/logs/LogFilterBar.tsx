@@ -1,7 +1,7 @@
 'use client';
 
 import { PROMPT_STEPS } from '@/lib/livestream/promptSteps';
-import { SOURCE_KINDS, SOURCE_KIND_LABEL } from '@/lib/logs/sourceKind';
+import { FILTERABLE_SOURCE_KINDS, SOURCE_KIND_LABEL } from '@/lib/logs/sourceKind';
 
 /** Trạng thái bộ lọc — giữ ở dạng UI, đổi sang query string ở nơi gọi. */
 export interface FilterState {
@@ -79,8 +79,8 @@ export function LogFilterBar({
         <div>
           <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loại dây chuyền</label>
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            {SOURCE_KINDS.map((k) => (
-              <label key={k} style={{ fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }}>
+            {FILTERABLE_SOURCE_KINDS.map((k) => (
+              <label key={k || 'unknown'} style={{ fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }}>
                 <input
                   type="checkbox"
                   checked={value.sourceKinds.includes(k)}

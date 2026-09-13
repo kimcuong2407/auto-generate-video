@@ -49,3 +49,6 @@ output/
 chatgpt-state*.json
 *storage-state*.json
 data/logs/
+
+# File dò tạm khi điều tra — không thuộc source của app.
+scratch/

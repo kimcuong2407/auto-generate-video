@@ -5,6 +5,7 @@ import { DB_ENABLED } from '@/lib/db/config';
 import { flowJobLogs } from '@/lib/db/schema/flowJobLogs';
 import { parseCursor, parseLimit, parseLogFilters } from '@/lib/logs/filters';
 import { flowLogConditions, whereOf } from '@/lib/logs/query';
+import { schemaErrorInfo } from '@/lib/logs/schemaError';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,16 @@ export const dynamic = 'force-dynamic';
  * Hai chế độ + con trỏ row_id: giống /api/logs/ai, xem doc-comment ở đó.
  */
 export async function GET(req: NextRequest) {
+  try {
+    return await handle(req);
+  } catch (err) {
+    const info = schemaErrorInfo(err, '0025_ai_log_tab');
+    if (!info) throw err;
+    return NextResponse.json({ error: info.message }, { status: 500 });
+  }
+}
+
+async function handle(req: NextRequest) {
   if (!DB_ENABLED) return NextResponse.json({ runs: [], nextCursor: null });
   const params = req.nextUrl.searchParams;
   const db = getDb();
