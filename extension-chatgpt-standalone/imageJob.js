@@ -74,7 +74,23 @@ function runImageJobInPage(job) {
 
   /** Toàn bộ việc thật. Phải nằm TRONG hàm được serialize, nếu không trang sẽ không thấy nó. */
   async function runJob(job) {
-    const COMPOSER_SELECTOR = '#prompt-textarea, [data-testid="composer-text-input"]';
+    // Giao diện cũ: div[contenteditable]#prompt-textarea (ProseMirror). Giao diện mới (10/2026):
+    // <textarea name="prompt"> trong form, id đổi theo bố cục (vd #mobile-composer-prompt).
+    // Giữ cả hai — ChatGPT rollout giao diện dần theo tài khoản.
+    const COMPOSER_SELECTOR =
+      '#prompt-textarea, [data-testid="composer-text-input"], textarea[name="prompt"], ' +
+      'form textarea, form [contenteditable="true"]';
+    // Nút gửi/dừng giao diện mới không còn data-testid, chỉ còn aria-label (theo ngôn ngữ UI).
+    const SEND_SELECTOR =
+      '[data-testid="send-button"], button[aria-label*="Send" i], button[aria-label*="Gửi"]';
+    const STOP_SELECTOR =
+      '[data-testid="stop-button"], button[aria-label*="Stop" i], button[aria-label*="Dừng"]';
+    /** Ưu tiên ô đang hiển thị: trang có thể render cả bản mobile lẫn desktop, một bản bị ẩn. */
+    function findComposer() {
+      const all = Array.from(document.querySelectorAll(COMPOSER_SELECTOR));
+      return all.find((el) => el.offsetParent !== null) || all[0] || null;
+    }
+    const isStreaming = () => Boolean(document.querySelector(STOP_SELECTOR));
     const POLL_MS = 2000;
     const TIMEOUT_MS = 10 * 60 * 1000;
     // ChatGPT còn đang tạo ảnh (nút dừng còn hiện) thì gia hạn tới mốc này thay vì bỏ cuộc —
@@ -86,7 +102,7 @@ function runImageJobInPage(job) {
 
     // ---------- 0. Trang đã sẵn sàng chưa ----------
     function readPageState() {
-      if (document.querySelector(COMPOSER_SELECTOR)) return 'ready';
+      if (findComposer()) return 'ready';
       const text = document.body?.innerText?.toLowerCase() || '';
       if (text.includes('log in') || text.includes('welcome back') || text.includes('đăng nhập')) {
         return 'login';
@@ -101,7 +117,7 @@ function runImageJobInPage(job) {
       if (st === 'login') return { ok: false, error: 'Phiên ChatGPT đã hết hạn — hãy đăng nhập lại trong tab chatgpt.com' };
       await sleep(1000);
     }
-    const composer = document.querySelector(COMPOSER_SELECTOR);
+    const composer = findComposer();
     if (!composer) return { ok: false, error: 'Không tìm thấy ô nhập của ChatGPT (trang chưa sẵn sàng hoặc đổi giao diện)' };
 
     // ---------- 1. Đính ảnh tham chiếu ----------
@@ -141,13 +157,25 @@ function runImageJobInPage(job) {
     }
 
     // ---------- 2. Gõ prompt ----------
-    // Composer là div[contenteditable], không set .value được. Thử paste → execCommand →
+    // Composer cũ là div[contenteditable], không set .value được. Thử paste → execCommand →
     // textContent, mỗi bước clear trước để không nối chồng (doc mục 5.6).
+    // Composer mới là <textarea> do React quản lý: gán .value thẳng thì React không thấy, phải đi
+    // qua native setter của prototype rồi bắn 'input' để state của nó cập nhật theo.
+    const isTextarea = composer.tagName === 'TEXTAREA';
+    function setTextareaValue(v) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(composer, v);
+      composer.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     function composerText() {
-      return (composer.innerText || '').trim();
+      return ((isTextarea ? composer.value : composer.innerText) || '').trim();
     }
     function clearComposer() {
       composer.focus();
+      if (isTextarea) {
+        setTextareaValue('');
+        return;
+      }
       const sel = window.getSelection();
       const range = document.createRange();
       range.selectNodeContents(composer);
@@ -158,10 +186,13 @@ function runImageJobInPage(job) {
 
     const want = job.prompt.trim();
     let typed = false;
-    for (const strategy of ['paste', 'insertText', 'textContent']) {
+    const strategies = isTextarea ? ['nativeValue', 'insertText'] : ['paste', 'insertText', 'textContent'];
+    for (const strategy of strategies) {
       clearComposer();
       try {
-        if (strategy === 'paste') {
+        if (strategy === 'nativeValue') {
+          setTextareaValue(job.prompt);
+        } else if (strategy === 'paste') {
           const dt = new DataTransfer();
           dt.setData('text/plain', job.prompt);
           composer.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
@@ -193,11 +224,21 @@ function runImageJobInPage(job) {
     const baseline = captureBaseline();
 
     // ---------- 4. Gửi ----------
-    const sendBtn = document.querySelector('[data-testid="send-button"]');
+    // Nút gửi chỉ bật sau khi React nhận text — chờ một nhịp ngắn thay vì bấm vào nút còn disabled.
+    // Ưu tiên nút trong cùng form với composer: trang có thể có nhiều nút aria-label "Gửi…".
+    const form = composer.closest('form');
+    let sendBtn = null;
+    for (let i = 0; i < 20 && !sendBtn; i++) {
+      const btns = Array.from((form || document).querySelectorAll(SEND_SELECTOR));
+      sendBtn = btns.find((b) => !b.disabled && b.getAttribute('aria-disabled') !== 'true') || null;
+      if (!sendBtn) await sleep(150);
+    }
     if (sendBtn) {
       sendBtn.click();
+    } else if (form && form.requestSubmit) {
+      form.requestSubmit();
     } else {
-      composer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      composer.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
     }
     log('đã gửi prompt');
 
@@ -276,14 +317,14 @@ function runImageJobInPage(job) {
       // suốt 10 phút rồi báo timeout, không đủ dữ kiện sửa.
       pollCount += 1;
       // Còn thấy nút dừng = ChatGPT đang vẽ dở. Đẩy deadline ra để không cắt ngang giữa chừng.
-      if (document.querySelector('[data-testid="stop-button"]')) {
+      if (isStreaming()) {
         deadline = Math.min(Date.now() + TIMEOUT_MS, hardDeadline);
       }
       lastDiag = {
         totalImgs: document.querySelectorAll('img').length,
         turns: turns.length,
         rejected: rejected.length,
-        streaming: Boolean(document.querySelector('[data-testid="stop-button"]')),
+        streaming: Boolean(isStreaming()),
         sample: rejected.length
           ? JSON.stringify(rejected.slice(0, 2))
           : '',
@@ -309,7 +350,7 @@ function runImageJobInPage(job) {
       // Không ảnh, đã ngừng stream, mà assistant có text → ChatGPT từ chối vẽ hoặc hỏi lại.
       const assistants = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
       const last = assistants[assistants.length - 1];
-      if (last && !document.querySelector('[data-testid="stop-button"]') && !last.querySelector('img')) {
+      if (last && !isStreaming() && !last.querySelector('img')) {
         const text = (last.innerText || '').trim();
         if (text) return { ok: false, error: 'ChatGPT trả lời bằng text thay vì ảnh: ' + text.slice(0, 300) };
       }

@@ -40,9 +40,16 @@ function setStatus(state, detail) {
   lastJobStatus = { state, at: Date.now(), detail: detail || '' };
 }
 
+/**
+ * Chọn tab chatgpt.com để chạy job. Không lấy bừa tabs[0]: tab đó có thể là trang không có ô
+ * nhập (Cài đặt, GPTs, thư viện ảnh...) hoặc tab đã bị Chrome cho ngủ. Ưu tiên tab đang active
+ * rồi tới tab vừa dùng gần nhất; tab bị discard thì bỏ.
+ */
 async function findChatgptTab() {
-  const tabs = await chrome.tabs.query({ url: 'https://chatgpt.com/*' });
-  return tabs && tabs.length > 0 ? tabs[0] : null;
+  const tabs = (await chrome.tabs.query({ url: 'https://chatgpt.com/*' })) || [];
+  const usable = tabs.filter((t) => !t.discarded);
+  usable.sort((a, b) => (b.active - a.active) || ((b.lastAccessed || 0) - (a.lastAccessed || 0)));
+  return usable[0] || null;
 }
 
 async function pollJobsOnce() {
