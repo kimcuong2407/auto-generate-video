@@ -74,10 +74,11 @@ export default function AiSettingsPage() {
     loadSettings();
   }, []);
 
-  // Poll trạng thái extension khi (và chỉ khi) đang chọn provider extension — không chọn thì
-  // hỏi làm gì cho tốn request.
+  // Poll trạng thái extension khi (và chỉ khi) provider hiệu lực là extension — kể cả khi nó
+  // đến từ mặc định chứ không phải ép global, vì extension giờ là mặc định của job mới.
+  const usesExtension = (imageModel || defaultImageModel) === CHATGPT_EXTENSION_MODEL;
   useEffect(() => {
-    if (imageModel !== CHATGPT_EXTENSION_MODEL) {
+    if (!usesExtension) {
       setExtOnline(null);
       return;
     }
@@ -97,7 +98,7 @@ export default function AiSettingsPage() {
       alive = false;
       clearInterval(timer);
     };
-  }, [imageModel]);
+  }, [usesExtension]);
 
   async function handleSave() {
     setSaving(true);
@@ -313,7 +314,7 @@ export default function AiSettingsPage() {
           </select>
         </div>
 
-        {imageModel === CHATGPT_EXTENSION_MODEL && (
+        {usesExtension && (
           <div className={extOnline ? 'banner banner-info' : 'banner'}>
             {extOnline
               ? '✅ Extension đang kết nối — job gen ảnh sẽ chạy trong Chrome này.'

@@ -11,7 +11,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { IMAGE_MODEL_OPTIONS, CHATGPT_LOCAL_MODEL, DEFAULT_STORYBOARD_MODEL } from '../lib/imageModels';
+import {
+  IMAGE_MODEL_OPTIONS,
+  CHATGPT_LOCAL_MODEL,
+  CHATGPT_EXTENSION_MODEL,
+  DEFAULT_STORYBOARD_MODEL,
+} from '../lib/imageModels';
 
 const SETTINGS_PATH = path.join(process.cwd(), 'data', 'app-settings.json');
 const backup = fs.existsSync(SETTINGS_PATH) ? fs.readFileSync(SETTINGS_PATH, 'utf-8') : null;
@@ -59,6 +64,11 @@ try {
   // 6. CHATGPT_LOCAL_MODEL không được chứa "/" — flowJobs.ts kiểm hằng này TRƯỚC khi kiểm
   // dấu "/" để rẽ OmniRoute; thêm "/" vào sẽ khiến nhánh rẽ provider sai âm thầm.
   assert.ok(!CHATGPT_LOCAL_MODEL.includes('/'), 'CHATGPT_LOCAL_MODEL không được chứa "/"');
+
+  // 7. Mặc định là extension Chrome — bấm sinh ảnh thì extension tự điền vào ChatGPT. Hằng
+  // này phải ĐÃ có giá trị lúc load (khai báo sai thứ tự sẽ ra undefined/TDZ) và không chứa "/".
+  assert.equal(DEFAULT_STORYBOARD_MODEL, CHATGPT_EXTENSION_MODEL, 'mặc định phải là ChatGPT qua extension');
+  assert.ok(!DEFAULT_STORYBOARD_MODEL.includes('/'), 'model mặc định không được chứa "/"');
 
   console.log('✓ check-global-image-model: tất cả assert pass');
 } finally {

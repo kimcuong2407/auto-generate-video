@@ -3,12 +3,6 @@
  * lib/constants.ts vì file đó import 'node:path' (không bundle được cho client component).
  */
 
-// Model ảnh mặc định cho mọi bước gen ảnh (storyboard, background project, background
-// livestream) — Google Flow (Veo), dùng chung 1 default cho cả 3 field model.
-// (Từng mặc định OmniRoute/ChatGPT-web, đổi vì pool account chatgpt-web trên OmniRoute
-// lỗi 401 "Authentication failed for all eligible image-provider accounts".)
-export const DEFAULT_STORYBOARD_MODEL = 'flow-image';
-
 /**
  * Model gen ảnh qua ChatGPT web CHẠY TRÊN CHÍNH SERVER NÀY (Playwright điều khiển Chromium
  * đã đăng nhập — xem lib/chatgptImage/). Khác hẳn 'chatgpt-web/gpt-5.5' vốn đi qua pool
@@ -35,6 +29,13 @@ export const CHATGPT_LOCAL_MODEL = 'chatgpt-local';
  * KHÔNG chứa "/" — nhánh rẽ provider ở flowJobs.ts kiểm hằng này TRƯỚC khi kiểm dấu "/".
  */
 export const CHATGPT_EXTENSION_MODEL = 'chatgpt-extension';
+
+// Model ảnh mặc định cho mọi bước gen ảnh (storyboard, background project, background
+// livestream) — ChatGPT qua extension Chrome: bấm sinh ảnh là extension tự đính ảnh ref + điền
+// prompt vào tab chatgpt.com rồi trả ảnh về, dùng chung 1 default cho cả 3 field model.
+// (Lịch sử: OmniRoute/ChatGPT-web → bỏ vì pool account lỗi 401; rồi Google Flow 'flow-image'.)
+// Khai báo SAU CHATGPT_EXTENSION_MODEL — const dùng trước khi khai báo là lỗi TDZ lúc load module.
+export const DEFAULT_STORYBOARD_MODEL = CHATGPT_EXTENSION_MODEL;
 
 // Các option provider gen ảnh hiển thị ở UI (StoryboardStep, JobImagePanel) — value là chuỗi
 // `model` thực gửi xuống generateStoryboardImage(): có "/" → OmniRoute, không có → Google Flow.
